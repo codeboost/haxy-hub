@@ -213,13 +213,14 @@ local mode answers `unsupported` (405) for every route. Bodies are JSON objects 
 fields (form encodings are refused with `validation`); a missing field reads as empty, so
 the shared rules report it.
 
-Every change to an existing account (all but `GET`/`HEAD` and registration) must name the
-account it is for in an `X-Haxy-Viewer` header: the user the form was loaded for. The
-session cookie is shared by every tab and the CSRF token is bound to the browser, not the
-session, so after another tab signs in as someone else, a stale form (or the client's
-CSRF retry) would otherwise change the new user's account. A missing header is
-`validation`; a name other than the session's viewer is `conflict` (409, no field
-errors), and nothing changes. Haxy Hub then reads the session and tells the user who is
+A change to an existing account (all but `GET`/`HEAD` and registration) may name the
+account it is for in an optional `X-Haxy-Viewer` header: the user the form was loaded for.
+The session cookie is shared by every tab and the CSRF token is bound to the browser, not
+the session, so after another tab signs in as someone else, a stale form (or the client's
+CSRF retry) would otherwise change the new user's account. Haxy Hub sends the header on
+every account change. Without it the change acts on the session's viewer, as before, so
+non-browser clients needn't send it; with a name other than the session's viewer it is
+`conflict` (409, no field errors), and nothing changes. Haxy Hub then reads the session and tells the user who is
 signed in now, offering a reload.
 
 | Route | Method | Body | Answer |
@@ -338,6 +339,7 @@ still rely on `SameSite=Lax` only; adding the same Origin check is tracked in
 - Hub routes may differ from Haxy's TUI paths where those collide (e.g. `/about`,
   `/users/<name>`); Haxy links in content are translated to Hub routes.
 - `page_size` is capped at 100 per request; the default stays the TUI's page size.
+- `X-Haxy-Viewer` is optional; when sent it must name the session's viewer (user decision, #04).
 
 ## Known follow-up
 

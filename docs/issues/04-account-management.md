@@ -28,7 +28,7 @@ Forms show field-level errors and preserve non-secret input on failure.
 - [x] Zig JSON endpoints follow the API conventions from #01 and share underlying operations with the TUI (no duplicated rules)
 - [x] Playwright tests run through the Vite proxy against a real Zig fixture backend; mutations are verified after refresh
 - [x] Existing Zig suites pass; frontend typecheck and build pass
-- [x] Compatible `haxy-hub-impl` backend commit recorded (`a37479b` on `issue-04-account`)
+- [x] Compatible `haxy-hub-impl` backend commit recorded (`c8fa803` on `issue-04-account`)
 
 ## Blocked by
 

@@ -168,18 +168,13 @@ test("local mode has no account routes", async ({ launch, request }) => {
   }
 })
 
-test("a change to an account must name the signed-in user, so it never lands on another account", async ({ launch }) => {
+test("a change naming an account other than the signed-in user's is refused; one naming none proceeds", async ({ launch }) => {
   const backend = await launch.server()
   await registerUser(backend, alice)
   await registerUser(backend, bob)
   const hub = await launch.hub(backend.port)
   const { context, headers } = await loggedIn(hub.url, alice)
   try {
-    const { "X-Haxy-Viewer": _, ...unnamed } = headers
-    const missing = await context.put(`${hub.url}/api/v1/account/email`, { headers: unnamed, data: { email: "a2@example.test" } })
-    expect(missing.status()).toBe(400)
-    expect(await errorCode(missing)).toBe("validation")
-
     // a form loaded for bob, sent while the browser is signed in as alice
     const forBob = { ...headers, "X-Haxy-Viewer": bob.name }
     const responses = [
@@ -196,6 +191,14 @@ test("a change to an account must name the signed-in user, so it never lands on 
     // nothing changed
     expect(await (await context.get(`${hub.url}/api/v1/account`)).json()).toEqual({ name: alice.name, email: alice.email })
     expect(((await (await context.get(`${hub.url}/api/v1/account/keys`)).json()) as { items: unknown[] }).items).toEqual([])
+
+    // the header is optional: a client that names nobody acts on the session's viewer
+    const { "X-Haxy-Viewer": _, ...unnamed } = headers
+    const changed = await context.put(`${hub.url}/api/v1/account/email`, { headers: unnamed, data: { email: "a2@example.test" } })
+    expect(changed.status()).toBe(200)
+    expect(await changed.json()).toEqual({ name: alice.name, email: "a2@example.test" })
+    const added = await context.post(`${hub.url}/api/v1/account/keys`, { headers: unnamed, data: { key } })
+    expect(added.status()).toBe(201)
   } finally {
     await context.dispose()
   }
