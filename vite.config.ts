@@ -21,7 +21,10 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
-    server: { host: "127.0.0.1", port: 5173, strictPort: true, proxy },
-    preview: { host: "127.0.0.1", port: 4173, strictPort: true, proxy },
+    // No CORS: Vite's default would answer preflights for any localhost
+    // origin itself. Haxy Hub is same-origin only, and Zig checks the Origin
+    // and CSRF token of every write (docs/api-conventions.md, Security notes).
+    server: { host: "127.0.0.1", port: 5173, strictPort: true, cors: false, proxy },
+    preview: { host: "127.0.0.1", port: 4173, strictPort: true, cors: false, proxy },
   }
 })

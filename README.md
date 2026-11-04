@@ -34,6 +34,9 @@ mode. If Haxy is down, or is an older build without the status API, the page say
 (*Can't reach Haxy* / *Incompatible Haxy backend*) and offers **Retry**. Routes are
 client-side (`/`, `/connection`, anything else is *Page not found*); refreshing any URL
 reconstructs the same view, because Vite serves `index.html` for unknown paths.
+In server mode the header shows who is signed in, with **Log in** (`/login`, which
+returns to the page you came from) or **Log out**; local mode has no accounts and no login
+UI. The session is Haxy's own HttpOnly cookie, shared with Haxy's browser-rendered UI.
 Repository, issue and patch screens are not implemented yet.
 
 The backend defaults to http://127.0.0.1:8080. To change it, copy `.env.example` to
@@ -45,8 +48,9 @@ HAXY_BACKEND_URL=http://127.0.0.1:9090 npm run dev
 
 The backend setting stays in the Node process; browser requests always use relative
 `/api/` URLs. Paths and query strings are forwarded unchanged, along with cookies.
-Vite preserves Host and Origin. Future authenticated write endpoints must implement
-authorization and CSRF checks in Zig; proxying alone does not provide those checks.
+Vite preserves Host and Origin, and its own CORS handling is off (`cors: false`). Zig
+checks the Origin and a CSRF token on every state-changing `/api/` request (see Security
+notes in the conventions); write endpoints must still authorize in Zig.
 
 ## API
 
@@ -83,6 +87,10 @@ This runs Playwright (Chromium) against real Haxy processes through Vite's proxy
    `$TMPDIR/haxy-hub-e2e-*` sandbox as its cwd, with its own `HOME` and git config, and a
    free port (never 8080/8022). Fixtures:
    - `launch.server()` — `haxy serve` on an empty data dir that Haxy initialises itself;
+     `backend.restart()` restarts it on the same port and data dir. Register users with
+     `registerUser(backend, account)` (`e2e/support/accounts.ts`), which posts Haxy's own
+     sign-up form; `writeHeaders(request, hub.url)` gives an API request context a CSRF
+     token for HTTP contract tests;
    - `launch.demo()` — the `zig build try` demo data (users, repos, issues, patches),
      seeded by Haxy's own event utilities via `try --cli`, inside the sandbox;
    - `launch.local()` — local mode (`haxy --no-tui --web-listen …`) in a fresh git repo;

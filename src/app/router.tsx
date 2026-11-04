@@ -2,6 +2,7 @@ import { createBrowserRouter } from "react-router"
 import { AppShell } from "@/app/AppShell"
 import { ConnectionPage } from "@/pages/ConnectionPage"
 import { HomePage } from "@/pages/HomePage"
+import { LoginPage } from "@/pages/LoginPage"
 import { NotFoundPage } from "@/pages/NotFoundPage"
 
 // Every view is identified by its URL, so a refresh or a shared link
@@ -13,6 +14,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <HomePage /> },
       { path: "connection", element: <ConnectionPage /> },
+      { path: "login", element: <LoginPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],
   },

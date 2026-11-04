@@ -2,6 +2,8 @@ import { Link, NavLink, Outlet } from "react-router"
 import { GitBranch, LoaderCircle, RefreshCw, Unplug } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useConnection } from "@/app/connection"
+import { SessionProvider, useSession } from "@/app/session"
+import { ViewerControls } from "@/app/ViewerControls"
 import type { BackendCheck } from "@/lib/connection"
 
 function modeLabel(check: BackendCheck | null): string {
@@ -70,9 +72,14 @@ function MainNav() {
   )
 }
 
-/** The layout route: header with navigation and mode, and the routed page once connected. */
+/** The layout route: header with navigation, mode and viewer, and the routed page once connected. */
 export function AppShell() {
+  return <SessionProvider><Shell /></SessionProvider>
+}
+
+function Shell() {
   const { check } = useConnection()
+  const { ready, viewerKey } = useSession()
   return (
     <div className="min-h-screen">
       <header className="border-b bg-card">
@@ -84,13 +91,22 @@ export function AppShell() {
             </Link>
             <MainNav />
           </div>
-          <ModeIndicator />
+          <div className="flex items-center gap-3">
+            <ViewerControls />
+            <ModeIndicator />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-10 sm:px-10 sm:py-16">
         {check === null ? (
           <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="animate-spin" size={16} /> Connecting to Haxy…</p>
-        ) : check.kind === "connected" ? <Outlet /> : <ConnectionProblem check={check} />}
+        ) : check.kind !== "connected" ? <ConnectionProblem check={check} /> : !ready ? (
+          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="animate-spin" size={16} /> Loading…</p>
+        ) : (
+          // Keyed by viewer: logging out or switching accounts discards every
+          // page's viewer-specific state.
+          <Outlet key={viewerKey} />
+        )}
       </main>
     </div>
   )

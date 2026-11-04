@@ -1,3 +1,4 @@
+import { writeHeaders } from "./support/accounts"
 import { expect, test } from "./support/fixtures"
 
 // HTTP contract checks through the same Vite proxy the browser uses. They
@@ -20,7 +21,8 @@ test("the status route rejects other methods with an unsupported error and an Al
   const backend = await launch.local()
   const hub = await launch.hub(backend.port)
 
-  const response = await request.post(`${hub.url}/api/v1/status`, { data: {} })
+  // a valid CSRF token gets the write past the guard every write meets first
+  const response = await request.post(`${hub.url}/api/v1/status`, { data: {}, headers: await writeHeaders(request, hub.url) })
 
   expect(response.status()).toBe(405)
   expect(response.headers()["allow"]).toBe("GET, HEAD")
@@ -48,7 +50,7 @@ test("API paths that look like Git smart-HTTP requests still answer with the JSO
   const backend = await launch.server()
   const hub = await launch.hub(backend.port)
 
-  const receivePack = await request.post(`${hub.url}/api/v1/admin/repo/git-receive-pack`, { data: "" })
+  const receivePack = await request.post(`${hub.url}/api/v1/admin/repo/git-receive-pack`, { data: "", headers: await writeHeaders(request, hub.url) })
   expect(receivePack.status()).toBe(404)
   expect(receivePack.headers()["content-type"]).toContain("application/json")
   expect(await receivePack.json()).toEqual({ error: { code: "not_found", message: expect.any(String) } })

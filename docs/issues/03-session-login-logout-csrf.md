@@ -1,6 +1,6 @@
 # #03 Session: login, logout, persistent session, and CSRF protection for writes
 
-**Type:** HITL · **Status:** needs-human · **User stories:** 16, 17, 18, 99
+**Type:** HITL · **Status:** in-review · **User stories:** 16, 17, 18, 99
 
 ## Parent
 

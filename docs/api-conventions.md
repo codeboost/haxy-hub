@@ -10,6 +10,8 @@ by Haxy Hub (React) through Vite's proxy. They are implemented by:
 
 - `haxy/src/api.zig` — `writeError`/`respondError`, `writePage`, `Count`, `writeStatus`,
   `respondJson`; unit tests in `haxy/src/test/api.zig`.
+- `haxy/src/api/session.zig` — the session route and the CSRF guard (see Session and
+  Security notes); unit tests in `haxy/src/test/api_session.zig`.
 - `haxy-hub/src/lib/api.ts` — matching TypeScript types, `ApiError`, `parseErrorEnvelope`,
   `requestJson`/`getJson`, and `timeouts`.
 
@@ -73,6 +75,11 @@ Rules:
 - Clients map unknown codes to `internal`. The TypeScript client also produces
   client-side codes when no envelope is available: `unreachable` (no answer, or the
   proxy's 502/503/504), `timeout`, and `invalid_response`.
+- Any failure inside an `/api/` route that escapes it (e.g. the admin repo or session
+  store can't be opened) is caught at the API boundary (`handleApiRequest`), logged with
+  its details, and answered with the generic `internal` envelope, never a plain-text page.
+- A response that leaves a request body unread closes the connection when the client
+  sent `Expect: 100-continue`, rather than waiting for a body the client is still holding.
 - Writes are never retried automatically after an ambiguous failure (`timeout`,
   `unreachable`, `internal`); the UI reloads authoritative state first.
 
@@ -160,12 +167,114 @@ Resources that offer actions include what the current viewer may do:
 - **Open:** the Vite proxy's 10s `proxyTimeout` currently applies to every `/api/` request
   and must be raised or scoped per route before long-running endpoints land.
 
+## Session
+
+From issue [#03](issues/03-session-login-logout-csrf.md). One route, `/api/v1/session`,
+whose every 2xx body is:
+
+```json
+{ "viewer": { "name": "alice" }, "csrf_token": "3f1c…(64 hex)" }
+```
+
+`viewer` is `null` when nobody is logged in, and always in local mode. Nothing else about
+the account (email, password hash, session token) is serialized.
+
+| Method | Server mode | Local mode |
+| --- | --- | --- |
+| `GET`/`HEAD` | The viewer and this browser's CSRF token. Sets the `haxy_csrf` cookie if the browser has none. Never claims the `try` demo's one-shot auto-login. | Same, with `viewer: null`. |
+| `POST` | Log in. Body `{"username": "...", "password": "..."}` as `application/json` (form encodings are refused). Sets the same `haxy_session` HttpOnly cookie as the web UI's login form, replaces any session the browser already had, and rotates the CSRF token. | `unsupported` (405, `Allow: GET, HEAD`): local mode has no accounts. |
+| `DELETE` | Log out. Revokes the session on the server (as the web UI's logout does), clears the cookie and rotates the CSRF token. | `unsupported` (405). |
+
+Login errors: empty fields are `validation` with `field_errors` for `username` and/or
+`password`; a body that isn't a JSON object with string fields is `validation` without
+field errors; wrong credentials (unknown user, wrong password, or a deleted account) are
+`unauthenticated` (401) with the single message "Incorrect username or password.", so the
+answer doesn't say which part was wrong. Credentials are checked by
+`evt.User.verifyCredentials`, the same check the TUI and the login form use. Sessions are
+the existing disk-backed store (`<data-dir>/sessions/`), so they survive a backend restart
+and have no expiry; a session revoked or deleted on the server reads as `viewer: null` on
+the next request.
+
+The React client lets a confirmed login or logout win: a session read that overlaps one
+(it may describe the state before it) neither changes the shown viewer nor records its
+CSRF token. `next` after login must stay a path in the app after URL normalisation
+(`/.//host` and backslash forms are rejected).
+
+Implemented in `haxy/src/api/session.zig` (unit tests in `haxy/src/test/api_session.zig`)
+and `haxy-hub/src/lib/session.ts`, `src/app/session.tsx`.
+
 ## Security notes
 
-- State-changing routes (`POST`, `PUT`, `PATCH`, `DELETE`) will require a same-origin
-  check and an explicit CSRF token; the strategy is decided with the login slice.
 - Sessions stay in Haxy's HttpOnly cookie. Tokens, password hashes, local paths, signing
   configuration and SSH private material are never serialized.
+
+### CSRF and same-origin protection
+
+> **Status: Proposed — needs review** (issue #03 is HITL). Write slices must not land
+> before this is accepted.
+
+**Rule.** Every `/api/` request whose method is not `GET` or `HEAD` (so `POST`, `PUT`,
+`PATCH`, `DELETE`, `OPTIONS` and anything else) passes one check in Zig *before routing*
+(`guardWrite` in `haxy/src/api/session.zig`, called first in `handleApiRequest`). It is
+refused with `forbidden` (403) unless both hold:
+
+1. **Same origin.** If the request has an `Origin` header, its `scheme://host[:port]` must
+   name the request's own `Host` (case-insensitive; `:80`/`:443` match their absence for
+   http/https). `Origin: null`, another host, or another port is refused. Browsers send
+   `Origin` on every non-GET `fetch`, so a browser write can't omit it; a non-browser
+   client without `Origin` still needs the token.
+2. **Token.** The `X-Haxy-CSRF` header must equal `HMAC-SHA256(key = nonce,
+   "haxy-csrf-v1")` in hex, where the nonce is the browser's `haxy_csrf` cookie: 16 random
+   bytes, `HttpOnly; SameSite=Strict; Path=/`, issued by `GET /api/v1/session` and
+   rotated on login and logout. The token is read from the JSON body of
+   `GET /api/v1/session`, which only same-origin script can read (Haxy sends no CORS
+   headers, and Haxy Hub's Vite server has `cors: false`).
+
+Because the guard runs before routing, a later slice can't add a write route without it,
+and unknown paths and wrong methods also answer 403 to a request without a valid token
+(404/405 only once the token is valid). The React client (`requestJson` in
+`src/lib/api.ts`) adds the header to every non-GET/HEAD request, fetching the token from
+the session route the first time; login and logout responses replace it.
+
+**Why this works through the proxy.** Vite forwards `Host` and `Origin` unchanged
+(`changeOrigin: false`), so the browser's page origin (`http://127.0.0.1:5173`) and the
+`Host` Zig sees (`127.0.0.1:5173`) agree, without configuring Zig with the frontend's
+address. A production reverse proxy must likewise preserve `Host` (or the check fails
+closed). `X-Forwarded-Host` is deliberately not trusted.
+
+**Why both layers.** The Origin check alone stops cross-site forms and fetches from
+modern browsers; the token additionally covers browsers or intermediaries that drop or
+rewrite `Origin`, and a custom header can't be sent cross-origin without a CORS preflight
+that Haxy never approves. Cookies on `127.0.0.1`/`localhost` are shared across ports, so
+another local app could plant a `haxy_csrf` cookie; it still couldn't pass the Origin
+check or the preflight.
+
+**Why the token is bound to its own cookie, not the session.** Local mode has no
+sessions but has writes, and logging in is itself a write (login CSRF), so the token must
+exist before any session does. Binding to a separate nonce also means a session revoked
+elsewhere makes the next write fail as `unauthenticated` rather than as a CSRF error. The
+token is stateless (no server storage) and survives backend restarts with the cookie.
+
+**Alternatives considered.**
+
+- *Origin/`Sec-Fetch-Site` check only:* simplest, but no defence where `Origin` is
+  missing or rewritten, and the issue asks for an explicit token.
+- *Plain double-submit cookie (JS-readable cookie echoed in a header):* needs a
+  non-HttpOnly cookie; on localhost any app on another port can set it, so the attacker
+  knows the value.
+- *Synchronizer token stored server-side per session:* needs new storage (the issue says
+  no new session store), doesn't cover local mode or login, and is lost on restart.
+- *Token derived from the session token:* no new cookie, but nothing exists before login
+  or in local mode, and a server-side logout turns the next write into a CSRF error.
+- *HMAC with a server secret:* would need a persisted key (local mode has no data dir);
+  the per-browser HttpOnly nonce already makes the token unforgeable.
+- *Relying on `SameSite` cookies:* `haxy_session` is `Lax` (links from other sites must
+  arrive logged in), and `SameSite` treats other ports on the same host as same-site.
+
+**Open for review:** CSRF refusals use `forbidden`, so a client can't tell a stale token
+from a permission refusal by code; a dedicated code (e.g. `csrf`) would be a new error
+code. The existing HTML form routes (`/login`, `/logout`, `…/new`, …) are outside `/api/`
+and unchanged; they rely on `SameSite=Lax` only.
 
 ## Decided in review (2026-11-04)
 

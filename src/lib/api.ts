@@ -136,6 +136,64 @@ export async function readJsonBody(response: Response): Promise<unknown> {
   }
 }
 
+// --- CSRF -------------------------------------------------------------------
+
+/**
+ * Every state-changing /api/ request (anything but GET and HEAD) must carry
+ * this browser's CSRF token in this header and come from Haxy Hub's own
+ * origin; see "Security notes" in docs/api-conventions.md. The token comes
+ * from GET /api/v1/session and is bound to an HttpOnly cookie, so it is kept
+ * in memory only. Login and logout rotate it.
+ */
+export const csrfHeader = "X-Haxy-CSRF"
+export const sessionPath = "/api/v1/session"
+
+let csrfToken: string | null = null
+// Bumped whenever a login or logout starts or ends: they rotate the token,
+// so a token read by a request that started before then is stale.
+let csrfEpoch = 0
+
+/**
+ * For a session read starting now: records the token it returns, unless a
+ * login or logout began or ended in the meantime (the read may then carry
+ * the token the rotation replaced).
+ */
+export function csrfTokenReader(): (token: string) => void {
+  const epoch = csrfEpoch
+  return (token) => {
+    if (epoch === csrfEpoch) csrfToken = token
+  }
+}
+
+/** Marks the start of a login or logout: tokens from reads already in flight are discarded. */
+export function beginCsrfRotation(): void {
+  csrfEpoch++
+}
+
+/**
+ * Marks the end of a login or logout: records the token it returned, or, when
+ * it failed (possibly after the backend rotated it), forgets the token so the
+ * next write reads a fresh one.
+ */
+export function endCsrfRotation(token: string | null): void {
+  csrfEpoch++
+  csrfToken = token
+}
+
+/** The current token, read from the session route the first time a write needs one. */
+async function tokenForWrite(signal?: AbortSignal): Promise<string> {
+  for (;;) {
+    if (csrfToken !== null) return csrfToken
+    const record = csrfTokenReader()
+    const body = await requestJson<unknown>(sessionPath, { method: "GET", signal })
+    const token = isRecord(body) && typeof body.csrf_token === "string" ? body.csrf_token : null
+    if (token === null) throw new ApiError("invalid_response", "Haxy returned a session this app could not read.", 200)
+    record(token)
+    // Unrecorded only if a login or logout started or ended during this read;
+    // then use the token it recorded, or read again.
+  }
+}
+
 /** Vite answers with these itself when it cannot reach the configured backend. */
 export const proxyFailureStatuses = new Set([502, 503, 504])
 
@@ -150,6 +208,7 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
   // Normalise every HeadersInit form (object, tuples, Headers) before adding defaults.
   const merged = new Headers(headers)
   if (!merged.has("Accept")) merged.set("Accept", "application/json")
+  if (method !== "GET" && method !== "HEAD" && !merged.has(csrfHeader)) merged.set(csrfHeader, await tokenForWrite(signal))
 
   // Timeouts, dropped connections and caller cancellation can strike while
   // the body is still arriving, so they are handled for the body read too.

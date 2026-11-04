@@ -16,6 +16,11 @@ export type Backend = {
   dataDir: string
   output(): string
   stop(): Promise<void>
+  /**
+   * Stops this backend and starts it again on the same port and data dir,
+   * resolving once it is ready. Only `launch.server()` backends can restart.
+   */
+  restart?(): Promise<Backend>
 }
 
 export type BackendOptions = { port?: number }
@@ -40,15 +45,20 @@ async function readyBackend(name: string, process: Managed, mode: BackendMode, d
 export async function startServer(binaries: Binaries, sandbox: Sandbox, options: BackendOptions = {}): Promise<Backend> {
   const port = options.port ?? (await freePort())
   const dataDir = sandbox.path("data")
-  const process = startProcess("haxy serve", binaries.haxy, [
-    "serve", "--data-dir", dataDir, "--web-listen", `127.0.0.1:${port}`, "--ssh-listen", "none",
-  ], { cwd: sandbox.root, env: sandbox.env })
-  try {
-    return await readyBackend("haxy serve", process, "server", dataDir, 30_000)
-  } catch (error) {
-    await process.stop()
-    throw error
+  const start = async (): Promise<Backend> => {
+    const process = startProcess("haxy serve", binaries.haxy, [
+      "serve", "--data-dir", dataDir, "--web-listen", `127.0.0.1:${port}`, "--ssh-listen", "none",
+    ], { cwd: sandbox.root, env: sandbox.env })
+    try {
+      const backend = await readyBackend("haxy serve", process, "server", dataDir, 30_000)
+      // the fixture's teardown stops every process still running, restarted ones included
+      return { ...backend, restart: async () => { await backend.stop(); return start() } }
+    } catch (error) {
+      await process.stop()
+      throw error
+    }
   }
+  return start()
 }
 
 /**
