@@ -11,16 +11,26 @@ export type Resource<T> =
  * Loads `load` whenever `key` changes (or `reload` is called), aborting the
  * previous request. Pages render loading, loaded and failed states distinctly,
  * so an empty result is never confused with a failure.
+ *
+ * A change of `revalidate` (such as the location within a page) loads the same
+ * resource again in the background: what was loaded stays shown until the
+ * fresh answer replaces it, so state other clients changed shows on the next
+ * navigation without a loading flash.
  */
-export function useResource<T>(key: string, load: (signal: AbortSignal) => Promise<T>): Resource<T> & { reload(): void } {
+export function useResource<T>(key: string, load: (signal: AbortSignal) => Promise<T>, revalidate = ""): Resource<T> & { reload(): void } {
   const [attempt, setAttempt] = useState(0)
   const [state, setState] = useState<{ key: string; attempt: number; resource: Resource<T> }>({ key, attempt, resource: { kind: "loading" } })
 
   useEffect(() => {
     const controller = new AbortController()
-    setState({ key, attempt, resource: { kind: "loading" } })
+    // a revalidation keeps showing what this key and attempt already loaded
+    setState((previous) => (previous.key === key && previous.attempt === attempt && previous.resource.kind === "loaded" ? previous : { key, attempt, resource: { kind: "loading" } }))
     load(controller.signal).then(
-      (data) => setState({ key, attempt, resource: { kind: "loaded", data } }),
+      (data) => {
+        // a superseded read may still finish; only the latest one counts
+        if (controller.signal.aborted) return
+        setState({ key, attempt, resource: { kind: "loaded", data } })
+      },
       (error: unknown) => {
         if (controller.signal.aborted) return
         const apiError = error instanceof ApiError ? error : new ApiError("invalid_response", "Haxy Hub could not read Haxy's answer.", 0)
@@ -29,7 +39,7 @@ export function useResource<T>(key: string, load: (signal: AbortSignal) => Promi
     )
     return () => controller.abort()
     // `load` is keyed by `key`; a new closure for the same key must not refetch.
-  }, [key, attempt])
+  }, [key, attempt, revalidate])
 
   const reload = useCallback(() => setAttempt((value) => value + 1), [])
   // Until the effect runs for a new key, the old result belongs to another view.

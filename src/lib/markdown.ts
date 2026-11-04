@@ -44,15 +44,16 @@ export type LinkTarget =
 /**
  * Where a link outside any repository may lead, as the TUI decides for the
  * about page: http(s) and mailto links open as written, a leading `/` names a
- * page on this site (translated to its Hub route when there is one), and
+ * page on this site (translated to its Hub route when there is one; `local`
+ * reads local mode's repository routes, which leave the repository out), and
  * everything else (javascript:, data:, `//host`,
  * relative paths) stays plain text.
  */
-export function linkTarget(destination: string): LinkTarget {
+export function linkTarget(destination: string, local = false): LinkTarget {
   const lower = destination.toLowerCase()
   for (const scheme of ["http:", "https:", "mailto:"]) {
     if (lower.startsWith(scheme)) return { kind: "external", href: destination }
   }
-  if (destination.startsWith("/") && !destination.startsWith("//")) return { kind: "internal", to: hubPathForHaxyPath(destination) }
+  if (destination.startsWith("/") && !destination.startsWith("//")) return { kind: "internal", to: hubPathForHaxyPath(destination, local) }
   return { kind: "none" }
 }
