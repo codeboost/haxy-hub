@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
 import { useLocation } from "react-router"
 import { useConnection } from "@/app/connection"
-import { ApiError } from "@/lib/api"
+import { ApiError, bindWritesTo, ViewerChangedError } from "@/lib/api"
 import { fetchSession, logIn as postLogin, logOut as deleteSession, type Session, type Viewer } from "@/lib/session"
 
 export type SessionState = {
@@ -52,6 +52,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const read = useRef<AbortController | null>(null)
 
   const show = useCallback((viewer: Viewer | null) => {
+    // writes are issued for the viewer the app shows from now on
+    bindWritesTo(viewer?.name ?? null)
     setKnown((previous) => (previous.ready && previous.viewer?.name === viewer?.name ? previous : { ready: true, viewer }))
   }, [])
 
@@ -92,8 +94,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const session = await run()
       show(session.viewer)
     } catch (error) {
-      // Not confirmed: keep what is shown, and read the authoritative state.
-      setReread((value) => value + 1)
+      // Not confirmed: keep what is shown, and read the authoritative state —
+      // unless someone else signed in meanwhile: the page then keeps saying so,
+      // with a reload, as for any other write.
+      if (!(error instanceof ViewerChangedError)) setReread((value) => value + 1)
       throw error
     } finally {
       pendingChanges.current--

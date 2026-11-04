@@ -3,7 +3,7 @@
  * logs out. The session itself is Haxy's HttpOnly cookie; this module only
  * sees who the viewer is and the CSRF token for writes.
  */
-import { ApiError, beginCsrfRotation, csrfTokenReader, endCsrfRotation, getJson, requestJson, sessionPath } from "@/lib/api"
+import { anyViewer, ApiError, beginCsrfRotation, csrfTokenReader, endCsrfRotation, getJson, requestJson, sessionPath } from "@/lib/api"
 
 export type Viewer = { name: string }
 
@@ -31,14 +31,15 @@ function readSession(body: unknown): Session {
 export async function fetchSession(signal?: AbortSignal): Promise<Session> {
   const record = csrfTokenReader()
   const session = readSession(await getJson<unknown>(sessionPath, { signal }))
-  record(session.csrf_token)
+  record(session.csrf_token, session.viewer?.name ?? null)
   return session
 }
 
 /**
  * Runs a request that logs in or out (login, logout, registration, account
  * deletion), which rotates the CSRF token; its answer — a session body — is
- * authoritative.
+ * authoritative. Login, logout and registration change the viewer by design,
+ * so they pass `viewer: anyViewer`; account deletion stays bound to its viewer.
  */
 export async function rotate(change: () => Promise<unknown>): Promise<Session> {
   beginCsrfRotation()
@@ -50,7 +51,7 @@ export async function rotate(change: () => Promise<unknown>): Promise<Session> {
     endCsrfRotation(null)
     throw error
   }
-  endCsrfRotation(session.csrf_token)
+  endCsrfRotation({ token: session.csrf_token, viewer: session.viewer?.name ?? null })
   return session
 }
 
@@ -60,12 +61,13 @@ export function logIn(username: string, password: string): Promise<Session> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
+    viewer: anyViewer,
   }))
 }
 
 /** Revokes the session on the server and clears its cookie. */
 export function logOut(): Promise<Session> {
-  return rotate(() => requestJson<unknown>(sessionPath, { method: "DELETE" }))
+  return rotate(() => requestJson<unknown>(sessionPath, { method: "DELETE", viewer: anyViewer }))
 }
 
 /**

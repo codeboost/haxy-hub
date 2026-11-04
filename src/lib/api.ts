@@ -119,6 +119,14 @@ export type RequestOptions = Omit<RequestInit, "signal"> & {
   signal?: AbortSignal
   /** Milliseconds, or null for no client timeout. Defaults by method (see `timeouts`). */
   timeoutMs?: number | null
+  /**
+   * Who a write (anything but GET and HEAD) is for: the viewer's name, or
+   * null for nobody signed in. Defaults to the viewer the app shows (see
+   * `bindWritesTo`), else the one the latest session read named. A name is
+   * sent as `X-Haxy-Viewer`. Pass `anyViewer` for the requests that change
+   * who is signed in by design (login, logout, registration).
+   */
+  viewer?: string | null | typeof anyViewer
 }
 
 /**
@@ -136,32 +144,74 @@ export async function readJsonBody(response: Response): Promise<unknown> {
   }
 }
 
-// --- CSRF -------------------------------------------------------------------
+// --- CSRF and the viewer a write is for ------------------------------------
 
 /**
  * Every state-changing /api/ request (anything but GET and HEAD) must carry
  * this browser's CSRF token in this header and come from Haxy Hub's own
  * origin; see "Security notes" in docs/api-conventions.md. The token comes
  * from GET /api/v1/session and is bound to an HttpOnly cookie, so it is kept
- * in memory only. Login and logout rotate it.
+ * in memory only. Every login, logout or other session change — in any tab,
+ * through Haxy Hub or Haxy's own pages — rotates it.
  */
 export const csrfHeader = "X-Haxy-CSRF"
 export const sessionPath = "/api/v1/session"
 
-let csrfToken: string | null = null
+/**
+ * The header naming the viewer a write is for. The session cookie is shared
+ * by every tab, so another tab may sign in as someone else after a form was
+ * loaded; Haxy refuses a write whose named viewer isn't the session's
+ * (`conflict`, or `unauthenticated` when nobody is signed in), so it never
+ * lands on the wrong account.
+ */
+export const viewerHeader = "X-Haxy-Viewer"
+
+/** The `viewer` of a request that changes who is signed in by design, and so is bound to nobody. */
+export const anyViewer: unique symbol = Symbol("anyViewer")
+
+/** A write was not made because someone other than the viewer it was for is signed in now. */
+export class ViewerChangedError extends ApiError {
+  /** Who the write was for; null when nobody was signed in. */
+  readonly expected: string | null
+  /** Who is signed in now; null when nobody is. */
+  readonly viewer: { name: string } | null
+
+  constructor(expected: string | null, viewer: { name: string } | null) {
+    const change = expected === null ? "this change" : `this change for ${expected}`
+    super("conflict", viewer
+      ? `You're signed in as ${viewer.name} now (perhaps from another tab), so ${change} wasn't made. Reload to continue as ${viewer.name}.`
+      : `You're signed out now (perhaps from another tab), so ${change} wasn't made. Reload to continue.`, 409)
+    this.name = "ViewerChangedError"
+    this.expected = expected
+    this.viewer = viewer
+  }
+}
+
+/** What the latest recorded session read said: this browser's token, and who is signed in. */
+type SessionState = { token: string; viewer: string | null }
+
+let known: SessionState | null = null
 // Bumped whenever a login or logout starts or ends: they rotate the token,
 // so a token read by a request that started before then is stale.
 let csrfEpoch = 0
+// The viewer the app shows, which a write is for unless it says otherwise;
+// undefined until the app has shown one.
+let shownViewer: string | null | undefined
+
+/** Records the viewer the app now shows (null for nobody): writes are issued for them from now on. */
+export function bindWritesTo(viewer: string | null): void {
+  shownViewer = viewer
+}
 
 /**
- * For a session read starting now: records the token it returns, unless a
- * login or logout began or ended in the meantime (the read may then carry
- * the token the rotation replaced).
+ * For a session read starting now: records the token and viewer it returns,
+ * unless a login or logout began or ended in the meantime (the read may then
+ * carry the token the rotation replaced).
  */
-export function csrfTokenReader(): (token: string) => void {
+export function csrfTokenReader(): (token: string, viewer: string | null) => void {
   const epoch = csrfEpoch
-  return (token) => {
-    if (epoch === csrfEpoch) csrfToken = token
+  return (token, viewer) => {
+    if (epoch === csrfEpoch) known = { token, viewer }
   }
 }
 
@@ -171,32 +221,49 @@ export function beginCsrfRotation(): void {
 }
 
 /**
- * Marks the end of a login or logout: records the token it returned, or, when
- * it failed (possibly after the backend rotated it), forgets the token so the
- * next write reads a fresh one.
+ * Marks the end of a login or logout: records the session it returned, or,
+ * when it failed (possibly after the backend rotated the token), forgets the
+ * token so the next write reads a fresh one.
  */
-export function endCsrfRotation(token: string | null): void {
+export function endCsrfRotation(session: SessionState | null): void {
   csrfEpoch++
-  csrfToken = token
+  known = session
 }
 
 /** Forgets `token` if it is still the current one, so the next write reads a fresh token. */
 function forgetCsrfToken(token: string | null): void {
-  if (token !== null && csrfToken === token) csrfToken = null
+  if (token !== null && known?.token === token) known = null
 }
 
-/** The current token, read from the session route the first time a write needs one. */
-async function tokenForWrite(signal?: AbortSignal): Promise<string> {
-  for (;;) {
-    if (csrfToken !== null) return csrfToken
-    const record = csrfTokenReader()
-    const body = await requestJson<unknown>(sessionPath, { method: "GET", signal })
-    const token = isRecord(body) && typeof body.csrf_token === "string" ? body.csrf_token : null
-    if (token === null) throw new ApiError("invalid_response", "Haxy returned a session this app could not read.", 200)
-    record(token)
-    // Unrecorded only if a login or logout started or ended during this read;
-    // then use the token it recorded, or read again.
+function parseSessionState(body: unknown): SessionState {
+  if (isRecord(body) && typeof body.csrf_token === "string") {
+    const { viewer } = body
+    if (viewer === null) return { token: body.csrf_token, viewer: null }
+    if (isRecord(viewer) && typeof viewer.name === "string") return { token: body.csrf_token, viewer: viewer.name }
   }
+  throw new ApiError("invalid_response", "Haxy returned a session this app could not read.", 200)
+}
+
+/** Reads the session route now, recording what it says unless a login or logout overlapped the read. */
+async function readSessionState(signal?: AbortSignal): Promise<SessionState> {
+  const record = csrfTokenReader()
+  const state = parseSessionState(await requestJson<unknown>(sessionPath, { method: "GET", signal }))
+  record(state.token, state.viewer)
+  return state
+}
+
+/** The current token and viewer, read from the session route the first time a write needs them. */
+async function sessionForWrite(signal?: AbortSignal): Promise<SessionState> {
+  for (;;) {
+    if (known !== null) return known
+    // Unrecorded only if a login or logout started or ended during this read;
+    // then use what it recorded, or read again.
+    await readSessionState(signal)
+  }
+}
+
+function viewerChanged(expected: string | null, now: string | null): ViewerChangedError {
+  return new ViewerChangedError(expected, now === null ? null : { name: now })
 }
 
 /** Vite answers with these itself when it cannot reach the configured backend. */
@@ -204,7 +271,7 @@ export const proxyFailureStatuses = new Set([502, 503, 504])
 
 /** Fetches `path` (under /api/) and returns its JSON body, or throws an ApiError. */
 export async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { signal, timeoutMs, headers, ...init } = options
+  const { signal, timeoutMs, headers, viewer, ...init } = options
   const method = (init.method ?? "GET").toUpperCase()
   const limit = timeoutMs !== undefined ? timeoutMs : method === "GET" || method === "HEAD" ? timeouts.read : timeouts.write
   const timeout = limit === null ? undefined : AbortSignal.timeout(limit)
@@ -213,11 +280,17 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
   // Normalise every HeadersInit form (object, tuples, Headers) before adding defaults.
   const merged = new Headers(headers)
   if (!merged.has("Accept")) merged.set("Accept", "application/json")
+  const write = method !== "GET" && method !== "HEAD"
   // The token is ours to supply unless the caller set the header itself.
-  const suppliesToken = method !== "GET" && method !== "HEAD" && !merged.has(csrfHeader)
+  const suppliesToken = write && !merged.has(csrfHeader)
   // A rejected token means the write never ran, so one retry with a fresh
-  // token is safe; a streamed body can't be sent twice.
+  // token is safe — for the same viewer; a streamed body can't be sent twice.
   let mayRetry = suppliesToken && !(init.body instanceof ReadableStream)
+  // Who the write is for, fixed when it is first sent: another tab may sign
+  // in as someone else meanwhile. Undefined until then.
+  let issuedFor: string | null | typeof anyViewer | undefined = !write ? anyViewer
+    : viewer !== undefined ? viewer
+    : merged.get(viewerHeader) ?? shownViewer
 
   // Timeouts, dropped connections and caller cancellation can strike while
   // the body is still arriving, so they are handled for the body read too.
@@ -228,7 +301,21 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
   }
 
   for (;;) {
-    if (suppliesToken) merged.set(csrfHeader, await tokenForWrite(signal))
+    const cached = known
+    let session = suppliesToken ? await sessionForWrite(signal) : known
+    if (issuedFor === undefined) issuedFor = session !== null ? session.viewer : anyViewer
+    // A bound write never uses a token read for anyone else: the backend
+    // can't refuse a write for nobody, and a token from another tab's login
+    // would carry it. A cached token may just be stale, so a fresh read decides.
+    if (suppliesToken && session !== null && issuedFor !== anyViewer && session.viewer !== issuedFor) {
+      if (session === cached) {
+        forgetCsrfToken(session.token)
+        session = await readSessionState(signal)
+      }
+      if (session.viewer !== issuedFor) throw viewerChanged(issuedFor, session.viewer)
+    }
+    if (session !== null && suppliesToken) merged.set(csrfHeader, session.token)
+    if (typeof issuedFor === "string") merged.set(viewerHeader, issuedFor)
     let response: Response
     let body: unknown
     try {
@@ -252,10 +339,27 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
     const envelope = parseErrorEnvelope(body)
     if (envelope?.code === "csrf" && mayRetry) {
       mayRetry = false
+      // The token may have been rotated by another tab signing in or out. The
+      // replay reads the session again, and runs only if the token it gets
+      // is for the viewer this write is for (checked above).
       forgetCsrfToken(merged.get(csrfHeader))
       continue
     }
-    if (envelope) throw new ApiError(envelope.code, envelope.message, response.status, envelope.field_errors)
+    if (envelope) {
+      const error = new ApiError(envelope.code, envelope.message, response.status, envelope.field_errors)
+      // Haxy refuses a write naming a viewer who isn't signed in now: say who is.
+      const viewerRefused = envelope.code === "unauthenticated" || (envelope.code === "conflict" && envelope.field_errors === undefined)
+      if (typeof issuedFor === "string" && viewerRefused) {
+        let now: SessionState
+        try {
+          now = await readSessionState(signal)
+        } catch {
+          throw error
+        }
+        if (now.viewer !== issuedFor) throw viewerChanged(issuedFor, now.viewer)
+      }
+      throw error
+    }
     if (proxyFailureStatuses.has(response.status)) {
       throw new ApiError("unreachable", "Haxy Hub could not connect to the Haxy backend.", response.status)
     }

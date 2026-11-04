@@ -358,7 +358,7 @@ test("an account form loaded for one user never changes another who signed in fr
   await page.getByRole("button", { name: "Add key" }).click()
   await expect(page.getByRole("region", { name: "SSH keys" }).getByRole("alert")).toContainText(`signed in as ${bob.name}`)
 
-  // and through Haxy's own login form, which leaves the token as it was
+  // and through Haxy's own login form, which rotates the token too (#30)
   await header(other).getByRole("button", { name: "Log out" }).click()
   await expect(header(other).getByRole("link", { name: "Log in" })).toBeVisible()
   await logIn(other, hub.url, alice.name, alice.password)

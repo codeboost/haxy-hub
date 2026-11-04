@@ -10,8 +10,9 @@ by Haxy Hub (React) through Vite's proxy. They are implemented by:
 
 - `haxy/src/api.zig` — `writeError`/`respondError`, `writePage`, `Count`, `writeStatus`,
   `respondJson`; unit tests in `haxy/src/test/api.zig`.
-- `haxy/src/api/session.zig` — the session route and the CSRF guard (see Session and
-  Security notes); unit tests in `haxy/src/test/api_session.zig`.
+- `haxy/src/api/session.zig` — the session route, the CSRF guard with its viewer check, and
+  the nonce rotation every session change shares (see Session and Security notes); unit
+  tests in `haxy/src/test/api_session.zig`.
 - `haxy-hub/src/lib/api.ts` — matching TypeScript types, `ApiError`, `parseErrorEnvelope`,
   `requestJson`/`getJson`, and `timeouts`.
 
@@ -236,15 +237,14 @@ local mode answers `unsupported` (405) for every route. Bodies are JSON objects 
 fields (form encodings are refused with `validation`); a missing field reads as empty, so
 the shared rules report it.
 
-A change to an existing account (all but `GET`/`HEAD` and registration) may name the
-account it is for in an optional `X-Haxy-Viewer` header: the user the form was loaded for.
-The session cookie is shared by every tab and the CSRF token is bound to the browser, not
-the session, so after another tab signs in as someone else, a stale form (or the client's
-CSRF retry) would otherwise change the new user's account. Haxy Hub sends the header on
-every account change. Without it the change acts on the session's viewer, as before, so
-non-browser clients needn't send it; with a name other than the session's viewer it is
-`conflict` (409, no field errors), and nothing changes. Haxy Hub then reads the session and tells the user who is
-signed in now, offering a reload.
+A change to an existing account may name the account it is for in the optional
+`X-Haxy-Viewer` header (the user the form was loaded for), as every API write may since
+issue #30; see "Session-bound writes" under Security notes. Without it the change acts on
+the session's viewer, so non-browser clients needn't send it; with a name other than the
+session's viewer it is `conflict` (409, no field errors) and nothing changes. The check runs
+in the shared write guard, before these routes, so they have none of their own. Haxy Hub
+names the viewer on every account change except registration (which changes the viewer by
+design), and on a refusal tells the user who is signed in now, offering a reload.
 
 | Route | Method | Body | Answer |
 | --- | --- | --- | --- |
@@ -289,7 +289,8 @@ refused with `csrf` (403) unless both hold:
 2. **Token.** The `X-Haxy-CSRF` header must equal `HMAC-SHA256(key = nonce,
    "haxy-csrf-v1")` in hex, where the nonce is the browser's `haxy_csrf` cookie: 16 random
    bytes, `HttpOnly; SameSite=Strict; Path=/`, issued by `GET /api/v1/session` and
-   rotated on login and logout. The token is read from the JSON body of
+   rotated whenever a session starts, changes or ends, through the API or Haxy's own HTML
+   forms (see Session-bound writes). The token is read from the JSON body of
    `GET /api/v1/session`, which only same-origin script can read (Haxy sends no CORS
    headers, and Haxy Hub's Vite server has `cors: false`).
 
@@ -298,8 +299,10 @@ and unknown paths and wrong methods also answer 403 to a request without a valid
 (404/405 only once the token is valid). The React client (`requestJson` in
 `src/lib/api.ts`) adds the header to every non-GET/HEAD request, fetching the token from
 the session route the first time; login and logout responses replace it. A `csrf`
-refusal means the write never ran, so the client forgets the token, reads a fresh one and
-retries the write exactly once (not for streamed bodies); a second refusal is reported.
+refusal means the write never ran, so the client forgets the token, reads the session
+again and, if the same viewer is still signed in, retries the write exactly once with the
+fresh token (not for streamed bodies); a second refusal is reported. If someone else is
+signed in now, it doesn't retry (see Session-bound writes).
 
 **Why this works through the proxy.** Vite forwards `Host` and `Origin` unchanged
 (`changeOrigin: false`), so the browser's page origin (`http://127.0.0.1:5173`) and the
@@ -335,6 +338,73 @@ token is stateless (no server storage) and survives backend restarts with the co
   the per-browser HttpOnly nonce already makes the token unforgeable.
 - *Relying on `SameSite` cookies:* `haxy_session` is `Lax` (links from other sites must
   arrive logged in), and `SameSite` treats other ports on the same host as same-site.
+
+### Session-bound writes
+
+> From issue [#30](issues/30-session-bound-write-identity.md). The session cookie is shared
+> by every tab, so a write must never land under a user who signed in after it was issued.
+
+**Every session change rotates the nonce.** Each response that starts, replaces or ends a
+browser's session sets a fresh `haxy_csrf` nonce, so every token issued before it is
+refused with `csrf`. They all use one helper, `CsrfNonce.rotate` in
+`haxy/src/api/session.zig`:
+
+| Route | Session change |
+| --- | --- |
+| `POST /api/v1/session` | API login (replaces any session the browser had) |
+| `DELETE /api/v1/session` | API logout |
+| `POST /api/v1/account` | API registration, which logs in |
+| `DELETE /api/v1/account` | API account deletion, which logs out |
+| `POST …/login` (HTML form) | Haxy's own login form |
+| `POST …/logout` (HTML form) | Haxy's own logout |
+| `POST …/user/new` (HTML form) | Haxy's own sign-up, which logs in |
+| `POST …/user/delete/delete` (HTML form) | Haxy's own account deletion, which logs out |
+| any page `GET` that claims the `try` demo's auto-login | sets a session cookie, as a login does |
+
+The HTML responses **set the new nonce cookie** rather than clearing it. This is the same
+helper and the same `Set-Cookie` as the API's, so the browser never lacks a nonce. Two tabs
+reading `GET /api/v1/session` at once therefore can't each mint a different one and
+invalidate each other's token. Nothing else sets or clears `haxy_session`; a session
+revoked server-side (an account deleted from another browser) leaves the nonce alone, and
+its next write fails as `unauthenticated` (see below).
+
+**`X-Haxy-Viewer` on every write.** Any `/api/` write may name the user it is for in the
+optional `X-Haxy-Viewer` header. `guardWrite` checks it right after the CSRF check, before
+routing, so every write route honours it without opting in, and an unknown path or wrong
+method answers as below before 404/405. The session's viewer is read only when the header
+is present. The header stays **optional** (user decision, #04):
+
+- absent: the write proceeds as the session's viewer, or anonymously;
+- names the session's viewer: the write proceeds;
+- names someone else: `conflict` (409, no `field_errors`), and nothing changes;
+- names someone while nobody is signed in (anonymous, a deleted account, or local mode):
+  `unauthenticated` (401), whatever the route. A client that names a viewer believes
+  someone is signed in, so even a route that needs no session (registration, login) is
+  refused rather than run anonymously. Registration and login without the header are
+  unaffected.
+
+**Haxy Hub binds each write to a viewer** (`requestJson` in `src/lib/api.ts`):
+
+- A write is issued for the viewer named by its `viewer` option (account changes pass the
+  account their form was loaded for), else by an `X-Haxy-Viewer` header the caller set,
+  else for the viewer the app shows (`SessionProvider` calls `bindWritesTo`). Before the
+  app shows one, it uses the viewer the latest session read named. A named viewer is sent
+  as `X-Haxy-Viewer`; nobody (`null`) sends no header but is still compared.
+- The token cache records the viewer of the session read that supplied the token. A bound
+  write (anything but `anyViewer`) never sends a token recorded for another viewer, on a
+  first attempt or a retry, and that includes `null`, which the backend can't check. A
+  mismatch is confirmed with one fresh session read; if it holds, the write isn't sent and
+  `ViewerChangedError` is thrown.
+- After a `csrf` refusal it forgets the token and re-reads the session before replaying, so
+  the replay obeys the same rule: it runs only if the same viewer is still signed in.
+- A `conflict` without field errors, or `unauthenticated`, on a write that named a viewer
+  means the same once a session read confirms someone else (or nobody) is signed in now.
+- `ViewerChangedError` (a `conflict` `ApiError`) says who is signed in now. Forms show it
+  with a Reload button (`failureOf`/`FailureMessage` in `src/components/form.tsx`), and the
+  page keeps what it showed until then.
+- Login, logout and registration pass `viewer: anyViewer`: they change the viewer by
+  design, so they are never refused or held back for it. Account deletion stays bound to
+  its viewer.
 
 **HTML form routes.** From [issue #29](issues/29-origin-check-for-html-form-routes.md).
 Haxy's own server-rendered form routes outside `/api/` (`/login`, `/logout`, `…/new`, …)
@@ -373,6 +443,10 @@ with no host.
 - Repository paths travel percent-encoded byte for byte, with separate U+FFFD-replaced
   display names (#05; see Repository paths).
 - `X-Haxy-Viewer` is optional; when sent it must name the session's viewer (user decision, #04).
+  Since #30 the shared write guard checks it for every `/api/` write. A header naming
+  someone while nobody is signed in is `unauthenticated`.
+- Every session change, through the API or Haxy's HTML forms, rotates the CSRF nonce
+  through one helper; HTML responses set the new nonce cookie rather than clearing it (#30).
 
 ## Known follow-up
 
