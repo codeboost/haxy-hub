@@ -48,20 +48,25 @@ function ConnectionProblem({ check }: { check: Exclude<BackendCheck, { kind: "co
 }
 
 const navItems = [
-  { to: "/", label: "Home", end: true },
-  { to: "/connection", label: "Connection", end: false },
+  { to: "/", label: "Home", end: true, serverOnly: false },
+  { to: "/about", label: "About", end: false, serverOnly: true },
+  { to: "/users", label: "Users", end: false, serverOnly: true },
+  { to: "/connection", label: "Connection", end: false, serverOnly: false },
 ]
 
 function MainNav() {
+  const { check } = useConnection()
+  // Local mode has no forge-wide pages; their routes say so if opened directly.
+  const local = check?.kind === "connected" && check.status.mode === "local"
   return (
-    <nav aria-label="Main" className="flex items-center gap-1">
-      {navItems.map((item) => (
+    <nav aria-label="Main" className="flex flex-wrap items-center gap-1">
+      {navItems.filter((item) => !(local && item.serverOnly)).map((item) => (
         <NavLink
           key={item.to}
           to={item.to}
           end={item.end}
           className={({ isActive }) =>
-            `rounded-md px-3 py-1.5 text-sm transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${isActive ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            `rounded-md px-2.5 py-1.5 text-sm sm:px-3 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${isActive ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
           {item.label}
         </NavLink>
@@ -76,8 +81,9 @@ export function AppShell() {
   return (
     <div className="min-h-screen">
       <header className="border-b bg-card">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-4 px-4 sm:px-10">
-          <div className="flex items-center gap-4 sm:gap-8">
+        {/* Wraps onto more rows on narrow screens instead of overflowing. */}
+        <div className="mx-auto flex min-h-16 max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:px-10">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:gap-x-8">
             <Link to="/" aria-label="Haxy Hub home" className="flex items-center gap-3">
               <span className="grid size-9 place-items-center rounded-lg bg-primary text-primary-foreground"><GitBranch size={21} /></span>
               <span className="hidden text-xl font-bold tracking-tight sm:inline">haxy<span className="text-primary">.</span></span>

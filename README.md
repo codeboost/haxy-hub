@@ -32,9 +32,11 @@ npm run dev
 Open http://127.0.0.1:5173. The header shows whether Haxy is in **server** or **local**
 mode. If Haxy is down, or is an older build without the status API, the page says so
 (*Can't reach Haxy* / *Incompatible Haxy backend*) and offers **Retry**. Routes are
-client-side (`/`, `/connection`, anything else is *Page not found*); refreshing any URL
-reconstructs the same view, because Vite serves `index.html` for unknown paths.
-Repository, issue and patch screens are not implemented yet.
+client-side (`/`, `/connection`, `/about`, `/users`, `/users/<name>`; anything else is
+*Page not found*); refreshing any URL reconstructs the same view, because Vite serves
+`index.html` for unknown paths. List searches and pages live in the query string
+(`?search=…&cursor=…`). The about and user pages exist only in server mode; local mode
+shows them as unavailable. Repository, issue and patch screens are not implemented yet.
 
 The backend defaults to http://127.0.0.1:8080. To change it, copy `.env.example` to
 `.env.local`, edit `HAXY_BACKEND_URL`, and restart Vite. Alternatively:
