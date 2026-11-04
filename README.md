@@ -6,24 +6,35 @@ server, no browser CORS setup, and no forge logic in Node.
 
 This frontend lives in `haxy-hub/`, alongside the backend's `haxy/` repository.
 
-## Start locally
+## Start locally (two processes)
 
-First build and start the updated Zig backend using the repository's Zig 0.17.0
-toolchain. From the sibling `haxy/` repository root, `zig build try` starts the demo server on
-port 8080 (and its terminal interface). You can also use your existing `haxy serve`
-setup, or Haxy's local mode with its web listener.
-
-In a second terminal, from the `haxy/` repository root:
+Haxy (Zig) and Haxy Hub (Vite) run as two independent processes. Start the backend
+first, from the sibling `haxy/` repository (Zig 0.17):
 
 ```sh
-cd ../haxy-hub
+# a multi-user server with demo data (web on :8080, SSH on :8022)
+zig build try
+# or your own server
+zig build && ./zig-out/bin/haxy serve --data-dir ../haxy-data
+# or local mode, inside any git or xit repository
+/path/to/haxy                                           # TUI + web UI on :8080 (or a free port)
+/path/to/haxy --no-tui --web-listen 127.0.0.1:8080      # web UI only, exactly that address
+```
+
+Then, in a second terminal:
+
+```sh
+cd haxy-hub
 npm ci
 npm run dev
 ```
 
-Open http://127.0.0.1:5173. The initial screen checks the backend and offers a retry
-if it is unavailable. This is the UI foundation; repository, issue, and patch
-screens are not implemented yet.
+Open http://127.0.0.1:5173. The header shows whether Haxy is in **server** or **local**
+mode. If Haxy is down, or is an older build without the status API, the page says so
+(*Can't reach Haxy* / *Incompatible Haxy backend*) and offers **Retry**. Routes are
+client-side (`/`, `/connection`, anything else is *Page not found*); refreshing any URL
+reconstructs the same view, because Vite serves `index.html` for unknown paths.
+Repository, issue and patch screens are not implemented yet.
 
 The backend defaults to http://127.0.0.1:8080. To change it, copy `.env.example` to
 `.env.local`, edit `HAXY_BACKEND_URL`, and restart Vite. Alternatively:
@@ -37,23 +48,73 @@ The backend setting stays in the Node process; browser requests always use relat
 Vite preserves Host and Origin. Future authenticated write endpoints must implement
 authorization and CSRF checks in Zig; proxying alone does not provide those checks.
 
-## Current API
+## API
 
-`GET /api/v1/status` (also supports HEAD) returns:
+The JSON API conventions (error envelope, pagination, IDs, timestamps, capabilities,
+timeouts) are in [docs/api-conventions.md](docs/api-conventions.md) — currently a
+**draft awaiting review**. `src/lib/api.ts` holds the matching TypeScript types and the
+`requestJson`/`getJson` client; Zig's counterpart is `haxy/src/api.zig`.
+
+`GET /api/v1/status` (also HEAD) returns:
 
 ```json
 { "service": "haxy", "api_version": 1, "mode": "server" }
 ```
 
 Mode is `local` or `server`. This checks HTTP connectivity, not repository health.
-Unknown API paths return JSON 404; unsupported status methods return JSON 405.
-An older Zig binary without this route is reported as incompatible, not connected.
-Frontend requests have a ten-second timeout.
+Unknown API paths return the JSON `not_found` error envelope; other methods on the status
+route return `unsupported` (405, with `Allow: GET, HEAD`). An older Zig binary without
+this route is reported as incompatible, not connected. The status check has a ten-second
+timeout; other requests use their own (see the conventions).
+
+## Acceptance tests
+
+```sh
+npm run test:e2e
+```
+
+This runs Playwright (Chromium) against real Haxy processes through Vite's proxy:
+
+1. **Build/select the backend** (once per run, `e2e/global-setup.ts`): runs
+   `zig build install try-install` in `../haxy`, installing into
+   `node_modules/.cache/haxy-e2e/zig-out` so the checkout's own `zig-out` is untouched.
+   The first build takes a few minutes; later runs reuse Zig's cache.
+2. **Start isolated fixtures per test** (`e2e/support/`): every backend gets a fresh
+   `$TMPDIR/haxy-hub-e2e-*` sandbox as its cwd, with its own `HOME` and git config, and a
+   free port (never 8080/8022). Fixtures:
+   - `launch.server()` — `haxy serve` on an empty data dir that Haxy initialises itself;
+   - `launch.demo()` — the `zig build try` demo data (users, repos, issues, patches),
+     seeded by Haxy's own event utilities via `try --cli`, inside the sandbox;
+   - `launch.local()` — local mode (`haxy --no-tui --web-listen …`) in a fresh git repo;
+   - `launch.incompatible(…)` — a small HTTP stand-in for a backend Haxy Hub must
+     reject (the only fake; the real binary is compatible by definition);
+   - `launch.hub(port)` — a Vite dev server on a free port with `HAXY_BACKEND_URL`
+     pointing at that backend port (which may not be listening yet, to test outages).
+3. **Tear down** every process and delete its sandbox after each test.
+
+Nothing touches `../haxy-data`, `temp-try`, `.env.local`, or a running developer session.
+
+| Variable | Effect |
+| --- | --- |
+| `HAXY_REPO` | Haxy checkout to build (default `../haxy`). |
+| `HAXY_BIN` | Use this prebuilt `haxy` instead of building. |
+| `HAXY_TRY_BIN` | Prebuilt `try` for the demo fixture (with `HAXY_BIN`; otherwise demo tests are skipped). |
+| `HAXY_E2E_SKIP_BUILD=1` | Reuse the binaries from the last build. |
+| `ZIG` | Zig executable (default `zig`). |
+| `HAXY_E2E_KEEP=1` | Keep sandboxes in `$TMPDIR` for inspection. |
+
+Run one file or test with `npx playwright test e2e/navigation.spec.ts` or `-g "<name>"`.
+Failure traces and backend/Vite logs are attached to the report under
+`node_modules/.cache/haxy-e2e/test-results`. Playwright uses Chromium 1243
+(`@playwright/test` is pinned to 1.63.0); install it with `npx playwright install chromium`
+if it isn't cached.
+
+Haxy's own suites run from `../haxy`: `zig build test` (and `zig build testnet`).
 
 ## Development
 
 ```sh
-npm run typecheck
+npm run typecheck   # includes e2e/ and the Playwright config
 npm run build
 npm run preview
 npx shadcn@latest add dialog
