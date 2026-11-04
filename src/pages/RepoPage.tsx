@@ -3,7 +3,8 @@ import { Lock } from "lucide-react"
 import { CommandList } from "@/components/GitCommands"
 import { EmptyState, FailureState, LoadingState, UnavailableState } from "@/components/listing"
 import { RepoFiles } from "@/components/RepoFiles"
-import { getRepo, repoRoute, routePath, type RepoLocator, type RepoOverview, type RepoSection } from "@/lib/repo"
+import { RepoRefs } from "@/components/RepoRefs"
+import { getRepo, refsRoute, repoRoute, routePath, routeRef, type RefKind, type RepoLocator, type RepoOverview, type RepoSection } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 
 const sectionLabels: Record<RepoSection, string> = {
@@ -20,13 +21,14 @@ const sectionLabels: Record<RepoSection, string> = {
 
 const linkClass = "text-primary underline-offset-4 hover:underline"
 
-/** The sections Haxy offers this viewer. Only Files exists in Haxy Hub so far; the rest are listed, not linked. */
-function Sections({ repo, sections }: { repo: RepoLocator; sections: RepoSection[] }) {
+/** The sections Haxy offers this viewer. Those Haxy Hub doesn't have yet are listed, not linked. */
+function Sections({ repo, sections, current }: { repo: RepoLocator; sections: RepoSection[]; current: RepoSection }) {
+  const routes: Partial<Record<RepoSection, string>> = { files: repoRoute(repo), refs: refsRoute(repo, "branch") }
   return (
     <nav aria-label="Repository sections" className="mt-6 flex flex-wrap gap-1 border-b">
       {sections.map((section) =>
-        section === "files" ? (
-          <Link key={section} to={repoRoute(repo)} aria-current="page" className="-mb-px border-b-2 border-primary px-3 py-2 text-sm font-medium">{sectionLabels[section]}</Link>
+        routes[section] !== undefined ? (
+          <Link key={section} to={routes[section]} aria-current={section === current ? "page" : undefined} className={`-mb-px border-b-2 px-3 py-2 text-sm ${section === current ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{sectionLabels[section]}</Link>
         ) : (
           <span key={section} aria-disabled="true" title="Not available in Haxy Hub yet" className="px-3 py-2 text-sm text-muted-foreground">{sectionLabels[section]}</span>
         ),
@@ -35,7 +37,7 @@ function Sections({ repo, sections }: { repo: RepoLocator; sections: RepoSection
   )
 }
 
-function Header({ repo, overview }: { repo: RepoLocator; overview: RepoOverview }) {
+function Header({ repo, overview, section }: { repo: RepoLocator; overview: RepoOverview; section: RepoSection }) {
   return (
     <>
       {overview.owner !== null && (
@@ -50,7 +52,7 @@ function Header({ repo, overview }: { repo: RepoLocator; overview: RepoOverview 
         )}
       </h1>
       {overview.description && <p className="mt-2 text-muted-foreground">{overview.description}</p>}
-      <Sections repo={repo} sections={overview.sections} />
+      <Sections repo={repo} sections={overview.sections} current={section} />
     </>
   )
 }
@@ -68,14 +70,18 @@ function NotFound({ repo }: { repo: RepoLocator }) {
 }
 
 /**
- * A repository's overview and its files at the default branch: `/repos/<owner>/<name>[/files/<path>]`
- * on a server, `/repo[/files/<path>]` for the repository a local Haxy opened.
+ * A repository's overview and its files at the default branch or the URL's
+ * `?ref=`: `/repos/<owner>/<name>[/files/<path>]` on a server,
+ * `/repo[/files/<path>]` for the repository a local Haxy opened; or, with
+ * `refs`, its branches or tags (`…/branches`, `…/tags`).
  */
-export function RepoPage({ local = false }: { local?: boolean }) {
+export function RepoPage({ local = false, refs }: { local?: boolean; refs?: RefKind }) {
   const params = useParams()
+  const location = useLocation()
   const repo: RepoLocator = local ? { kind: "local" } : { kind: "server", owner: params.owner ?? "", name: params.name ?? "" }
-  // not params["*"], which the router has already percent-decoded
-  const path = routePath(repo, useLocation().pathname)
+  // not params["*"] or the search params, which the router has already percent-decoded
+  const path = routePath(repo, location.pathname)
+  const refId = routeRef(location.search)
   const key = repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
   const overview = useResource(`repo ${key}`, (signal) => getRepo(repo, { signal }))
 
@@ -101,8 +107,11 @@ export function RepoPage({ local = false }: { local?: boolean }) {
       const data = overview.data
       return (
         <>
-          <Header repo={repo} overview={data} />
-          {data.empty ? (
+          <Header repo={repo} overview={data} section={refs ? "refs" : "files"} />
+          {refs ? (
+            <RepoRefs repo={repo} kind={refs} />
+          ) : data.empty && refId === null ? (
+            // `empty` describes the default branch; an explicit ref resolves on its own
             <>
               <EmptyState title="This repository is empty">
                 {data.default_branch ? <>Its default branch, <code className="font-mono">{data.default_branch}</code>, has no commits yet.</> : "It has no commits yet."}
@@ -112,7 +121,7 @@ export function RepoPage({ local = false }: { local?: boolean }) {
           ) : (
             <>
               {data.clone.length > 0 && <CommandList title="Clone" commands={data.clone} purpose="clone" />}
-              <RepoFiles repo={repo} name={data.name} path={path} />
+              <RepoFiles repo={repo} refId={refId} name={data.name} path={path} />
             </>
           )}
         </>
@@ -127,4 +136,8 @@ export const repoRoutes: RouteObject[] = [
   { path: "repo/files/*", element: <RepoPage local /> },
   { path: "repos/:owner/:name", element: <RepoPage /> },
   { path: "repos/:owner/:name/files/*", element: <RepoPage /> },
+  { path: "repo/branches", element: <RepoPage local refs="branch" /> },
+  { path: "repo/tags", element: <RepoPage local refs="tag" /> },
+  { path: "repos/:owner/:name/branches", element: <RepoPage refs="branch" /> },
+  { path: "repos/:owner/:name/tags", element: <RepoPage refs="tag" /> },
 ]
