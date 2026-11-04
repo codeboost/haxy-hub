@@ -1,6 +1,6 @@
 # #01 Foundation: acceptance harness, routed app shell, and API conventions
 
-**Type:** HITL · **Status:** needs-human · **User stories:** 1, 2, 3, 4, 9
+**Type:** HITL · **Status:** done · **User stories:** 1, 2, 3, 4, 9
 
 ## Parent
 

@@ -1,8 +1,9 @@
 # Haxy JSON API conventions
 
-> **Status: DRAFT — partly reviewed on 2026-11-04; the open questions at the end still need a decision.**
-> Issue [#01](issues/01-foundation-harness-and-app-shell.md) is HITL: these rules fix
-> the shape of every later endpoint. Open questions are listed at the end.
+> **Status: Reviewed on 2026-11-04.** Decisions are listed at the end; change them only by
+> updating this document.
+> These rules, from issue [#01](issues/01-foundation-harness-and-app-shell.md), fix the
+> shape of every later endpoint.
 
 These conventions apply to every route under `/api/` served by Haxy (Zig) and consumed
 by Haxy Hub (React) through Vite's proxy. They are implemented by:
@@ -166,15 +167,17 @@ Resources that offer actions include what the current viewer may do:
 - Sessions stay in Haxy's HttpOnly cookie. Tokens, password hashes, local paths, signing
   configuration and SSH private material are never serialized.
 
-## Open questions for review
-
-1. `validation` → 400 for both malformed requests and invalid values (no separate 422).
-2. Timestamps as RFC 3339 strings vs. integer Unix seconds.
-3. Proxy timeout scoping (see Timeouts).
-
-## Decided in review
+## Decided in review (2026-11-04)
 
 - `unsupported` is 405 both for wrong methods (with `Allow`) and for operations a host
   mode doesn't offer.
+- `validation` is 400 for both malformed requests and invalid values; there is no
+  separate 422.
+- Timestamps are RFC 3339 UTC strings (see Timestamps), not integer Unix seconds.
 - `field_errors` is an object keyed by field name, not an array.
 - Pagination uses `cursor` and an optional client `page_size`.
+
+## Known follow-up
+
+- Vite's 10s `proxyTimeout` applies to every `/api/` request (see Timeouts). It must be
+  raised or scoped per route before long-running endpoints (merge, sync, uploads) land.
