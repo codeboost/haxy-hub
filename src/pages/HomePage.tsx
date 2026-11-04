@@ -1,3 +1,4 @@
+import { Link } from "react-router"
 import { useConnection } from "@/app/connection"
 import { useSession } from "@/app/session"
 
@@ -15,7 +16,8 @@ export function HomePage() {
           : "Connected to a multi-user Haxy server."}
       </p>
       {viewer && <p className="mt-3 max-w-lg text-muted-foreground">Signed in as <strong className="text-foreground">{viewer.name}</strong>.</p>}
-      <p className="mt-3 max-w-lg text-sm text-muted-foreground">Repository, issue and patch screens are not implemented yet.</p>
+      {mode === "local" && <p className="mt-3 max-w-lg"><Link to="/repo" className="text-primary underline-offset-4 hover:underline">Browse the repository</Link></p>}
+      <p className="mt-3 max-w-lg text-sm text-muted-foreground">Issue and patch screens are not implemented yet.</p>
     </>
   )
 }

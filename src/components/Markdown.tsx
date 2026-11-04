@@ -1,6 +1,9 @@
-import type { ReactNode } from "react"
+import { createContext, useContext, type ReactNode } from "react"
 import { Link } from "react-router"
-import { linkTarget, type MarkdownBlock, type MarkdownInline } from "@/lib/markdown"
+import { linkTarget, type LinkTarget, type MarkdownBlock, type MarkdownInline } from "@/lib/markdown"
+
+// Where this document's links lead; a repository file resolves its own paths.
+const LinkResolver = createContext<(destination: string) => LinkTarget>(linkTarget)
 
 function InlineRun({ run }: { run: MarkdownInline }) {
   // Hard breaks arrive as newlines inside the text.
@@ -9,8 +12,9 @@ function InlineRun({ run }: { run: MarkdownInline }) {
   if (run.bold) node = <strong>{node}</strong>
   if (run.italic) node = <em>{node}</em>
   if (run.strike) node = <s>{node}</s>
+  const resolve = useContext(LinkResolver)
   if (run.link === null) return node
-  const target = linkTarget(run.link)
+  const target = resolve(run.link)
   const linkClass = "text-primary underline underline-offset-4"
   switch (target.kind) {
     case "external": return <a href={target.href} className={linkClass} rel="noreferrer noopener">{node}</a>
@@ -60,7 +64,11 @@ function Blocks({ blocks }: { blocks: MarkdownBlock[] }) {
   return <div className="space-y-4">{blocks.map((block, index) => <Block key={index} block={block} />)}</div>
 }
 
-/** Markdown parsed by Haxy. Text is rendered as text; only safe link targets become links. */
-export function Markdown({ blocks }: { blocks: MarkdownBlock[] }) {
-  return <div className="leading-relaxed"><Blocks blocks={blocks} /></div>
+/**
+ * Markdown parsed by Haxy. Text is rendered as text; only safe link targets
+ * become links. `resolveLink` decides where links lead (by default, as on the
+ * about page); it must only ever return safe targets.
+ */
+export function Markdown({ blocks, resolveLink = linkTarget }: { blocks: MarkdownBlock[]; resolveLink?: (destination: string) => LinkTarget }) {
+  return <LinkResolver value={resolveLink}><div className="leading-relaxed"><Blocks blocks={blocks} /></div></LinkResolver>
 }

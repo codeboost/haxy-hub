@@ -5,6 +5,7 @@ import { ConnectionPage } from "@/pages/ConnectionPage"
 import { HomePage } from "@/pages/HomePage"
 import { LoginPage } from "@/pages/LoginPage"
 import { NotFoundPage } from "@/pages/NotFoundPage"
+import { repoRoutes } from "@/pages/RepoPage"
 import { UserPage } from "@/pages/UserPage"
 import { UsersPage } from "@/pages/UsersPage"
 
@@ -21,6 +22,7 @@ export const router = createBrowserRouter([
       { path: "users", element: <UsersPage /> },
       { path: "users/:name", element: <UserPage /> },
       { path: "login", element: <LoginPage /> },
+      ...repoRoutes,
       { path: "*", element: <NotFoundPage /> },
     ],
   },

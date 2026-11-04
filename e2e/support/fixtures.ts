@@ -1,5 +1,5 @@
 import { test as base, expect } from "@playwright/test"
-import { startDemoServer, startIncompatible, startLocal, startServer, type Backend, type BackendOptions, type IncompatibleVariant } from "./backend"
+import { startDemoServer, startIncompatible, startLocal, startServer, type Backend, type BackendOptions, type IncompatibleVariant, type LocalOptions } from "./backend"
 import { selectedBinaries } from "./binaries"
 import { startHub, type Hub } from "./hub"
 import { freePort, stopAllProcesses } from "./process"
@@ -14,8 +14,8 @@ export type Launch = {
   server(options?: BackendOptions): Promise<Backend>
   /** A server seeded with the `zig build try` demo data. */
   demo(options?: BackendOptions): Promise<Backend>
-  /** Local mode serving a fresh git repository. */
-  local(options?: BackendOptions): Promise<Backend>
+  /** Local mode serving a fresh git repository (with `options.files` committed). */
+  local(options?: LocalOptions): Promise<Backend>
   /** An HTTP server Haxy Hub must reject as incompatible. */
   incompatible(variant: IncompatibleVariant, options?: BackendOptions): Promise<Backend>
   /** Vite proxying to the backend on `backendPort` (which need not be running yet). */
