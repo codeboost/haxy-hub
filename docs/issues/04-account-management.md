@@ -1,6 +1,6 @@
 # #04 Account management: registration, email, password, SSH keys, and account deletion
 
-**Type:** AFK · **Status:** ready-for-agent · **User stories:** 10, 15, 19, 20, 21, 22, 23, 24
+**Type:** AFK · **Status:** done · **User stories:** 10, 15, 19, 20, 21, 22, 23, 24
 
 ## Parent
 
@@ -19,16 +19,16 @@ Forms show field-level errors and preserve non-secret input on failure.
 
 ## Acceptance criteria
 
-- [ ] Registration, email change, password change, key add/remove and account deletion work end-to-end and persist across refresh and backend restart
-- [ ] Validation failures appear beside the field; non-secret inputs are preserved, password fields are not
-- [ ] Duplicate / invalid / over-limit SSH key errors are shown
-- [ ] A deleted account cannot log in and its owned resources follow existing deletion behaviour
-- [ ] Another user cannot change these settings via direct API calls
-- [ ] Local mode shows account features as unavailable
-- [ ] Zig JSON endpoints follow the API conventions from #01 and share underlying operations with the TUI (no duplicated rules)
-- [ ] Playwright tests run through the Vite proxy against a real Zig fixture backend; mutations are verified after refresh
-- [ ] Existing Zig suites pass; frontend typecheck and build pass
-- [ ] Compatible `haxy-hub-impl` backend commit recorded
+- [x] Registration, email change, password change, key add/remove and account deletion work end-to-end and persist across refresh and backend restart
+- [x] Validation failures appear beside the field; non-secret inputs are preserved, password fields are not
+- [x] Duplicate / invalid / over-limit SSH key errors are shown
+- [x] A deleted account cannot log in and its owned resources follow existing deletion behaviour
+- [x] Another user cannot change these settings via direct API calls
+- [x] Local mode shows account features as unavailable
+- [x] Zig JSON endpoints follow the API conventions from #01 and share underlying operations with the TUI (no duplicated rules)
+- [x] Playwright tests run through the Vite proxy against a real Zig fixture backend; mutations are verified after refresh
+- [x] Existing Zig suites pass; frontend typecheck and build pass
+- [x] Compatible `haxy-hub-impl` backend commit recorded (`a37479b` on `issue-04-account`)
 
 ## Blocked by
 

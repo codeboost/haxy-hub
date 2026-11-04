@@ -18,7 +18,7 @@ export type Backend = {
   stop(): Promise<void>
   /**
    * Stops this backend and starts it again on the same port and data dir,
-   * resolving once it is ready. Only `launch.server()` backends can restart.
+   * resolving once it is ready. Only `launch.server()` and `launch.demo()` backends can restart.
    */
   restart?(): Promise<Backend>
 }
@@ -43,8 +43,11 @@ async function readyBackend(name: string, process: Managed, mode: BackendMode, d
 
 /** A multi-user server with a fresh data dir, initialised by `haxy serve` itself. */
 export async function startServer(binaries: Binaries, sandbox: Sandbox, options: BackendOptions = {}): Promise<Backend> {
-  const port = options.port ?? (await freePort())
-  const dataDir = sandbox.path("data")
+  return serveDataDir(binaries, sandbox, options.port ?? (await freePort()), sandbox.path("data"))
+}
+
+/** `haxy serve` on `dataDir`, restartable on the same port and data dir. */
+function serveDataDir(binaries: Binaries, sandbox: Sandbox, port: number, dataDir: string): Promise<Backend> {
   const start = async (): Promise<Backend> => {
     const process = startProcess("haxy serve", binaries.haxy, [
       "serve", "--data-dir", dataDir, "--web-listen", `127.0.0.1:${port}`, "--ssh-listen", "none",
@@ -76,7 +79,9 @@ export async function startDemoServer(binaries: Binaries, sandbox: Sandbox, opti
     "--cli", "--data-dir", dataDir, "--web-listen", `127.0.0.1:${port}`, "--ssh-listen", `127.0.0.1:${sshPort}`,
   ], { cwd: sandbox.root, env: sandbox.env })
   try {
-    return await readyBackend("haxy try --cli", process, "server", dataDir, 120_000)
+    const backend = await readyBackend("haxy try --cli", process, "server", dataDir, 120_000)
+    // a restart serves the seeded data dir with `haxy serve`, as a real server would
+    return { ...backend, restart: async () => { await backend.stop(); return serveDataDir(binaries, sandbox, port, dataDir) } }
   } catch (error) {
     await process.stop()
     throw error

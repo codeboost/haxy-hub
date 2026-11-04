@@ -35,8 +35,12 @@ export async function fetchSession(signal?: AbortSignal): Promise<Session> {
   return session
 }
 
-/** Runs a login or logout, which rotates the CSRF token; its answer is authoritative. */
-async function rotate(change: () => Promise<unknown>): Promise<Session> {
+/**
+ * Runs a request that logs in or out (login, logout, registration, account
+ * deletion), which rotates the CSRF token; its answer — a session body — is
+ * authoritative.
+ */
+export async function rotate(change: () => Promise<unknown>): Promise<Session> {
   beginCsrfRotation()
   let session: Session
   try {

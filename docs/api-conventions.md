@@ -204,6 +204,45 @@ CSRF token. `next` after login must stay a path in the app after URL normalisati
 Implemented in `haxy/src/api/session.zig` (unit tests in `haxy/src/test/api_session.zig`)
 and `haxy-hub/src/lib/session.ts`, `src/app/session.tsx`.
 
+## Account
+
+From issue [#04](issues/04-account-management.md). Routes under `/api/v1/account` act on
+the **session's viewer** only; no route names another user, so one user can't reach
+another's settings. Anonymous (or deleted-account) sessions get `unauthenticated` (401);
+local mode answers `unsupported` (405) for every route. Bodies are JSON objects of string
+fields (form encodings are refused with `validation`); a missing field reads as empty, so
+the shared rules report it.
+
+Every change to an existing account (all but `GET`/`HEAD` and registration) must name the
+account it is for in an `X-Haxy-Viewer` header: the user the form was loaded for. The
+session cookie is shared by every tab and the CSRF token is bound to the browser, not the
+session, so after another tab signs in as someone else, a stale form (or the client's
+CSRF retry) would otherwise change the new user's account. A missing header is
+`validation`; a name other than the session's viewer is `conflict` (409, no field
+errors), and nothing changes. Haxy Hub then reads the session and tells the user who is
+signed in now, offering a reload.
+
+| Route | Method | Body | Answer |
+| --- | --- | --- | --- |
+| `/api/v1/account` | `GET`/`HEAD` | — | `{"name","email"}` |
+| `/api/v1/account` | `POST` | `{name, email, password, password_again}` | 201 with the session body (`{viewer, csrf_token}`); logs the browser in and rotates the CSRF token, like login. `forbidden` while logged in. |
+| `/api/v1/account` | `DELETE` | `{confirm, password}` | the session body with `viewer: null`; revokes this session and rotates the token, like logout. Other sessions of the account read as logged out. |
+| `/api/v1/account/email` | `PUT` | `{email}` | the account |
+| `/api/v1/account/password` | `PUT` | `{current_password, new_password, new_password_again}` | the account |
+| `/api/v1/account/keys` | `GET`/`HEAD` | — | a single page of `{fingerprint, type, comment, key}` (`comment` is null when absent; at most 50 keys, count exact) |
+| `/api/v1/account/keys` | `POST` | `{key}` (one OpenSSH public key line) | 201 with the key as stored |
+| `/api/v1/account/keys/<fingerprint>` | `DELETE` | — | the remaining keys; `not_found` for a key the viewer doesn't hold. The fingerprint (`SHA256:…`) is percent-encoded as one segment. |
+
+The rules are the TUI's and the web forms' own: `evt.createUser`, `evt.updateUser`,
+`evt.addUserKey`, `evt.removeUserKey` and `ui.Delete.perform` (typed name, then password).
+They report one failure at a time, as `field_errors` beside the field: `validation`, or
+`conflict` (409) for a taken name or email and a key already added. A password change must
+name `current_password` (otherwise the shared update would change nothing), and keeps the
+email stored when it is written, so it never reverts an email changed meanwhile. Deleting the
+account removes everything in its user directory — every repository and fork it owns.
+Implemented in `haxy/src/api/account.zig` (unit tests in `haxy/src/test/api_account.zig`)
+and `haxy-hub/src/lib/account.ts`.
+
 ## Security notes
 
 - Sessions stay in Haxy's HttpOnly cookie. Tokens, password hashes, local paths, signing

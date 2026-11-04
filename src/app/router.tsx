@@ -1,10 +1,12 @@
 import { createBrowserRouter } from "react-router"
 import { AppShell } from "@/app/AppShell"
 import { AboutPage } from "@/pages/AboutPage"
+import { AccountPage } from "@/pages/AccountPage"
 import { ConnectionPage } from "@/pages/ConnectionPage"
 import { HomePage } from "@/pages/HomePage"
 import { LoginPage } from "@/pages/LoginPage"
 import { NotFoundPage } from "@/pages/NotFoundPage"
+import { RegisterPage } from "@/pages/RegisterPage"
 import { UserPage } from "@/pages/UserPage"
 import { UsersPage } from "@/pages/UsersPage"
 
@@ -21,6 +23,8 @@ export const router = createBrowserRouter([
       { path: "users", element: <UsersPage /> },
       { path: "users/:name", element: <UserPage /> },
       { path: "login", element: <LoginPage /> },
+      { path: "register", element: <RegisterPage /> },
+      { path: "account", element: <AccountPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],
   },
