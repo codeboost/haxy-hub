@@ -32,8 +32,11 @@ npm run dev
 Open http://127.0.0.1:5173. The header shows whether Haxy is in **server** or **local**
 mode. If Haxy is down, or is an older build without the status API, the page says so
 (*Can't reach Haxy* / *Incompatible Haxy backend*) and offers **Retry**. Routes are
-client-side (`/`, `/connection`, anything else is *Page not found*); refreshing any URL
-reconstructs the same view, because Vite serves `index.html` for unknown paths.
+client-side (`/`, `/connection`, `/login`, `/about`, `/users`, `/users/<name>`; anything
+else is *Page not found*); refreshing any URL reconstructs the same view, because Vite
+serves `index.html` for unknown paths. List searches and pages live in the query string
+(`?search=…&cursor=…`). The about and user pages exist only in server mode; local mode
+shows them as unavailable.
 In server mode the header shows who is signed in, with **Log in** (`/login`, which
 returns to the page you came from) or **Log out**; local mode has no accounts and no login
 UI. The session is Haxy's own HttpOnly cookie, shared with Haxy's browser-rendered UI.
