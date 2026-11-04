@@ -76,3 +76,32 @@ test("the browser API client keeps headers given as a Headers instance or as tup
   expect(echoed.fromTuples).toMatchObject({ "content-type": "text/plain", "x-probe": "b", accept: "application/json" })
   expect(echoed.overridden).toMatchObject({ accept: "text/plain, application/json" })
 })
+
+test("the browser API client reads validation field errors keyed by field", async ({ page, launch }) => {
+  const backend = await launch.server()
+  const hub = await launch.hub(backend.port)
+  await page.route("**/api/v1/validate", (route) => route.fulfill({
+    status: 400,
+    json: { error: { code: "validation", message: "Check the highlighted fields.", field_errors: { name: "Name is required.", email: "Email is invalid.", bogus: 7 } } },
+  }))
+  await page.goto(hub.url)
+
+  const outcome = await page.evaluate(`
+    import("/src/lib/api.ts").then(({ requestJson }) =>
+      requestJson("/api/v1/validate", { method: "POST", body: "{}" }).catch((error) => ({
+        code: error.code,
+        fieldErrors: error.fieldErrors,
+        name: error.fieldError("name"),
+        missing: error.fieldError("password") ?? null,
+        inherited: error.fieldError("toString") ?? null,
+      })))
+  `)
+
+  expect(outcome).toEqual({
+    code: "validation",
+    fieldErrors: { name: "Name is required.", email: "Email is invalid." },
+    name: "Name is required.",
+    missing: null,
+    inherited: null,
+  })
+})

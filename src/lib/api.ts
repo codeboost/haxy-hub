@@ -12,19 +12,20 @@ export type ErrorCode = (typeof errorCodes)[number]
 /** Codes the client produces itself when no envelope could be read. */
 export type ClientErrorCode = "unreachable" | "timeout" | "invalid_response"
 
-export type FieldError = { field: string; message: string }
+/** Rejected request fields, keyed by the field name the client sent, each with its message. */
+export type FieldErrors = Record<string, string>
 
 export type ErrorEnvelope = {
-  error: { code: ErrorCode; message: string; field_errors?: FieldError[] }
+  error: { code: ErrorCode; message: string; field_errors?: FieldErrors }
 }
 
 export class ApiError extends Error {
   readonly code: ErrorCode | ClientErrorCode
   /** The HTTP status, or 0 when no response arrived. */
   readonly status: number
-  readonly fieldErrors: FieldError[]
+  readonly fieldErrors: FieldErrors
 
-  constructor(code: ErrorCode | ClientErrorCode, message: string, status: number, fieldErrors: FieldError[] = []) {
+  constructor(code: ErrorCode | ClientErrorCode, message: string, status: number, fieldErrors: FieldErrors = {}) {
     super(message)
     this.name = "ApiError"
     this.code = code
@@ -34,7 +35,7 @@ export class ApiError extends Error {
 
   /** The message for one form field, if the backend rejected it. */
   fieldError(field: string): string | undefined {
-    return this.fieldErrors.find((error) => error.field === field)?.message
+    return Object.hasOwn(this.fieldErrors, field) ? this.fieldErrors[field] : undefined
   }
 }
 
@@ -48,10 +49,10 @@ export function parseErrorEnvelope(body: unknown): ErrorEnvelope["error"] | null
   const { code, message, field_errors: fieldErrors } = body.error
   if (typeof code !== "string" || typeof message !== "string") return null
   const known = (errorCodes as readonly string[]).includes(code) ? (code as ErrorCode) : "internal"
-  const fields = Array.isArray(fieldErrors)
-    ? fieldErrors.filter((entry): entry is FieldError => isRecord(entry) && typeof entry.field === "string" && typeof entry.message === "string")
-    : []
-  return fields.length > 0 ? { code: known, message, field_errors: fields } : { code: known, message }
+  const fields: FieldErrors = isRecord(fieldErrors)
+    ? Object.fromEntries(Object.entries(fieldErrors).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+    : {}
+  return Object.keys(fields).length > 0 ? { code: known, message, field_errors: fields } : { code: known, message }
 }
 
 // --- Pagination -------------------------------------------------------------
@@ -67,6 +68,13 @@ export type PageInfo = {
 }
 
 export type Page<T> = { items: T[]; page: PageInfo }
+
+/**
+ * Query parameters a paginated route accepts. `cursor` is a previous page's
+ * `next_cursor`, passed back unchanged; `page_size` is a request the backend
+ * honours up to its own maximum for that route.
+ */
+export type PageQuery = { cursor?: string; page_size?: number }
 
 // --- Identifiers and timestamps ---------------------------------------------
 

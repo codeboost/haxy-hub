@@ -1,6 +1,6 @@
 # Haxy JSON API conventions
 
-> **Status: DRAFT — needs human review before slices 2+ build on it.**
+> **Status: DRAFT — partly reviewed on 2026-11-04; the open questions at the end still need a decision.**
 > Issue [#01](issues/01-foundation-harness-and-app-shell.md) is HITL: these rules fix
 > the shape of every later endpoint. Open questions are listed at the end.
 
@@ -36,9 +36,9 @@ Every non-2xx API response has this body:
   "error": {
     "code": "validation",
     "message": "Check the highlighted fields.",
-    "field_errors": [
-      { "field": "name", "message": "Name is required." }
-    ]
+    "field_errors": {
+      "name": "Name is required."
+    }
   }
 }
 ```
@@ -47,9 +47,10 @@ Every non-2xx API response has this body:
   the HTTP status.
 - `message` is user-facing, safe to display, and never contains filesystem paths, tokens,
   hashes of secrets, or the existence of resources the viewer can't see.
-- `field_errors` is present only when non-empty (normally with `validation`). `field` is the
-  request field name exactly as the client sent it; a field may appear more than once.
-  Forms show these beside the field and keep non-secret input.
+- `field_errors` is present only when non-empty (normally with `validation`). It is an
+  object mapping each rejected request field, named exactly as the client sent it, to one
+  user-facing message; a field appears at most once. Forms show these beside the field
+  and keep non-secret input.
 
 | `code`            | HTTP | Meaning |
 | ----------------- | ---- | ------- |
@@ -96,8 +97,11 @@ Lists return:
   - `{"kind":"exact","value":N}` — exactly N results;
   - `{"kind":"at_least","value":N}` — counting stopped at N (bounded reads); show "N+";
   - `{"kind":"unknown"}` — the backend did not count.
-- Page size is chosen by the backend (a client `limit` may be honoured up to a backend
-  maximum). Existing bounded reads and their limits are preserved.
+- Paginated routes accept two query parameters: `cursor` (a previous page's
+  `next_cursor`, omitted for the first page) and an optional `page_size`. The backend
+  honours `page_size` up to its own maximum for the route and otherwise uses its default;
+  existing bounded reads and their limits are preserved. A non-integer or non-positive
+  `page_size`, or a cursor the backend can't use, is a `validation` error.
 - Order is stable for a given cursor; newest-first unless the route says otherwise.
 - Other partial results (truncated file windows, binary files, missing indexes) use
   explicit fields in the route's own schema, never a silent short list.
@@ -164,10 +168,13 @@ Resources that offer actions include what the current viewer may do:
 
 ## Open questions for review
 
-1. `unsupported` → 405 for both wrong methods and mode-unavailable operations. Alternative:
-   405 only for methods, 409/422 for mode-unavailable operations.
-2. `validation` → 400 for both malformed requests and invalid values (no separate 422).
-3. Timestamps as RFC 3339 strings vs. integer Unix seconds.
-4. `field_errors` as an ordered array vs. an object keyed by field.
-5. Cursor parameter name (`cursor`) and whether clients may request a page size.
-6. Proxy timeout scoping (see Timeouts).
+1. `validation` → 400 for both malformed requests and invalid values (no separate 422).
+2. Timestamps as RFC 3339 strings vs. integer Unix seconds.
+3. Proxy timeout scoping (see Timeouts).
+
+## Decided in review
+
+- `unsupported` is 405 both for wrong methods (with `Allow`) and for operations a host
+  mode doesn't offer.
+- `field_errors` is an object keyed by field name, not an array.
+- Pagination uses `cursor` and an optional client `page_size`.
