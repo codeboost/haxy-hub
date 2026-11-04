@@ -273,9 +273,17 @@ token is stateless (no server storage) and survives backend restarts with the co
 - *Relying on `SameSite` cookies:* `haxy_session` is `Lax` (links from other sites must
   arrive logged in), and `SameSite` treats other ports on the same host as same-site.
 
-The existing HTML form routes (`/login`, `/logout`, `…/new`, …) are outside `/api/` and
-still rely on `SameSite=Lax` only; adding the same Origin check is tracked in
-[issue #29](issues/29-origin-check-for-html-form-routes.md).
+**HTML form routes.** From [issue #29](issues/29-origin-check-for-html-form-routes.md).
+Haxy's own server-rendered form routes outside `/api/` (`/login`, `/logout`, `…/new`, …)
+apply rule 1 alone, without a token, so the forms keep working with and without
+JavaScript: every request whose method is not `GET` or `HEAD` and that carries an `Origin`
+must name its own `Host`, or it is refused with a static 403 HTML page before any route is
+matched (`guardForm` in `haxy/src/origin.zig`, called in `handleRequest` right after the
+`/api/` dispatch). A request without `Origin` (a non-browser client) behaves as before.
+Git's smart HTTP is dispatched before this check and is unaffected, as are SSH and the
+TUI. The origin comparison itself (`sameOrigin` in `haxy/src/origin.zig`, unit tests in
+`haxy/src/test/origin.zig`) is the one `guardWrite` uses, and it also refuses an `Origin`
+with no host.
 
 ## Decided in review (2026-11-04)
 

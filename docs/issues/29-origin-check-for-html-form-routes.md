@@ -1,6 +1,6 @@
 # #29 Same-origin check for Haxy's HTML form routes
 
-**Type:** AFK · **Status:** ready-for-agent · **User stories:** 100 (security hardening)
+**Type:** AFK · **Status:** done · **User stories:** 100 (security hardening)
 
 ## Parent
 
@@ -16,13 +16,13 @@ Backend only; Haxy Hub needs no UI change.
 
 ## Acceptance criteria
 
-- [ ] Every state-changing HTML form route refuses a request whose `Origin` names another host or port (including `Origin: null`), with a clear error page and no side effect
-- [ ] The same forms submitted from Haxy's own pages (with and without JavaScript, including the WASM renderer) still work
-- [ ] Requests without an `Origin` header (non-browser clients) keep working as before
-- [ ] Git smart-HTTP and the SSH/TUI paths are unaffected
-- [ ] The origin comparison is shared with the `/api/` guard, with unit tests for the shared function
-- [ ] HTTP contract tests through the e2e harness cover a foreign-origin login post and a same-origin one
-- [ ] Existing Zig suites pass; frontend e2e suite passes; compatible `haxy-hub-impl` commit recorded
+- [x] Every state-changing HTML form route refuses a request whose `Origin` names another host or port (including `Origin: null`), with a clear error page and no side effect
+- [x] The same forms submitted from Haxy's own pages (with and without JavaScript, including the WASM renderer) still work
+- [x] Requests without an `Origin` header (non-browser clients) keep working as before
+- [x] Git smart-HTTP and the SSH/TUI paths are unaffected
+- [x] The origin comparison is shared with the `/api/` guard, with unit tests for the shared function
+- [x] HTTP contract tests through the e2e harness cover a foreign-origin login post and a same-origin one
+- [x] Existing Zig suites pass; frontend e2e suite passes; compatible `haxy-hub-impl` commit recorded (`9dec0a5` on `issue-29-origin-check`)
 
 ## Blocked by
 
