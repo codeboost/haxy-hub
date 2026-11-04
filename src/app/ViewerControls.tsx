@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link, useLocation } from "react-router"
-import { LogIn, LogOut } from "lucide-react"
+import { LogIn, LogOut, UserPlus, UserRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useConnection } from "@/app/connection"
 import { useSession } from "@/app/session"
@@ -21,9 +21,14 @@ export function ViewerControls() {
     // On the login page itself, keep the route it will return to.
     const to = location.pathname === "/login" ? location.pathname + location.search : loginPath(location.pathname + location.search)
     return (
-      <Button asChild variant="outline" size="sm">
-        <Link to={to}><LogIn />Log in</Link>
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button asChild variant="ghost" size="sm">
+          <Link to="/register"><UserPlus />Register</Link>
+        </Button>
+        <Button asChild variant="outline" size="sm">
+          <Link to={to}><LogIn />Log in</Link>
+        </Button>
+      </div>
     )
   }
 
@@ -42,7 +47,11 @@ export function ViewerControls() {
 
   return (
     <div className="flex items-center gap-3">
-      <p className="hidden text-sm text-muted-foreground sm:block">Signed in as <strong className="font-medium text-foreground">{viewer.name}</strong></p>
+      <p className="hidden text-sm text-muted-foreground sm:block">Signed in as <Link to="/account" className="font-medium text-foreground underline-offset-4 hover:underline">{viewer.name}</Link></p>
+      {/* Narrow screens hide the name, so the account page gets its own link. */}
+      <Button asChild variant="ghost" size="icon-sm" className="sm:hidden">
+        <Link to="/account" aria-label="Your account"><UserRound /></Link>
+      </Button>
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
       <Button variant="outline" size="sm" onClick={onLogOut} disabled={pending}><LogOut />Log out</Button>
     </div>

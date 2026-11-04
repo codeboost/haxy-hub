@@ -32,19 +32,21 @@ npm run dev
 Open http://127.0.0.1:5173. The header shows whether Haxy is in **server** or **local**
 mode. If Haxy is down, or is an older build without the status API, the page says so
 (*Can't reach Haxy* / *Incompatible Haxy backend*) and offers **Retry**. Routes are
-client-side (`/`, `/connection`, `/login`, `/about`, `/users`, `/users/<name>`,
-`/repos/<owner>/<name>[/files/<path>]` on a server and `/repo[/files/<path>]` in local
-mode; anything else is *Page not found*); refreshing any URL reconstructs the same view,
-because Vite serves `index.html` for unknown paths. List searches and pages live in the
-query string (`?search=…&cursor=…`), a large file's window in `?line=<n>` and a selected
-line in `#L<n>`. Repository paths in these URLs are Haxy's percent-encoded bytes and
-may not be UTF-8 (e.g. `/repo/files/caf%E9.txt`); Vite's dev and preview servers serve
-the app for them too (`vite.config.ts`), and a production host's fallback must not
-reject URLs that don't decode as UTF-8. The about and user pages exist only in server mode; local mode
-shows them as unavailable.
+client-side (`/`, `/connection`, `/login`, `/register`, `/account`, `/about`, `/users`,
+`/users/<name>`, `/repos/<owner>/<name>[/files/<path>]` on a server and
+`/repo[/files/<path>]` in local mode; anything else is *Page not found*); refreshing any
+URL reconstructs the same view, because Vite serves `index.html` for unknown paths. List
+searches and pages live in the query string (`?search=…&cursor=…`), a large file's window
+in `?line=<n>` and a selected line in `#L<n>`. Repository paths in these URLs are Haxy's
+percent-encoded bytes and may not be UTF-8 (e.g. `/repo/files/caf%E9.txt`); Vite's dev and
+preview servers serve the app for them too (`vite.config.ts`), and a production host's
+fallback must not reject URLs that don't decode as UTF-8. The about and user pages exist
+only in server mode; local mode shows them as unavailable.
 In server mode the header shows who is signed in, with **Log in** (`/login`, which
-returns to the page you came from) or **Log out**; local mode has no accounts and no login
-UI. The session is Haxy's own HttpOnly cookie, shared with Haxy's browser-rendered UI.
+returns to the page you came from) and **Register** (`/register`), or **Log out**; local
+mode has no accounts and no login UI. `/account` (the signed-in name links there) changes
+the email and password, manages SSH keys, and deletes the account. The session is Haxy's
+own HttpOnly cookie, shared with Haxy's browser-rendered UI.
 Repositories can be browsed at their default branch; ref selection, history, issue and
 patch screens are not implemented yet.
 

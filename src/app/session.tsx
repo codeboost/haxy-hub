@@ -19,6 +19,11 @@ export type SessionState = {
   logIn(username: string, password: string): Promise<void>
   /** Logs out; rejects with an ApiError and leaves the viewer as it was if the backend didn't confirm. */
   logOut(): Promise<void>
+  /**
+   * Runs another request that changes who is logged in (registration, account
+   * deletion) and answers with the new session, which then wins as a login does.
+   */
+  changeSession(run: () => Promise<Session>): Promise<void>
 }
 
 const SessionContext = createContext<SessionState | null>(null)
@@ -100,7 +105,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const logOut = useCallback(() => change(deleteSession), [change])
 
   const viewerKey = known.viewer ? `user:${known.viewer.name}` : "anonymous"
-  return <SessionContext value={{ ...known, viewerKey, logIn, logOut }}>{children}</SessionContext>
+  return <SessionContext value={{ ...known, viewerKey, logIn, logOut, changeSession: change }}>{children}</SessionContext>
 }
 
 export function useSession(): SessionState {
