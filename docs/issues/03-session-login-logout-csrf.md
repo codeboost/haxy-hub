@@ -1,6 +1,6 @@
 # #03 Session: login, logout, persistent session, and CSRF protection for writes
 
-**Type:** HITL · **Status:** in-review · **User stories:** 16, 17, 18, 99
+**Type:** HITL · **Status:** done · **User stories:** 16, 17, 18, 99
 
 ## Parent
 
@@ -12,7 +12,7 @@ Users log in from wherever they are and return to the same route; the session pe
 
 Choose and implement the CSRF / same-origin strategy that every state-changing `/api/v1` endpoint (including local-mode writes) will use, compatible with the Vite proxy preserving Host and Origin. Absence of CORS is not treated as protection.
 
-**HITL:** the CSRF strategy is an architectural decision to be reviewed before write slices land.
+**HITL:** the CSRF strategy is an architectural decision to be reviewed before write slices land. *Accepted on 2026-11-04; see Security notes in [api-conventions.md](../api-conventions.md).*
 
 ## Acceptance criteria
 

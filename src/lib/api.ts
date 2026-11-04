@@ -6,7 +6,7 @@
 // --- Errors -----------------------------------------------------------------
 
 /** Stable codes from the backend's error envelope. Switch on these, never on messages. */
-export const errorCodes = ["validation", "unauthenticated", "forbidden", "not_found", "conflict", "unsupported", "internal"] as const
+export const errorCodes = ["validation", "unauthenticated", "forbidden", "csrf", "not_found", "conflict", "unsupported", "internal"] as const
 export type ErrorCode = (typeof errorCodes)[number]
 
 /** Codes the client produces itself when no envelope could be read. */
@@ -180,6 +180,11 @@ export function endCsrfRotation(token: string | null): void {
   csrfToken = token
 }
 
+/** Forgets `token` if it is still the current one, so the next write reads a fresh token. */
+function forgetCsrfToken(token: string | null): void {
+  if (token !== null && csrfToken === token) csrfToken = null
+}
+
 /** The current token, read from the session route the first time a write needs one. */
 async function tokenForWrite(signal?: AbortSignal): Promise<string> {
   for (;;) {
@@ -208,7 +213,11 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
   // Normalise every HeadersInit form (object, tuples, Headers) before adding defaults.
   const merged = new Headers(headers)
   if (!merged.has("Accept")) merged.set("Accept", "application/json")
-  if (method !== "GET" && method !== "HEAD" && !merged.has(csrfHeader)) merged.set(csrfHeader, await tokenForWrite(signal))
+  // The token is ours to supply unless the caller set the header itself.
+  const suppliesToken = method !== "GET" && method !== "HEAD" && !merged.has(csrfHeader)
+  // A rejected token means the write never ran, so one retry with a fresh
+  // token is safe; a streamed body can't be sent twice.
+  let mayRetry = suppliesToken && !(init.body instanceof ReadableStream)
 
   // Timeouts, dropped connections and caller cancellation can strike while
   // the body is still arriving, so they are handled for the body read too.
@@ -218,32 +227,40 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
     throw new ApiError("unreachable", "Haxy Hub could not be reached.", 0)
   }
 
-  let response: Response
-  let body: unknown
-  try {
-    response = await fetch(path, {
-      credentials: "same-origin",
-      cache: "no-store",
-      ...init,
-      method,
-      headers: merged,
-      signal: signals.length > 0 ? AbortSignal.any(signals) : undefined,
-    })
-    body = await readJsonBody(response)
-  } catch (error) {
-    return transportFailure(error)
-  }
+  for (;;) {
+    if (suppliesToken) merged.set(csrfHeader, await tokenForWrite(signal))
+    let response: Response
+    let body: unknown
+    try {
+      response = await fetch(path, {
+        credentials: "same-origin",
+        cache: "no-store",
+        ...init,
+        method,
+        headers: merged,
+        signal: signals.length > 0 ? AbortSignal.any(signals) : undefined,
+      })
+      body = await readJsonBody(response)
+    } catch (error) {
+      return transportFailure(error)
+    }
 
-  if (response.ok) {
-    if (body === undefined) throw new ApiError("invalid_response", "Haxy returned a response this app could not read.", response.status)
-    return body as T
+    if (response.ok) {
+      if (body === undefined) throw new ApiError("invalid_response", "Haxy returned a response this app could not read.", response.status)
+      return body as T
+    }
+    const envelope = parseErrorEnvelope(body)
+    if (envelope?.code === "csrf" && mayRetry) {
+      mayRetry = false
+      forgetCsrfToken(merged.get(csrfHeader))
+      continue
+    }
+    if (envelope) throw new ApiError(envelope.code, envelope.message, response.status, envelope.field_errors)
+    if (proxyFailureStatuses.has(response.status)) {
+      throw new ApiError("unreachable", "Haxy Hub could not connect to the Haxy backend.", response.status)
+    }
+    throw new ApiError("invalid_response", `Haxy returned HTTP ${response.status} without an error description.`, response.status)
   }
-  const envelope = parseErrorEnvelope(body)
-  if (envelope) throw new ApiError(envelope.code, envelope.message, response.status, envelope.field_errors)
-  if (proxyFailureStatuses.has(response.status)) {
-    throw new ApiError("unreachable", "Haxy Hub could not connect to the Haxy backend.", response.status)
-  }
-  throw new ApiError("invalid_response", `Haxy returned HTTP ${response.status} without an error description.`, response.status)
 }
 
 export function getJson<T>(path: string, options: Omit<RequestOptions, "method" | "body"> = {}): Promise<T> {

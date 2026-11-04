@@ -34,3 +34,4 @@ Status values: `ready-for-agent` (AFK) · `needs-human` (HITL) · `in-progress` 
 | 26 | [Undo history and execution](26-undo.md) | AFK | [#24](24-events-browsing.md) | 87, 88, 89 |
 | 27 | [Local mode: offline metadata edits and remote sync](27-local-mode-sync.md) | AFK | [#12](12-issues-write.md), [#24](24-events-browsing.md) | 84, 85, 86 |
 | 28 | [Parity audit: accessibility, responsive layout, cross-client, and story mapping](28-parity-audit.md) | HITL | all | 5, 7, 8, 101 + completion criteria |
+| 29 | [Same-origin check for Haxy's HTML form routes](29-origin-check-for-html-form-routes.md) | AFK | [#03](03-session-login-logout-csrf.md) | 100 |

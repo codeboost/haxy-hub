@@ -60,6 +60,7 @@ Every non-2xx API response has this body:
 | `validation`      | 400  | The request is malformed or a value is invalid. |
 | `unauthenticated` | 401  | A session is required (or expired) for this request. |
 | `forbidden`       | 403  | The viewer is known and may see the resource, but may not do this. |
+| `csrf`            | 403  | A write failed the same-origin or CSRF token check (see Security notes); it did not run. |
 | `not_found`       | 404  | No such resource **or** the viewer may not know it exists (private repo, draft). |
 | `conflict`        | 409  | Stale or concurrent state: revision changed, name taken, target moved. Reload, then retry deliberately. |
 | `unsupported`     | 405  | The method/operation isn't available here — wrong HTTP method (sent with `Allow`), or an operation this host mode doesn't offer (e.g. undo in local mode). |
@@ -210,13 +211,12 @@ and `haxy-hub/src/lib/session.ts`, `src/app/session.tsx`.
 
 ### CSRF and same-origin protection
 
-> **Status: Proposed — needs review** (issue #03 is HITL). Write slices must not land
-> before this is accepted.
+> **Status: Accepted on 2026-11-04** (issue #03 review).
 
 **Rule.** Every `/api/` request whose method is not `GET` or `HEAD` (so `POST`, `PUT`,
 `PATCH`, `DELETE`, `OPTIONS` and anything else) passes one check in Zig *before routing*
 (`guardWrite` in `haxy/src/api/session.zig`, called first in `handleApiRequest`). It is
-refused with `forbidden` (403) unless both hold:
+refused with `csrf` (403) unless both hold:
 
 1. **Same origin.** If the request has an `Origin` header, its `scheme://host[:port]` must
    name the request's own `Host` (case-insensitive; `:80`/`:443` match their absence for
@@ -234,7 +234,9 @@ Because the guard runs before routing, a later slice can't add a write route wit
 and unknown paths and wrong methods also answer 403 to a request without a valid token
 (404/405 only once the token is valid). The React client (`requestJson` in
 `src/lib/api.ts`) adds the header to every non-GET/HEAD request, fetching the token from
-the session route the first time; login and logout responses replace it.
+the session route the first time; login and logout responses replace it. A `csrf`
+refusal means the write never ran, so the client forgets the token, reads a fresh one and
+retries the write exactly once (not for streamed bodies); a second refusal is reported.
 
 **Why this works through the proxy.** Vite forwards `Host` and `Origin` unchanged
 (`changeOrigin: false`), so the browser's page origin (`http://127.0.0.1:5173`) and the
@@ -271,10 +273,9 @@ token is stateless (no server storage) and survives backend restarts with the co
 - *Relying on `SameSite` cookies:* `haxy_session` is `Lax` (links from other sites must
   arrive logged in), and `SameSite` treats other ports on the same host as same-site.
 
-**Open for review:** CSRF refusals use `forbidden`, so a client can't tell a stale token
-from a permission refusal by code; a dedicated code (e.g. `csrf`) would be a new error
-code. The existing HTML form routes (`/login`, `/logout`, `…/new`, …) are outside `/api/`
-and unchanged; they rely on `SameSite=Lax` only.
+The existing HTML form routes (`/login`, `/logout`, `…/new`, …) are outside `/api/` and
+still rely on `SameSite=Lax` only; adding the same Origin check is tracked in
+[issue #29](issues/29-origin-check-for-html-form-routes.md).
 
 ## Decided in review (2026-11-04)
 
@@ -285,6 +286,19 @@ and unchanged; they rely on `SameSite=Lax` only.
 - Timestamps are RFC 3339 UTC strings (see Timestamps), not integer Unix seconds.
 - `field_errors` is an object keyed by field name, not an array.
 - Pagination uses `cursor` and an optional client `page_size`.
+- CSRF protection is the Origin check plus a token bound to a per-browser HttpOnly nonce
+  (not a server secret or the session), so it covers local mode and login.
+- CSRF refusals have their own `csrf` code (403), and the client retries once with a
+  fresh token.
+- The guard runs before routing, so a write without a valid token answers 403 even for
+  unknown paths and wrong methods; this also hides which write routes exist.
+- Wrong credentials give one generic `unauthenticated` message, not which field was wrong.
+- A production reverse proxy must preserve `Host`; writes fail closed otherwise.
+- Rich text (such as the about page) is sent as Haxy's parsed Markdown blocks, so Hub
+  renders what the TUI renders; later slices reuse that shape.
+- Hub routes may differ from Haxy's TUI paths where those collide (e.g. `/about`,
+  `/users/<name>`); Haxy links in content are translated to Hub routes.
+- `page_size` is capped at 100 per request; the default stays the TUI's page size.
 
 ## Known follow-up
 

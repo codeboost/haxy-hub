@@ -6,7 +6,7 @@ import { expect, test } from "./support/fixtures"
 // itself cannot forge these requests, which is the point; see the Security
 // notes in docs/api-conventions.md. Logging in is the write under test.
 
-const forbidden = { error: { code: "forbidden", message: expect.stringMatching(/\S/) } }
+const forbidden = { error: { code: "csrf", message: expect.stringMatching(/\S/) } }
 const credentials = { username: alice.name, password: alice.password }
 
 test("a write without the CSRF token is rejected and changes nothing", async ({ request, launch }) => {
@@ -145,4 +145,20 @@ test("the guard covers every write to /api/, including paths no route serves", a
     expect(response.status(), method).toBe(403)
     expect(await response.json()).toEqual(forbidden)
   }
+})
+
+test("the app refreshes a stale CSRF token and retries the write once", async ({ page, context, launch }) => {
+  const backend = await launch.server()
+  const hub = await launch.hub(backend.port)
+  await page.goto(hub.url)
+  await expect(page.getByRole("banner").getByText("Server mode")).toBeVisible()
+
+  const outcome = (code: string) => page.evaluate(code)
+  // Prime the app's in-memory token, then make it stale by replacing the
+  // browser's CSRF cookie, as a cleared cookie or another tab would.
+  await outcome(`import("/src/lib/api.ts").then(({ requestJson }) => requestJson("/api/v1/status", { method: "POST", body: "{}" }).catch((error) => error.code))`)
+  await context.clearCookies({ name: "haxy_csrf" })
+
+  // POST to the read-only status route: once the guard passes, the route answers unsupported.
+  expect(await outcome(`import("/src/lib/api.ts").then(({ requestJson }) => requestJson("/api/v1/status", { method: "POST", body: "{}" }).then(() => "ok", (error) => error.code))`)).toBe("unsupported")
 })
