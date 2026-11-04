@@ -48,7 +48,7 @@ const json = (body: unknown, viewer?: string): RequestOptions => ({
  * someone else (`conflict` without field errors) or unauthenticated, the
  * session is read to say who is signed in now.
  */
-async function asViewer<T>(viewer: string, run: () => Promise<T>): Promise<T> {
+export async function asViewer<T>(viewer: string, run: () => Promise<T>): Promise<T> {
   try {
     return await run()
   } catch (error) {

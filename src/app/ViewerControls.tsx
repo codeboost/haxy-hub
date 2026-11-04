@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link, useLocation } from "react-router"
-import { LogIn, LogOut, UserPlus, UserRound } from "lucide-react"
+import { LogIn, LogOut, Plus, UserPlus, UserRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useConnection } from "@/app/connection"
 import { useSession } from "@/app/session"
@@ -51,6 +51,9 @@ export function ViewerControls() {
       {/* Narrow screens hide the name, so the account page gets its own link. */}
       <Button asChild variant="ghost" size="icon-sm" className="sm:hidden">
         <Link to="/account" aria-label="Your account"><UserRound /></Link>
+      </Button>
+      <Button asChild variant="ghost" size="sm">
+        <Link to="/repos/new" aria-label="New repository"><Plus /><span className="hidden sm:inline">New repository</span></Link>
       </Button>
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
       <Button variant="outline" size="sm" onClick={onLogOut} disabled={pending}><LogOut />Log out</Button>

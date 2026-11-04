@@ -40,13 +40,15 @@ export default defineConfig(({ mode }) => {
   if (!["http:", "https:"].includes(url.protocol) || url.pathname !== "/" || url.search || url.hash || url.username || url.password) {
     throw new Error("HAXY_BACKEND_URL must be an HTTP(S) origin, such as http://127.0.0.1:8080")
   }
+  // Preserve the browser Origin and Host for the backend's same-origin write checks.
+  const backend = { target: url.origin, changeOrigin: false }
+  // Vite uses the first entry that matches, so routes listed before the
+  // catch-all get their own timeout (docs/api-conventions.md, Timeouts).
   const proxy = {
-    "^/api(?:/|$)": {
-      target: url.origin,
-      // Preserve the browser Origin and Host for future same-origin write checks.
-      changeOrigin: false,
-      proxyTimeout: 10_000,
-    },
+    // Creating a repository may copy a large one. Like every write it has no
+    // client timeout, so the proxy waits for Haxy's answer too.
+    "^/api/v1/repos(?:\\?|$)": backend,
+    "^/api(?:/|$)": { ...backend, proxyTimeout: 10_000 },
   }
   return {
     plugins: [undecodableAppPaths(), react(), tailwindcss()],

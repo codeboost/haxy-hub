@@ -188,8 +188,10 @@ Resources that offer actions include what the current viewer may do:
   expose it as an operation resource with explicit completion/failure state; Node never
   owns the work. A timeout or lost connection on a write is reported as "outcome
   unknown — reload", never as failure or success.
-- **Open:** the Vite proxy's 10s `proxyTimeout` currently applies to every `/api/` request
-  and must be raised or scoped per route before long-running endpoints land.
+- The Vite proxy's 10s `proxyTimeout` is scoped per route (`vite.config.ts`; Vite uses
+  the first matching entry). Every `/api/` route keeps it except those listed before the
+  catch-all, which have no proxy timeout: so far `/api/v1/repos` (repository creation,
+  #10). A slow write route lands in that list along with its endpoint.
 
 ## Session
 
@@ -266,6 +268,52 @@ email stored when it is written, so it never reverts an email changed meanwhile.
 account removes everything in its user directory — every repository and fork it owns.
 Implemented in `haxy/src/api/account.zig` (unit tests in `haxy/src/test/api_account.zig`)
 and `haxy-hub/src/lib/account.ts`.
+
+## Repository creation
+
+From issue [#10](issues/10-repo-create-and-copy.md). `POST /api/v1/repos` creates a
+repository owned by the **session's viewer**, either empty or as a copy of a repository
+the viewer can read. Anonymous (or deleted-account) sessions get `unauthenticated` (401);
+local mode answers `unsupported` (405) and other methods `unsupported` with `Allow: POST`.
+Like account changes it accepts the optional `X-Haxy-Viewer` header (a name other than the
+session's viewer is `conflict` without field errors, and nothing is created); Haxy Hub
+sends it.
+
+The body is a JSON object of strings (form encodings are refused with `validation`; a
+missing field reads as empty):
+
+| Field | Meaning |
+| --- | --- |
+| `name` | The new repository's name, under the TUI's rules. |
+| `description` | Free text; may be empty. |
+| `access` | `"public"` or `"private"` (the TUI's choices). |
+| `hash` | `"sha1"` or `"sha256"` for an empty repository. Must be empty or absent for a copy, which keeps the hash format of the repository it copies. |
+| `copy` | `owner:name` of the repository to copy, or empty. |
+
+The answer is 201 with the new repository's identity, `{"owner", "name"}`; its overview is
+at `/api/v1/repos/{owner}/{name}`. A copy carries the source's Git data and history but
+none of its events (issues, discussions, patches) or forks, as in the TUI.
+
+Refusals carry one field error at a time, beside the field: `validation` for an unknown
+`access` or `hash`, a `hash` sent with a copy, a `copy` that isn't `owner:name`, and a
+missing or invalid name; `conflict` (409) for a name the viewer already uses; `not_found`
+(404, keyed by `copy`) when there is no repository by that name **that the viewer can
+read** — a hidden repository and a missing one get the same answer. The rules are the
+TUI's and the web form's own: all three create through `ui.NewRepo.create`
+(`evt.createRepo`, `evt.Repo.validateName`, and the copy source resolved with the
+viewer's role), and read the choices with `ui.NewRepo.parseAccess`/`parseHash`.
+
+The route has no client or proxy timeout (see Timeouts); a copy of a 55 MB repository
+measured about 50 ms. When the outcome is unknown (timeout, `unreachable`, `internal`, or
+an unreadable answer), Haxy Hub reads `/api/v1/repos/{viewer}/{name}` before offering a
+retry and reports only what exists now, never what the attempt did: an existing repository
+may predate it, and a copy may still be running when the read finds nothing. The name is
+the operation's identity, so a retry refused as a taken name means the repository exists.
+That holds because creation is atomic per name: Haxy checks the name again in the
+transaction that registers the repository and discards a creation that lost the race, so
+two overlapping creations of one name never both succeed. Implemented in
+`haxy/src/api/repo_create.zig` (unit tests in `haxy/src/test/api_repo_create.zig`) and
+`haxy-hub/src/lib/repoCreate.ts`.
 
 ## Security notes
 
@@ -376,5 +424,6 @@ with no host.
 
 ## Known follow-up
 
-- Vite's 10s `proxyTimeout` applies to every `/api/` request (see Timeouts). It must be
-  raised or scoped per route before long-running endpoints (merge, sync, uploads) land.
+- Vite's 10s `proxyTimeout` is now scoped per route (see Timeouts); only repository
+  creation is exempt so far. Long-running endpoints (merge, sync, uploads) must be added to
+  the exempt list as they land.

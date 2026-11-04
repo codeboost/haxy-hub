@@ -5,6 +5,7 @@ import { AccountPage } from "@/pages/AccountPage"
 import { ConnectionPage } from "@/pages/ConnectionPage"
 import { HomePage } from "@/pages/HomePage"
 import { LoginPage } from "@/pages/LoginPage"
+import { NewRepoPage } from "@/pages/NewRepoPage"
 import { NotFoundPage } from "@/pages/NotFoundPage"
 import { repoRoutes } from "@/pages/RepoPage"
 import { RegisterPage } from "@/pages/RegisterPage"
@@ -24,6 +25,7 @@ export const router = createBrowserRouter([
       { path: "users", element: <UsersPage /> },
       { path: "users/:name", element: <UserPage /> },
       { path: "login", element: <LoginPage /> },
+      { path: "repos/new", element: <NewRepoPage /> },
       ...repoRoutes,
       { path: "register", element: <RegisterPage /> },
       { path: "account", element: <AccountPage /> },
