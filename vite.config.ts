@@ -1,7 +1,37 @@
 import { fileURLToPath, URL } from "node:url"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
-import { defineConfig, loadEnv } from "vite"
+import { defineConfig, loadEnv, type Connect, type Plugin } from "vite"
+
+/**
+ * Repository paths in app URLs are percent-encoded bytes and may not be UTF-8
+ * (docs/api-conventions.md, Repository paths), e.g. `/repo/files/caf%E9.txt`.
+ * Vite's own index.html fallback decodes the URL first and answers 404 when
+ * it can't, so such a page would not survive a refresh. Serve the app for
+ * them instead; the client reads the raw pathname itself.
+ */
+function undecodableAppPaths(): Plugin {
+  // whether the URL's escapes decode to UTF-8, as Vite's decodeURI needs
+  const decodable = (path: string): boolean => {
+    const bytes = Buffer.from(path.replace(/%([0-9a-fA-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16))), "latin1")
+    try {
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+      return true
+    } catch {
+      return false
+    }
+  }
+  const fallback: Connect.NextHandleFunction = (request, _response, next) => {
+    const path = (request.url ?? "/").split(/[?#]/, 1)[0]
+    if ((request.method === "GET" || request.method === "HEAD") && !/^\/api(?:\/|$)/.test(path) && !decodable(path)) request.url = "/index.html"
+    next()
+  }
+  return {
+    name: "haxy-undecodable-app-paths",
+    configureServer: (server) => { server.middlewares.use(fallback) },
+    configurePreviewServer: (server) => { server.middlewares.use(fallback) },
+  }
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "HAXY_")
@@ -19,7 +49,7 @@ export default defineConfig(({ mode }) => {
     },
   }
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [undecodableAppPaths(), react(), tailwindcss()],
     resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
     // No CORS: Vite's default would answer preflights for any localhost
     // origin itself. Haxy Hub is same-origin only, and Zig checks the Origin

@@ -50,19 +50,21 @@ function ConnectionProblem({ check }: { check: Exclude<BackendCheck, { kind: "co
 }
 
 const navItems = [
-  { to: "/", label: "Home", end: true, serverOnly: false },
-  { to: "/about", label: "About", end: false, serverOnly: true },
-  { to: "/users", label: "Users", end: false, serverOnly: true },
-  { to: "/connection", label: "Connection", end: false, serverOnly: false },
-]
+  { to: "/", label: "Home", end: true, only: null },
+  { to: "/repo", label: "Repository", end: false, only: "local" },
+  { to: "/about", label: "About", end: false, only: "server" },
+  { to: "/users", label: "Users", end: false, only: "server" },
+  { to: "/connection", label: "Connection", end: false, only: null },
+] as const
 
 function MainNav() {
   const { check } = useConnection()
-  // Local mode has no forge-wide pages; their routes say so if opened directly.
-  const local = check?.kind === "connected" && check.status.mode === "local"
+  // Local mode has no forge-wide pages, and a server has no single repository;
+  // their routes say so if opened directly.
+  const mode = check?.kind === "connected" ? check.status.mode : "server"
   return (
     <nav aria-label="Main" className="flex flex-wrap items-center gap-1">
-      {navItems.filter((item) => !(local && item.serverOnly)).map((item) => (
+      {navItems.filter((item) => item.only === null || item.only === mode).map((item) => (
         <NavLink
           key={item.to}
           to={item.to}

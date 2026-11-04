@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process"
 import { mkdir, writeFile } from "node:fs/promises"
 import http from "node:http"
+import path from "node:path"
 import type { Binaries } from "./binaries"
 import { freePort, startProcess, waitUntil, type Managed } from "./process"
 import type { Sandbox } from "./sandbox"
@@ -83,16 +84,48 @@ export async function startDemoServer(binaries: Binaries, sandbox: Sandbox, opti
   }
 }
 
+export type LocalOptions = BackendOptions & {
+  /**
+   * The files of the repository's one commit on `main`, by repo-relative
+   * path. Defaults to a README; `null` leaves the repository without commits.
+   */
+  files?: Record<string, string | Uint8Array> | null
+  /**
+   * Files whose paths are raw bytes (such as names that aren't UTF-8, which
+   * some filesystems refuse), committed straight into the index alongside
+   * `files`.
+   */
+  byteNamedFiles?: Array<{ path: Uint8Array; content: string | Uint8Array }>
+}
+
 /** Haxy's local mode (no subcommand) serving a fresh git repository, without its terminal UI. */
-export async function startLocal(binaries: Binaries, sandbox: Sandbox, options: BackendOptions = {}): Promise<Backend> {
+export async function startLocal(binaries: Binaries, sandbox: Sandbox, options: LocalOptions = {}): Promise<Backend> {
   const port = options.port ?? (await freePort())
   const repo = sandbox.path("repo")
   await mkdir(repo, { recursive: true })
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, env: sandbox.env, stdio: "pipe" })
   git("init", "--quiet", "--initial-branch=main")
-  await writeFile(sandbox.path("repo", "README.md"), "# e2e fixture\n")
-  git("add", "README.md")
-  git("commit", "--quiet", "-m", "Initial commit")
+  const files = options.files === undefined ? { "README.md": "# e2e fixture\n" } : options.files
+  if (files !== null) {
+    for (const [name, content] of Object.entries(files)) {
+      const file = sandbox.path("repo", name)
+      await mkdir(path.dirname(file), { recursive: true })
+      await writeFile(file, content)
+    }
+    git("add", "--all")
+    // one blob per distinct content and one index update, so large fixtures stay fast
+    const blobs = new Map<string | Uint8Array, string>()
+    const entries = (options.byteNamedFiles ?? []).map((file) => {
+      let blob = blobs.get(file.content)
+      if (blob === undefined) {
+        blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: repo, env: sandbox.env, input: file.content }).toString().trim()
+        blobs.set(file.content, blob)
+      }
+      return Buffer.concat([Buffer.from(`100644 ${blob}\t`), file.path, Buffer.from("\n")])
+    })
+    if (entries.length > 0) execFileSync("git", ["update-index", "--add", "--index-info"], { cwd: repo, env: sandbox.env, input: Buffer.concat(entries) })
+    git("commit", "--quiet", "-m", "Initial commit")
+  }
 
   const process = startProcess("haxy (local)", binaries.haxy, ["--no-tui", "--web-listen", `127.0.0.1:${port}`], { cwd: repo, env: sandbox.env })
   try {

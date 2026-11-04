@@ -2,13 +2,14 @@ import { Link, useParams } from "react-router"
 import { Lock } from "lucide-react"
 import { EmptyState, FailureState, LoadingState, Pager, SearchForm, UnavailableState, listQuery, useListParams } from "@/components/listing"
 import { getUser, listUserRepos, type RepoSummary } from "@/lib/discovery"
+import { repoRoute } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 
-function RepoRow({ repo }: { repo: RepoSummary }) {
+function RepoRow({ owner, repo }: { owner: string; repo: RepoSummary }) {
   return (
     <li className="px-4 py-3">
       <p className="flex items-center gap-2 font-medium">
-        {repo.name}
+        <Link to={repoRoute({ kind: "server", owner, name: repo.name })} className="text-primary underline-offset-4 hover:underline">{repo.name}</Link>
         {repo.access === "private" && (
           <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-normal text-muted-foreground"><Lock size={12} aria-hidden />Private</span>
         )}
@@ -35,7 +36,7 @@ function Repos({ name }: { name: string }) {
             : <EmptyState title="No repositories">{name} has no repositories you can see.</EmptyState>
         ) : (
           <>
-            <ul aria-label="Repositories" className="mt-6 divide-y rounded-xl border bg-card">{repos.data.items.map((repo) => <RepoRow key={repo.name} repo={repo} />)}</ul>
+            <ul aria-label="Repositories" className="mt-6 divide-y rounded-xl border bg-card">{repos.data.items.map((repo) => <RepoRow key={repo.name} owner={name} repo={repo} />)}</ul>
             <Pager page={repos.data.page} search={search} cursor={cursor} noun="Repositories" />
           </>
         )

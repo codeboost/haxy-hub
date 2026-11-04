@@ -122,9 +122,32 @@ Lists return:
   them as opaque: compare and send back, never parse or do arithmetic.
 - Small bounded integers (counts, line numbers, sizes below 2^53) are JSON numbers.
 - Refs, paths and other names go in URLs percent-encoded per segment (slashes in a ref or
-  path are encoded when they are part of one segment); JSON bodies carry them raw.
+  path are encoded when they are part of one segment); JSON bodies carry them raw, except
+  repository paths, which may not be UTF-8 (see Repository paths below).
 - Optional fields: an absent field and `null` mean the same thing ("no value"). Required
   fields are always present. Discriminated variants use a `kind` string field.
+
+### Repository paths
+
+> Decided in issue #05; #06–#09 (refs, history, diffs, file finder) reuse it.
+
+Git paths are bytes and need not be UTF-8, so JSON can't carry them raw (and a name may
+contain `%`, `/`-like escapes, `?` or `#`). Therefore:
+
+- Every repository path in a response (`path` fields) is **percent-encoded bytes**: each
+  byte other than the unreserved `A–Z a–z 0–9 - . _ ~` and the `/` separator is written
+  as `%XX` (uppercase hex). Example: the file `docs/café x.txt` with a Latin-1 `é` is
+  `docs/caf%E9%20x.txt`; a file literally named `a%2Fb.txt` is `a%252Fb.txt`.
+- Clients send such a path back **unchanged** as the `path` query parameter (it is
+  already safe in a query string), and Haxy decodes it exactly once to the original
+  bytes. Haxy Hub also puts it unchanged into its own URLs
+  (`/repos/<owner>/<name>/files/<path>`) and reads it back from the raw pathname, never
+  from a router-decoded parameter, so it round-trips through refresh and shared links.
+- Paths are not for display. Responses carry a `name` (the last segment) as UTF-8 with
+  ill-formed sequences replaced by U+FFFD, as the WHATWG decoder (a browser's
+  `TextDecoder`) replaces them; a client may decode a path's segments the same way for
+  breadcrumbs. Other names that may not be UTF-8 (branch names, a local repository's
+  directory name) are likewise sent for display with U+FFFD replacement.
 
 ## Timestamps
 
@@ -307,6 +330,8 @@ with no host.
 - Hub routes may differ from Haxy's TUI paths where those collide (e.g. `/about`,
   `/users/<name>`); Haxy links in content are translated to Hub routes.
 - `page_size` is capped at 100 per request; the default stays the TUI's page size.
+- Repository paths travel percent-encoded byte for byte, with separate U+FFFD-replaced
+  display names (#05; see Repository paths).
 
 ## Known follow-up
 
