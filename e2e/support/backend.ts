@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process"
+import { mkdirSync, writeFileSync } from "node:fs"
 import { mkdir, writeFile } from "node:fs/promises"
 import http from "node:http"
 import path from "node:path"
@@ -101,6 +102,23 @@ export type LocalOptions = BackendOptions & {
    * `files`.
    */
   byteNamedFiles?: Array<{ path: Uint8Array; content: string | Uint8Array }>
+  /**
+   * Branches and tags to add at the commit on `main`, written straight into
+   * the repository's refs, so names may be raw bytes (which some filesystems
+   * refuse) or hold characters git's own commands reject, such as spaces.
+   */
+  refs?: FixtureRef[]
+  /** The branch HEAD names after the commit, which needn't exist (an unborn branch); `main` by default. */
+  head?: string
+}
+
+export type FixtureRef = {
+  kind: "branch" | "tag"
+  name: string | Uint8Array
+  /** Files a commit of the ref's own, on top of `main`'s, adds or replaces. */
+  files?: Record<string, string>
+  /** For a tag: an annotated tag object rather than a plain ref to the commit. */
+  annotated?: boolean
 }
 
 /** Haxy's local mode (no subcommand) serving a fresh git repository, without its terminal UI. */
@@ -130,6 +148,8 @@ export async function startLocal(binaries: Binaries, sandbox: Sandbox, options: 
     })
     if (entries.length > 0) execFileSync("git", ["update-index", "--add", "--index-info"], { cwd: repo, env: sandbox.env, input: Buffer.concat(entries) })
     git("commit", "--quiet", "-m", "Initial commit")
+    if (options.refs) addRefs(repo, sandbox, options.refs)
+    if (options.head !== undefined) git("symbolic-ref", "HEAD", `refs/heads/${options.head}`)
   }
 
   const process = startProcess("haxy (local)", binaries.haxy, ["--no-tui", "--web-listen", `127.0.0.1:${port}`], { cwd: repo, env: sandbox.env })
@@ -139,6 +159,50 @@ export async function startLocal(binaries: Binaries, sandbox: Sandbox, options: 
     await process.stop()
     throw error
   }
+}
+
+/**
+ * Writes `refs` into the git repository at `repo`: names a packed ref can
+ * hold go into packed-refs (bytes and all), names with spaces become loose
+ * ref files.
+ */
+function addRefs(repo: string, sandbox: Sandbox, refs: FixtureRef[]) {
+  const run = (args: string[], input?: string | Buffer, env: NodeJS.ProcessEnv = {}) =>
+    execFileSync("git", args, { cwd: repo, env: { ...sandbox.env, ...env }, input, stdio: "pipe" }).toString().trim()
+  const main = run(["rev-parse", "HEAD"])
+  // no header, which git reads as an unsorted packed-refs file without peeled tags
+  const packed: Buffer[] = []
+  refs.forEach((ref, index) => {
+    let oid = main
+    if (ref.files) {
+      // a commit of its own, built in a scratch index so the work tree stays on main
+      const env = { GIT_INDEX_FILE: path.join(repo, ".git", `fixture-index-${index}`) }
+      run(["read-tree", main], undefined, env)
+      // one blob per distinct content and one index update, so large refs stay fast
+      const blobs = new Map<string, string>()
+      const entries = Object.entries(ref.files).map(([name, content]) => {
+        let blob = blobs.get(content)
+        if (blob === undefined) blobs.set(content, (blob = run(["hash-object", "-w", "--stdin"], content)))
+        return `100644 ${blob}\t${name}\n`
+      })
+      run(["update-index", "--add", "--index-info"], entries.join(""), env)
+      const tree = run(["write-tree"], undefined, env)
+      oid = run(["commit-tree", tree, "-p", main, "-m", `Commit for ref ${index}`])
+    }
+    if (ref.annotated) {
+      oid = run(["mktag"], `object ${oid}\ntype commit\ntag fixture-${index}\ntagger Fixture <fixture@example.test> 1700000000 +0000\n\nAnnotated ${index}\n`)
+    }
+    const name = Buffer.from(ref.name)
+    const refPath = Buffer.concat([Buffer.from(ref.kind === "branch" ? "refs/heads/" : "refs/tags/"), name])
+    if (name.includes(0x20)) {
+      const file = path.join(repo, ".git", refPath.toString())
+      mkdirSync(path.dirname(file), { recursive: true })
+      writeFileSync(file, `${oid}\n`)
+    } else {
+      packed.push(Buffer.concat([Buffer.from(`${oid} `), refPath, Buffer.from("\n")]))
+    }
+  })
+  writeFileSync(path.join(repo, ".git", "packed-refs"), Buffer.concat(packed))
 }
 
 export type IncompatibleVariant =

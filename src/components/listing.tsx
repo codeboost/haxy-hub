@@ -23,7 +23,12 @@ export function listQuery(search: string, cursor = ""): string {
   return text ? `?${text}` : ""
 }
 
-export function SearchForm({ label, search }: { label: string; search: string }) {
+/**
+ * A list's search box. The term is trimmed unless `exact` is set, for lists
+ * whose names may start or end with whitespace (such as git refs), where it
+ * is a prefix matched byte for byte.
+ */
+export function SearchForm({ label, search, exact = false }: { label: string; search: string; exact?: boolean }) {
   const [, setParams] = useSearchParams()
   const [value, setValue] = useState(search)
   return (
@@ -32,7 +37,7 @@ export function SearchForm({ label, search }: { label: string; search: string })
       className="flex max-w-md gap-2"
       onSubmit={(event) => {
         event.preventDefault()
-        const term = value.trim()
+        const term = exact ? value : value.trim()
         // A new search starts from the first page.
         setParams(term ? { search: term } : {})
       }}
@@ -55,15 +60,17 @@ export function SearchForm({ label, search }: { label: string; search: string })
  * Links to the first and next pages. Previous pages are a browser back away.
  * `base` is the list's own path; pages whose path holds escapes the router
  * would re-encode (repository paths) must pass it, since relative links are
- * resolved from the decoded path.
+ * resolved from the decoded path. It may carry a query of its own (such as a
+ * ref), which the page's parameters join.
  */
 export function Pager({ page, search, cursor, noun, base = "" }: { page: PageInfo; search: string; cursor: string; noun: string; base?: string }) {
   if (!cursor && !page.has_more) return null
   const linkClass = "rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+  const to = (query: string) => (query && base.includes("?") ? `${base}&${query.slice(1)}` : base + query)
   return (
     <nav aria-label={`${noun} pages`} className="mt-6 flex gap-3">
-      {cursor && <Link to={base + listQuery(search)} className={linkClass}>First page</Link>}
-      {page.next_cursor && <Link to={base + listQuery(search, page.next_cursor)} className={linkClass}>Next page</Link>}
+      {cursor && <Link to={to(listQuery(search))} className={linkClass}>First page</Link>}
+      {page.next_cursor && <Link to={to(listQuery(search, page.next_cursor))} className={linkClass}>Next page</Link>}
     </nav>
   )
 }

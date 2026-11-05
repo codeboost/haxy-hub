@@ -124,7 +124,8 @@ Lists return:
 - Small bounded integers (counts, line numbers, sizes below 2^53) are JSON numbers.
 - Refs, paths and other names go in URLs percent-encoded per segment (slashes in a ref or
   path are encoded when they are part of one segment); JSON bodies carry them raw, except
-  repository paths, which may not be UTF-8 (see Repository paths below).
+  repository paths and ref names, which may not be UTF-8 (see Repository paths and Refs
+  below).
 - Optional fields: an absent field and `null` mean the same thing ("no value"). Required
   fields are always present. Discriminated variants use a `kind` string field.
 
@@ -147,8 +148,40 @@ contain `%`, `/`-like escapes, `?` or `#`). Therefore:
 - Paths are not for display. Responses carry a `name` (the last segment) as UTF-8 with
   ill-formed sequences replaced by U+FFFD, as the WHATWG decoder (a browser's
   `TextDecoder`) replaces them; a client may decode a path's segments the same way for
-  breadcrumbs. Other names that may not be UTF-8 (branch names, a local repository's
-  directory name) are likewise sent for display with U+FFFD replacement.
+  breadcrumbs. Other names that may not be UTF-8 (a local repository's directory name)
+  are likewise sent for display with U+FFFD replacement; branch and tag names follow the
+  Refs rule below.
+
+### Refs
+
+> Decided in issue #06, consistent with Repository paths; #07–#09 (history, diffs, file
+> finder) reuse it.
+
+Branch and tag names are bytes too, and may hold `/`, spaces (in a git repository), `%`,
+Unicode or bytes that aren't UTF-8. A view names *what* it is read at with a **ref id**:
+
+- A ref id is `<kind>:<value>`: `branch:<name>`, `tag:<name>`, `commit:<object id>` (a
+  full lowercase hex commit id) or `revision:<patch revision id>`. A name is
+  **percent-encoded bytes** exactly as a path is (`/` stays, every byte but an unreserved
+  one becomes `%XX`): the branch `feature/café x` with a Latin-1 `é` is
+  `branch:feature/caf%E9%20x`; one literally named `a%2Fb` is `branch:a%252Fb`.
+- Responses carry the id in `id` fields, beside a `name` for display (U+FFFD-replaced as
+  for paths; null for a commit or revision). Clients send an id back **unchanged** as the
+  `ref` query parameter (it is already safe in a query string), and Haxy decodes it
+  exactly once. A missing `ref` means the default branch, so existing links keep working.
+- Haxy Hub puts the id unchanged into its own URLs (`…?ref=<id>`) and reads it back from
+  the raw query string, never from a decoded parameter, so it round-trips through
+  refresh, back/forward and shared links.
+- A `ref` that isn't `<kind>:<value>` with a known kind, or isn't validly encoded, is
+  `validation` (field `ref`). An id naming no branch, tag, commit or revision in the
+  repository — including a commit id of an object that isn't a commit, such as an
+  annotated tag object (only `tag:` reads through one) — is `not_found`. An overview's
+  `empty` describes the default branch only; explicit refs resolve on their own.
+
+| Route | Answer |
+| --- | --- |
+| `GET …/branches`, `GET …/tags` (`…` = `/api/v1/repos/<owner>/<name>` or `/api/v1/repo`) | a page of `{"name", "id"}` in byte order of the names; `search` keeps names that start with it; `cursor`/`page_size` as for every list (default 50, the TUI's refs window; at most 100); the count is `unknown`, as the TUI doesn't count refs. The cursor is opaque. |
+| `GET …/files?ref=<id>&path=…` | the files view at that ref; its `ref` is `{"kind": "branch"\|"tag"\|"commit"\|"revision", "name", "id", "commit"}`, where `commit` is the commit shown (a tag's target, a revision's source commit). Without `ref`, `id` names the default branch explicitly. |
 
 ## Timestamps
 

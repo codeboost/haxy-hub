@@ -1,10 +1,11 @@
 /**
- * A repository's overview and its files at the default branch. A server names
- * repositories by owner and name; local mode serves only the repository Haxy
- * opened. Mirrors haxy's src/api/repo.zig.
+ * A repository's overview, its branches and tags, and its files at the default
+ * branch or any ref, commit or patch revision. A server names repositories by
+ * owner and name; local mode serves only the repository Haxy opened. Mirrors
+ * haxy's src/api/repo.zig and src/api/refs.zig.
  */
 import { getJson, type ObjectId, type Page, type PageQuery, type RequestOptions } from "@/lib/api"
-import type { RepoAccess } from "@/lib/discovery"
+import type { ListQuery, RepoAccess } from "@/lib/discovery"
 import type { MarkdownBlock } from "@/lib/markdown"
 
 /** Which repository a page shows. */
@@ -34,8 +35,29 @@ export type RepoOverview = {
   remote: GitCommand | null
 }
 
-/** The ref a files response was read at (always the default branch for now). */
-export type ReadRef = { kind: "branch" | "tag" | "commit"; name: string | null; commit: ObjectId }
+/**
+ * A ref as Haxy names it, `<kind>:<value>`: `branch:<name>`, `tag:<name>`,
+ * `commit:<object id>` or `revision:<patch revision id>`, the name
+ * percent-encoded byte for byte as paths are (see "Refs" in
+ * docs/api-conventions.md). Send it back and put it in Hub URLs unchanged;
+ * show `name`s to people instead.
+ */
+export type RefId = string
+
+export type RefKind = "branch" | "tag"
+
+/** A branch or tag in a list: its name for display, and its id. */
+export type RefItem = { name: string; id: RefId }
+
+/** The ref a files response was read at; `id` names it explicitly, also when the URL named none. */
+export type ReadRef = {
+  kind: "branch" | "tag" | "commit" | "revision"
+  /** The branch or tag name for display; null for a commit or revision. */
+  name: string | null
+  id: RefId
+  /** The commit shown: a tag's target, a revision's source commit. */
+  commit: ObjectId
+}
 
 /**
  * A repository path as Haxy sends it. Git paths are bytes, not necessarily
@@ -78,6 +100,8 @@ export type FileView = {
 
 export type FilesQuery = PageQuery & {
   path?: EncodedPath
+  /** The ref to read at; the default branch when absent. */
+  ref?: RefId | null
   /** A file window's first line (1-based). */
   line?: number
 }
@@ -100,8 +124,19 @@ export function getFiles(repo: RepoLocator, query: FilesQuery = {}, options: Opt
   if (query.page_size !== undefined) params.set("page_size", String(query.page_size))
   // Already percent-encoded, so it goes in as is and the backend decodes it once.
   const path = query.path ? canonicalPath(query.path) : ""
-  const text = [path ? `path=${path}` : "", params.toString()].filter((part) => part.length > 0).join("&")
+  const ref = query.ref ? canonicalRef(query.ref) : ""
+  const text = [path ? `path=${path}` : "", ref ? `ref=${ref}` : "", params.toString()].filter((part) => part.length > 0).join("&")
   return getJson<DirListing | FileView>(`${apiBase(repo)}/files${text ? `?${text}` : ""}`, options)
+}
+
+/** A page of the repository's branches or tags in name order, narrowed to names starting with `search`. */
+export function listRefs(repo: RepoLocator, kind: RefKind, query: ListQuery = {}, options: Options = {}): Promise<Page<RefItem>> {
+  const params = new URLSearchParams()
+  if (query.search) params.set("search", query.search)
+  if (query.cursor) params.set("cursor", query.cursor)
+  if (query.page_size !== undefined) params.set("page_size", String(query.page_size))
+  const text = params.toString()
+  return getJson<Page<RefItem>>(`${apiBase(repo)}/${kind === "branch" ? "branches" : "tags"}${text ? `?${text}` : ""}`, options)
 }
 
 // --- Encoded paths -------------------------------------------------------------
@@ -148,6 +183,16 @@ export function canonicalPath(text: string): EncodedPath {
   return encodeBytes(percentBytes(text))
 }
 
+/**
+ * `text` (a ref id from a URL, as Haxy wrote it, as someone typed it or as a
+ * browser escaped it) with its value in Haxy's canonical encoding. The kind
+ * before the first `:` stays as written; Haxy rejects one it doesn't know.
+ */
+export function canonicalRef(text: string): RefId {
+  const colon = text.indexOf(":")
+  return colon === -1 ? encodeBytes(percentBytes(text)) : `${text.slice(0, colon)}:${canonicalPath(text.slice(colon + 1))}`
+}
+
 /** An encoded path segment's name for display, ill-formed UTF-8 shown as U+FFFD (as in Haxy's `name`s). */
 export function displaySegment(segment: EncodedPath): string {
   return new TextDecoder().decode(Uint8Array.from(percentBytes(segment)))
@@ -165,14 +210,35 @@ function repoBase(repo: RepoLocator): string {
 }
 
 /**
- * The Hub route showing `path` (an encoded directory or file path) in `repo`:
- * `/repos/<owner>/<name>[/files/<path>]` on a server, `/repo[/files/<path>]`
- * in local mode. The path goes in exactly as Haxy encoded it. A later ref
- * selection adds a query parameter, so these routes stay valid.
+ * The Hub route showing `path` (an encoded directory or file path) in `repo`
+ * at `ref` (the default branch when null): `/repos/<owner>/<name>[/files/<path>][?ref=<id>]`
+ * on a server, `/repo[/files/<path>][?ref=<id>]` in local mode. The path and
+ * ref go in exactly as Haxy encoded them. `query` adds the view's own
+ * parameters (a file window's `line`, a directory page's `cursor`).
  */
-export function repoRoute(repo: RepoLocator, path: EncodedPath = ""): string {
+export function repoRoute(repo: RepoLocator, path: EncodedPath = "", ref: RefId | null = null, query: Record<string, string> = {}): string {
   const segments = pathSegments(path)
-  return segments.length === 0 ? repoBase(repo) : `${repoBase(repo)}/files/${segments.join("/")}`
+  const route = segments.length === 0 ? repoBase(repo) : `${repoBase(repo)}/files/${segments.join("/")}`
+  // the ref is already safe in a query string; the rest is plain text
+  const parts = [ref ? `ref=${canonicalRef(ref)}` : "", new URLSearchParams(query).toString()].filter((part) => part.length > 0)
+  return parts.length === 0 ? route : `${route}?${parts.join("&")}`
+}
+
+/**
+ * The ref a Hub URL names, read from its query string as the browser holds
+ * it, or null for the default branch. `URLSearchParams` would decode it, and
+ * a ref name that isn't UTF-8 would not survive, so the raw text is used.
+ */
+export function routeRef(search: string): RefId | null {
+  for (const pair of search.replace(/^\?/, "").split("&")) {
+    if (pair.startsWith("ref=") && pair.length > "ref=".length) return canonicalRef(pair.slice("ref=".length))
+  }
+  return null
+}
+
+/** The Hub route listing `repo`'s branches or tags: `/repos/<owner>/<name>/branches`, `/repo/tags`, … */
+export function refsRoute(repo: RepoLocator, kind: RefKind): string {
+  return `${repoBase(repo)}/${kind === "branch" ? "branches" : "tags"}`
 }
 
 /**

@@ -1,15 +1,33 @@
+import { canonicalPath, canonicalRef, refsRoute, repoRoute, type RepoLocator } from "@/lib/repo"
+
 /**
  * Haxy's own page URLs (the TUI and its browser renderer, as written in
- * ABOUT.md and other Markdown) mapped to the matching Haxy Hub routes:
+ * ABOUT.md and other Markdown) mapped to the matching Haxy Hub routes. On a
+ * server (`<repo>` is `<owner>:<name>`, and `<hub repo>` is `/repos/<owner>/<name>`):
  *
- * | Haxy                                        | Haxy Hub                    |
- * | ------------------------------------------- | --------------------------- |
- * | `/`, `/home`                                | `/about`                    |
- * | `/home/users[/search:<s>][/start:<n>]`      | `/users?search=<s>`         |
- * | `/<name>`, `/<name>/repos[/search:<s>]...`  | `/users/<name>?search=<s>`  |
+ * | Haxy                                                    | Haxy Hub                                 |
+ * | ------------------------------------------------------- | ---------------------------------------- |
+ * | `/`, `/home`                                            | `/about`                                 |
+ * | `/home/users[/search:<s>][/start:<n>]`                  | `/users?search=<s>`                      |
+ * | `/<name>`, `/<name>/repos[/search:<s>]...`              | `/users/<name>?search=<s>`               |
+ * | `/<repo>`, `/<repo>/files`                              | `<hub repo>`                             |
+ * | `/<repo>/files/<ref>[/line:<n>][/path:<path>]`          | `<hub repo>[/files/<path>]?ref=<id>[&line=<n>]` |
+ * | `/<repo>/files/patchrev:<id>[/line:<n>][/path:<path>]`  | `<hub repo>[/files/<path>]?ref=revision:<id>[&line=<n>]` |
+ * | `/<repo>/refs[/branch:<from>][/search:<s>]`             | `<hub repo>/branches?search=<s>`         |
+ * | `/<repo>/refs/tag:<from>[/search:<s>]`                  | `<hub repo>/tags?search=<s>`             |
  *
- * `start:` windows are dropped: Hub pages use opaque cursors, which only the
- * backend can issue. Paths with no Hub equivalent yet come back unchanged.
+ * `<ref>` is `branch:<name>`, `tag:<name>` or `object:<oid>`, which become the
+ * ref ids `branch:<name>`, `tag:<name>` and `commit:<oid>` with the name and
+ * path re-encoded in Haxy's canonical form (docs/api-conventions.md, "Refs"
+ * and "Repository paths"); a file's `line:` is its window's first line, as in
+ * Hub. In local mode Haxy's repository routes elide `/<repo>` (`/`, `/files/…`,
+ * `/refs/…`); they correspond to the same shapes under `/repo`, but only the
+ * server's about page renders site links today, so only server paths are
+ * translated here.
+ *
+ * `start:` and `from` windows are dropped: Hub pages use opaque cursors, which
+ * only the backend can issue. Paths with no Hub equivalent yet (`find:` file
+ * searches, commits, diffs, threads, …) come back unchanged.
  */
 
 // Haxy's user name rule (event/User.zig validateName)
@@ -36,12 +54,64 @@ function withSearch(path: string, search: string): string {
   return search ? `${path}?${new URLSearchParams({ search })}` : path
 }
 
-/** The Hub route for a Haxy page path, or the path unchanged when there is none. */
+// Haxy's repository name rule (event/Repo.zig validateName)
+function isRepoName(name: string): boolean {
+  return /^[A-Za-z0-9._-]+$/.test(name) && name !== "." && name !== ".."
+}
+
+const refKinds: Record<string, string> = { branch: "branch", tag: "tag", object: "commit", patchrev: "revision" }
+
+/** A repository files route's `key:value` segments and trailing `path:`, as a Hub route; null when it has no equivalent. */
+function filesRoute(repo: RepoLocator, segments: string[]): string | null {
+  let ref: string | null = null
+  let line = 0
+  let index = 0
+  for (; index < segments.length && !segments[index].startsWith("path:"); index++) {
+    const segment = segments[index]
+    const colon = segment.indexOf(":")
+    const key = segment.slice(0, colon)
+    const value = segment.slice(colon + 1)
+    if (colon <= 0 || value.length === 0) return null
+    if (key in refKinds) {
+      if (ref !== null) return null
+      ref = `${refKinds[key]}:${value}`
+    } else if (key === "line" && /^\d+$/.test(value)) {
+      line = Number(value)
+    } else {
+      return null
+    }
+  }
+  // the path is the rest of the URL, slashes and all
+  const rest = segments.slice(index).join("/")
+  const path = rest.slice("path:".length)
+  if (rest.length > 0 && path.length === 0) return null
+  return repoRoute(repo, canonicalPath(path), ref === null ? null : canonicalRef(ref), line > 1 ? { line: String(line) } : {})
+}
+
+/** A repository route's tail after its identity, as a Hub route; null when it has no equivalent. */
+function repoTailRoute(repo: RepoLocator, segments: string[]): string | null {
+  const [tab, ...rest] = segments
+  if (tab === undefined || tab === "") return rest.length === 0 ? repoRoute(repo) : null
+  if (tab === "files") return filesRoute(repo, rest)
+  if (tab === "refs") {
+    const kind = rest.some((segment) => segment.startsWith("tag:")) ? "tag" : "branch"
+    const search = listSearch(rest.filter((segment) => !/^(branch|tag):./.test(segment)))
+    return search === null ? null : withSearch(refsRoute(repo, kind), search)
+  }
+  return null
+}
+
+/** The Hub route for a Haxy page path (on a server), or the path unchanged when there is none. */
 export function hubPathForHaxyPath(haxyPath: string): string {
   // Like the TUI, match on the path alone.
   const path = haxyPath.split(/[?#]/, 1)[0]
   if (path === "/" || path === "/home") return "/about"
   const [first = "", second, ...rest] = path.slice(1).split("/")
+  const owner = first.slice(0, first.indexOf(":"))
+  const name = first.slice(first.indexOf(":") + 1)
+  if (first.includes(":") && isUserName(owner) && isRepoName(name)) {
+    return repoTailRoute({ kind: "server", owner, name }, second === undefined ? [] : [second, ...rest]) ?? haxyPath
+  }
   if (first === "home" && second === "users") {
     const search = listSearch(rest)
     return search === null ? haxyPath : withSearch("/users", search)
