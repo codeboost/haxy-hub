@@ -625,6 +625,97 @@ statistics and its search are the TUI's.
 
 Implemented in `haxy/src/api/commits.zig` (unit tests in `haxy/src/test/api_commits.zig`);
 Haxy Hub: `src/lib/commits.ts`, `src/pages/commits/CommitsSection.tsx`.
+## Repository administration
+
+From issue [#23](issues/23-repo-administration.md). A server repository's owners manage it
+under `/api/v1/repos/{owner}/{name}/settings…`, and its main owner deletes it with
+`DELETE /api/v1/repos/{owner}/{name}` (the repository's other methods stay the overview's).
+Local mode answers `unsupported` (405) for every route, including `/api/v1/repo/settings…`
+and `DELETE /api/v1/repo`; a wrong method is `unsupported` with `Allow`.
+
+**Who.** Every route needs an owner: the **main owner** (the repository's creator, who owns it
+without a grant and can't be demoted or removed) or a **granted owner** (a member promoted to
+owner). A viewer who can't read the repository gets `not_found`, exactly as for a missing one;
+a reader who isn't an owner gets `forbidden`; an anonymous visitor to a public repository gets
+`unauthenticated`. Only the main owner may delete; anyone else gets `forbidden`, and a
+granted owner's action on the main owner (demote, remove) is `forbidden` too. Like every
+`/api/` write these honour `X-Haxy-Viewer` through the shared write guard (#30). A request
+authorizes the one repository record it reads by owner and name, then reads and writes that
+record by id (`resolveTarget`, `evt.readNamedRepo`): a repository renamed meanwhile, and one
+that took its name, are `not_found`, never served, changed or deleted under another's
+authorization (the deletion's check and tombstone run in one transaction).
+
+**Write-time checks.** Authorization is read afresh on every request, so a permission change
+applies to the affected user's next request (reads, writes, Git over SSH). Each change also
+checks, in the transaction that lands it, that its actor still owns the repository and that
+what it read is still there (`evt.changeRole`, `evt.writeRepoChange`, both through
+`evt.consumeGuarded`): a member change lands only on the role it read, so a promote never
+re-adds someone revoked meanwhile and an add never demotes someone promoted meanwhile
+(`conflict`), and an owner demoted while their request ran changes nothing (answered as their
+authorization now reads: `forbidden` or `not_found`). Settings and protected-branch changes
+apply their fields to the repository as it is when they land, so concurrent changes of other
+fields are kept (`conflict` only after repeated collisions), and never to another repository
+that took the name meanwhile. Moving the default branch, which writes no event, checks
+ownership under the lock role changes take (`evt.whileOwner`).
+
+| Route | Method | Body | Answer |
+| --- | --- | --- | --- |
+| `…/settings` | `GET`/`HEAD` | — | `{"owner","name","revision","description","access","discuss_role","issue_role","patch_role","hash","main_owner","actions":{"delete":Action}}` |
+| `…/settings` | `PUT` | `{revision, description, access, discuss_role, issue_role, patch_role}` | the settings, as `GET` |
+| `…/settings/members` | `GET`/`HEAD` | — | a page of `{"name","role"}` plus `"main_owner"` |
+| `…/settings/members` | `POST` | `{name}` | 201 `{"name","role":"member"}` |
+| `…/settings/members/{name}` | `PUT` | `{role}` (`"owner"` or `"member"`) | `{"name","role"}` |
+| `…/settings/members/{name}` | `DELETE` | — | `{"name","role":null}` |
+| `…/settings/branches` | `GET`/`HEAD` | — | `{"default_branch": {"name","id"} \| null, "protected": [{"name","id"}], "max_protected": 50}` |
+| `…/settings/branches/default` | `PUT` | `{ref}` | the branches, as `GET` |
+| `…/settings/branches/protected` | `POST` | `{ref}` | 201, the branches |
+| `…/settings/branches/protected?ref=<id>` | `DELETE` | — | the branches; a branch that isn't protected changes nothing |
+| `/api/v1/repos/{owner}/{name}` | `DELETE` | `{confirm, password}` | `{"owner","name"}` of the deleted repository |
+
+- Bodies are JSON objects of strings (form encodings are refused with `validation`; a missing
+  field reads as empty). Roles for starting threads are the TUI's choices: `"nobody"` (the
+  kind is turned off and its section disappears), `"members"` or `"anybody"` (anyone who can
+  read the repository). `access` is `"public"` or `"private"`. `hash` (`"sha1"` or
+  `"sha256"`) is fixed at creation and only shown; renaming isn't offered.
+- A settings change names the `revision` of the settings it was made from, as #12's issue
+  edits do: an opaque digest of the name, description, visibility and thread roles
+  (`evt.Repo.settingsRevision`; protected branches and the default branch don't move it).
+  It is required (`validation` on `revision` otherwise), and when the settings changed since,
+  the change is `conflict` keyed by `revision` and nothing is written, so a form loaded before
+  another owner's change never saves over it. The check runs in the write's transaction
+  (`evt.SettingsChange`). Haxy Hub refreshes an untouched form from fresh settings, and after
+  a refusal offers to load the current settings (replacing the edits). The TUI and the HTML
+  form still change the settings without a revision.
+- Members are listed newest first, without the main owner (named in `main_owner`), readers or
+  deleted accounts, as the TUI lists them; `page_size` defaults to the TUI's 20 (at most 100),
+  the cursor is opaque and the count `unknown` (the TUI doesn't count members).
+- Branches travel as ref ids (`branch:<percent-encoded name>`, see Refs) with display names;
+  `ref` is decoded exactly once, and anything but a `branch:` id is `validation` on `ref`. The
+  default branch is the one HEAD names, which the repository page, history and clones follow.
+  Protected branches can't be deleted or force-pushed over SSH or HTTP; owners push to them
+  directly, members only change them by merging a patch.
+- Refusals carry one field error beside the field: `validation` for an unknown `access` or
+  role (`access`, `discuss_role`, `issue_role`, `patch_role`), a missing name (`name`), an
+  unknown member `role` (`role`), too many protected branches or a name too long to protect
+  (`ref`), and the typed name or password of a deletion (`confirm`: type `owner:name`
+  exactly; `password`); `not_found` for no such user (`name`) or branch (`ref`); `conflict`
+  for someone already a member or owner (`name`) and a branch already protected (`ref`).
+  Changing someone who isn't a member is `not_found` without field errors; a role another
+  owner changed meanwhile is `conflict`.
+- The rules are the TUI's and Haxy's web forms' own: `ui.Repo.Settings.update`
+  (`evt.updateRepo`), `ui.Repo.Members.readWindow`/`perform` (`evt.changeRole`),
+  `ui.Repo.Branches.perform` (`evt.protectBranch`, HEAD for the default) and
+  `ui.Delete.perform` (typed `owner:name`, then the password; `evt.deleteRepo` tombstones the
+  repository, then removes its directory).
+
+Haxy Hub shows a **Settings** section to owners only (the overview's `settings` section),
+at `/repos/<owner>/<name>/settings[/members|/branches|/delete]`. Every write names its viewer,
+is guarded against a second submission while pending, and after an unknown outcome reads the
+settings, members, branches or repository again and says only what holds now. Demoting and
+removing members ask for confirmation; deletion says what goes, then needs the typed
+`owner:name` and the password. Implemented in `haxy/src/api/repo_admin.zig` (unit tests in
+`haxy/src/test/api_repo_admin.zig`; the transaction checks in
+`haxy/src/test/event/repo_admin.zig`) and `haxy-hub/src/lib/repoAdmin.ts`.
 
 ## Security notes
 
@@ -816,6 +907,13 @@ with no host.
   still log out whoever is signed in now (user decisions, #30).
 - `POST /api/v1/repos` has no Vite proxy timeout (copies grow with repository size); every
   other `/api/` route keeps 10s (user decision, #10).
+- A repository's events and transaction views are for people who may write to it, as in
+  the TUI; anyone else gets `not_found` (user decision, #24).
+- Creating an issue is idempotent by a client-chosen event id; editing an issue and saving
+  repository settings must send a `revision` (a digest of the editable fields) and a stale one
+  is `conflict`. The TUI and HTML forms still overwrite as before (user decisions, #12, #23).
+- The file finder is offered in both modes wherever an index exists; commit search only on
+  a server, where Haxy builds commit indexes on push (user decisions, #09, #07).
 
 ## Known follow-up
 

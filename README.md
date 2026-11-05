@@ -34,8 +34,9 @@ mode. If Haxy is down, or is an older build without the status API, the page say
 (*Can't reach Haxy* / *Incompatible Haxy backend*) and offers **Retry**. Routes are
 client-side (`/`, `/connection`, `/login`, `/register`, `/account`, `/about`, `/users`,
 `/users/<name>`, `/repos/<owner>/<name>[/files/<path>]` and
-`/repos/<owner>/<name>/branches|tags|find` and `/repos/<owner>/<name>/commits[/<id>]` on a
-server, `/repo[/files/<path>]`, `/repo/branches|tags|find` and `/repo/commits[/<id>]` in local
+`/repos/<owner>/<name>/branches|tags|find`, `/repos/<owner>/<name>/commits[/<id>]` and, for
+its owners, `/repos/<owner>/<name>/settings[/members|/branches|/delete]` on a server,
+`/repo[/files/<path>]`, `/repo/branches|tags|find` and `/repo/commits[/<id>]` in local
 mode; anything else is *Page not found*); refreshing any
 URL reconstructs the same view, because Vite serves `index.html` for unknown paths. List
 searches and pages live in the query string (`?search=…&cursor=…`), the ref a files view
@@ -106,12 +107,14 @@ This runs Playwright (Chromium) against real Haxy processes through Vite's proxy
    `$TMPDIR/haxy-hub-e2e-*` sandbox as its cwd, with its own `HOME` and git config, and a
    free port (never 8080/8022). Fixtures:
    - `launch.server()` — `haxy serve` on an empty data dir that Haxy initialises itself;
-     `backend.restart()` restarts it on the same port and data dir. Register users with
+     `backend.restart()` restarts it on the same port and data dir. `launch.server({ ssh: true })`
+     also serves Git over SSH (on a port a restart keeps): `pushRepo` (`e2e/support/push.ts`)
+     fills a repository with a push, and `sshUser` (`e2e/support/ssh.ts`) gives a signed-in user
+     a key of their own for later pushes that may be refused. Register users with
      `registerUser(backend, account)` (`e2e/support/accounts.ts`), which posts Haxy's own
      sign-up form; `writeHeaders(request, hub.url)` gives an API request context a CSRF
-     token for HTTP contract tests. `launch.server({ ssh: true })` also serves SSH, and
-     `pushRepo(…)` (`e2e/support/push.ts`) pushes a fixture repository to it over SSH as a
-     user, Haxy's only way in for commits, which also builds its commit and file indexes;
+     token for HTTP contract tests. A push is Haxy's only way in for commits, and it also
+     builds the commit and file indexes;
    - `launch.demo()` — the `zig build try` demo data (users, repos, issues, patches),
      seeded by Haxy's own event utilities via `try --cli`, inside the sandbox;
    - `launch.local()` — local mode (`haxy --no-tui --web-listen …`) in a fresh git repo;

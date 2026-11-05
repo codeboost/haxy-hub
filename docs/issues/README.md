@@ -36,3 +36,4 @@ Status values: `ready-for-agent` (AFK) · `needs-human` (HITL) · `in-progress` 
 | 28 | [Parity audit: accessibility, responsive layout, cross-client, and story mapping](28-parity-audit.md) | HITL | all | 5, 7, 8, 101 + completion criteria |
 | 29 | [Same-origin check for Haxy's HTML form routes](29-origin-check-for-html-form-routes.md) | AFK | [#03](03-session-login-logout-csrf.md) | 100 |
 | 30 | [Writes never land under a different signed-in user](30-session-bound-write-identity.md) | AFK | [#04](04-account-management.md) | 99, 100 |
+| 31 | [Repository administration: remaining recovery edge cases](31-admin-recovery-edge-cases.md) | AFK | [#23](23-repo-administration.md) | 93, 94, 97 |
