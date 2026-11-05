@@ -300,6 +300,74 @@ account removes everything in its user directory — every repository and fork i
 Implemented in `haxy/src/api/account.zig` (unit tests in `haxy/src/test/api_account.zig`)
 and `haxy-hub/src/lib/account.ts`.
 
+## Threads: issues
+
+From issue [#11](issues/11-issues-read.md). A repository's threads of one kind (issues now;
+discussions and patches reuse the same routes and shapes in #16/#17) live under the
+repository's API path, `/api/v1/repos/{owner}/{name}/<kind>` on a server and
+`/api/v1/repo/<kind>` in local mode. All are `GET`/`HEAD`. They resolve the repository
+with `ui.Repo.resolve` like the repository routes, so a repository the viewer can't read
+is `not_found` with the repository message; each mode answers the other's routes with
+`unsupported`. A repository whose issues are turned off (`issue_role` "nobody", so the
+`issues` section is absent from its overview) answers `not_found` ("This repository doesn't
+use issues."), as the TUI has no issues tab then; this isn't hidden, since the overview
+already shows the repository.
+
+| Route | Answer |
+| --- | --- |
+| `…/issues?status=open\|closed&search=&cursor=&page_size=` | One status's window: `{"status", "filters", "counts": {"open": Count, "closed": Count}, "items": ThreadSummary[], "page"}`. `status` defaults to `open`. |
+| `…/issues/labels?search=&cursor=&page_size=` | A page of `{"name", "search"}`: every label the issues use (open or closed), sorted by name. |
+| `…/issues/{id}` | One issue: a `ThreadSummary` plus `"description": MarkdownBlock[]`, the whole description parsed by Haxy's reader. `not_found` for an unknown or removed issue. |
+
+- Every answer is read by the TUI's issues tab (`ui.Repo.Issues.init`), so the lists,
+  their order (newest first), counts, windows and filters are the TUI's. A list's count is
+  `exact`, or `at_least` when a search stopped counting at the TUI's cap of 1000 (the
+  TUI's "(1000+)"). `counts` has both statuses, as the TUI's tabs do; `page.count` is the
+  listed status's.
+- The cursor is opaque. (It names the next window's first issue, as the TUI's "next"
+  link does, so it is not an offset.) A cursor naming an issue the listing no longer holds
+  — changed status, removed, or filtered out — is `validation` on `cursor`: start again
+  from the first page. `page_size` defaults to the TUI's window of 20 and is capped at
+  100; the labels list defaults to the TUI's whole listing (at most 1000, then `at_least`).
+- `search` is Haxy's thread search, never parsed by the client: whitespace-separated
+  words (matched against title, labels and description), `label:<name>` and
+  `assignee:<account name or email>` terms. `filters` is how Haxy split it:
+  `{"labels": string[], "assignees": string[], "words": string, "assignee_not_found": bool}`;
+  an assignee name no account holds lists nothing and sets `assignee_not_found`.
+- `ThreadSummary` is `{"id", "title", "status", "labels": FilterLink[], "author",
+  "assignees", "created_at", "comment_count", "conflicted"}`. `id` is the hex event id.
+  `author` is `{"kind": "user", "name"}`, `{"kind": "email", "email"}` (no account holds
+  it) or `{"kind": "unknown"}`. Each assignee is `{"name", "email", "search"}`: `name`
+  when an account holds the email (then `email` is null), else `email` alone.
+- A `FilterLink` (`{"name", "search"}`, labels and assignees alike) carries the search
+  that lists threads with it: the request's `search` with its own `label:` (or
+  `assignee:`) terms replaced, as the TUI's links build it (`search_thread.withFilter`).
+  An issue's own route extends no search.
+
+- Haxy's own issue URLs in Markdown (descriptions, READMEs, the about page) open the
+  matching Hub pages (`hubPathForIssuePath` in `src/lib/threads.ts`, hooked into
+  `hubPathForHaxyPath`). `<repo>` is `/<owner>:<name>` on a server and empty in local mode;
+  `search:`/`start:` parameter segments may come before or after the view word:
+
+  | Haxy | Haxy Hub |
+  | --- | --- |
+  | `<repo>/issues`, `<repo>/issues/open[/search:<s>]` | `<hub repo>/issues[?search=<s>]` |
+  | `<repo>/issues/closed[/search:<s>]` | `<hub repo>/issues/closed[?search=<s>]` |
+  | `<repo>/issues/labels[/search:<s>]` | `<hub repo>/issues/labels[?search=<s>]` |
+  | `<repo>/issue:<id>[/search:<s>][/start:<n>]`, `…/description`, `…/comment:<c>[/start:<n>]` | `<hub repo>/issues/<id>` |
+
+  Forms (`…/new`, `…/edit`, `…/remove`, `…/resolve`) and `…/issues/conflicts` have no Hub
+  page yet and stay as written. In local mode, `/` is the repository (`/repo`), and the
+  home, about and user paths, which local Haxy doesn't have, stay as written. A comment permalink opens its issue until #13 adds
+  comment pages.
+- Hub always requests a thread route rather than trusting a sections list it read
+  earlier; the repository overview is read again on each navigation within the
+  repository, so a kind another client turned on or off shows without a reload.
+
+Implemented in `haxy/src/api/thread.zig` (routes, repository access and shapes shared by
+every thread kind) and `haxy/src/api/issues.zig`; unit tests in
+`haxy/src/test/api_issues.zig`. Haxy Hub: `src/lib/threads.ts`.
+
 ## Security notes
 
 - Sessions stay in Haxy's HttpOnly cookie. Tokens, password hashes, local paths, signing
@@ -480,6 +548,14 @@ with no host.
   someone while nobody is signed in is `unauthenticated`.
 - Every session change, through the API or Haxy's HTML forms, rotates the CSRF nonce
   through one helper; HTML responses set the new nonce cookie rather than clearing it (#30).
+- Timestamps go through `api.Instant` (Zig), which writes RFC 3339 UTC and clamps
+  instants past the year 9999 (a commit may claim any time) (#11).
+- A ref travels as one `ref=<kind>:<value>` parameter (`branch`, `tag`, `commit`,
+  `revision`), its name percent-encoded byte for byte like paths; a `commit:` id must name a
+  commit object, and only `tag:` peels annotated tags (user decision, #06; see Refs).
+- A header naming a viewer while nobody is signed in is refused, login and registration
+  included; login, logout and registration are never bound to a viewer, so a stale tab can
+  still log out whoever is signed in now (user decisions, #30).
 
 ## Known follow-up
 

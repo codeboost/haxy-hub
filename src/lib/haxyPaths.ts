@@ -1,4 +1,5 @@
 import { canonicalPath, canonicalRef, refsRoute, repoRoute, type RepoLocator } from "@/lib/repo"
+import { hubPathForIssuePath } from "@/lib/threads"
 
 /**
  * Haxy's own page URLs (the TUI and its browser renderer, as written in
@@ -15,19 +16,20 @@ import { canonicalPath, canonicalRef, refsRoute, repoRoute, type RepoLocator } f
  * | `/<repo>/files/patchrev:<id>[/line:<n>][/path:<path>]`  | `<hub repo>[/files/<path>]?ref=revision:<id>[&line=<n>]` |
  * | `/<repo>/refs[/branch:<from>][/search:<s>]`             | `<hub repo>/branches?search=<s>`         |
  * | `/<repo>/refs/tag:<from>[/search:<s>]`                  | `<hub repo>/tags?search=<s>`             |
+ * | `/<repo>/issues…`, `/<repo>/issue:<id>…`              | see `hubPathForIssuePath` (`@/lib/threads`) |
  *
  * `<ref>` is `branch:<name>`, `tag:<name>` or `object:<oid>`, which become the
  * ref ids `branch:<name>`, `tag:<name>` and `commit:<oid>` with the name and
  * path re-encoded in Haxy's canonical form (docs/api-conventions.md, "Refs"
  * and "Repository paths"); a file's `line:` is its window's first line, as in
- * Hub. In local mode Haxy's repository routes elide `/<repo>` (`/`, `/files/…`,
- * `/refs/…`); they correspond to the same shapes under `/repo`, but only the
- * server's about page renders site links today, so only server paths are
- * translated here.
+ * Hub. In local mode (`local`) Haxy's repository routes elide `/<repo>`: `/`
+ * becomes `/repo` and issue routes are translated; local files and refs URLs
+ * aren't yet, and home, about and user paths (which local mode lacks) stay as
+ * written.
  *
  * `start:` and `from` windows are dropped: Hub pages use opaque cursors, which
  * only the backend can issue. Paths with no Hub equivalent yet (`find:` file
- * searches, commits, diffs, threads, …) come back unchanged.
+ * searches, commits, diffs, discussions, patches, …) come back unchanged.
  */
 
 // Haxy's user name rule (event/User.zig validateName)
@@ -101,10 +103,18 @@ function repoTailRoute(repo: RepoLocator, segments: string[]): string | null {
   return null
 }
 
-/** The Hub route for a Haxy page path (on a server), or the path unchanged when there is none. */
-export function hubPathForHaxyPath(haxyPath: string): string {
+/**
+ * The Hub route for a Haxy page path, or the path unchanged when there is none.
+ * `local`: the path comes from local mode, whose repository routes leave the repository out:
+ * its root `/` is the repository (`/repo`), and it has no home, about or user pages, so
+ * those paths stay as written.
+ */
+export function hubPathForHaxyPath(haxyPath: string, local = false): string {
   // Like the TUI, match on the path alone.
   const path = haxyPath.split(/[?#]/, 1)[0]
+  const issue = hubPathForIssuePath(path, local); if (issue !== null) return issue
+  // local Haxy's root is its repository; it has no home, about or user pages
+  if (local) return path === "/" ? "/repo" : haxyPath
   if (path === "/" || path === "/home") return "/about"
   const [first = "", second, ...rest] = path.slice(1).split("/")
   const owner = first.slice(0, first.indexOf(":"))
