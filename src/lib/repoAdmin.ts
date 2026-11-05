@@ -97,6 +97,16 @@ export function listMembers(repo: AdminRepo, query: PageQuery = {}, options: Opt
   return getJson<MembersPage>(`${base(repo)}/settings/members${text ? `?${text}` : ""}`, options)
 }
 
+/**
+ * `name`'s role as the member list holds it now, in one read however long the
+ * list: null when it doesn't list them (`owner` for the main owner, who isn't
+ * listed but always owns it). Rejects as the list does: `forbidden` or
+ * `not_found` once the viewer no longer manages or sees the repository.
+ */
+export async function memberRole(repo: AdminRepo, name: string, options: Options = {}): Promise<MemberRole | null> {
+  return (await getJson<MemberResult>(`${base(repo)}/settings/members/${encodeURIComponent(name)}`, options)).role
+}
+
 /** Adds `name` as a member. Rejects with `not_found` (no such user) or `conflict` (already a member or owner), keyed by `name`. */
 export function addMember(repo: AdminRepo, viewer: string, name: string): Promise<MemberResult> {
   return write<MemberResult>(`${base(repo)}/settings/members`, "POST", viewer, { name })

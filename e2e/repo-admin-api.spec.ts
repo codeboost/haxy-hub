@@ -199,6 +199,66 @@ test("members are granted, promoted, demoted and revoked, keeping the main owner
   }
 })
 
+test("one member's role is read by name, as the member list holds it, by the people who see the list", async ({ launch, request, playwright }) => {
+  const { hub, api } = await setUp(launch, playwright, "public")
+  const owner = await loggedIn(hub.url, alice)
+  const granted = await loggedIn(hub.url, bob)
+  const leaving = await loggedIn(hub.url, carol)
+  try {
+    const member = (name: string) => `${api}/settings/members/${name}`
+    const roleOf = async (name: string, session: Session = owner) => {
+      const response = await session.context.get(member(name))
+      expect(response.status()).toBe(200)
+      return response.json()
+    }
+
+    expect(await roleOf(bob.name)).toEqual({ name: bob.name, role: null })
+    // the main owner owns it without a grant
+    expect(await roleOf(alice.name)).toEqual({ name: alice.name, role: "owner" })
+    expect(await roleOf("nobody-here")).toEqual({ name: "nobody-here", role: null })
+    await owner.context.post(`${api}/settings/members`, { headers: owner.headers, data: { name: bob.name } })
+    expect(await roleOf(bob.name)).toEqual({ name: bob.name, role: "member" })
+    // a member doesn't see the list, so doesn't see a role in it either
+    await expectError(await granted.context.get(member(bob.name)), 403, "forbidden")
+    await expectError(await request.get(member(bob.name)), 401, "unauthenticated")
+
+    await owner.context.put(member(bob.name), { headers: owner.headers, data: { role: "owner" } })
+    expect(await roleOf(bob.name, granted)).toEqual({ name: bob.name, role: "owner" })
+    expect((await owner.context.head(member(bob.name))).status()).toBe(200)
+
+    // the name is decoded exactly once, byte for byte; bytes that aren't UTF-8 are shown as U+FFFD
+    expect(await roleOf("bobb%79")).toEqual({ name: bob.name, role: "owner" })
+    expect(await roleOf("bobb%2579")).toEqual({ name: "bobb%79", role: null })
+    expect(await roleOf("bob%FFby")).toEqual({ name: "bob�by", role: null })
+    expect((await owner.context.get(`${member(bob.name)}/x`)).status()).toBe(404)
+
+    // revoked, and a member whose account is deleted, are members no longer
+    await owner.context.delete(member(bob.name), { headers: owner.headers })
+    expect(await roleOf(bob.name)).toEqual({ name: bob.name, role: null })
+    await owner.context.post(`${api}/settings/members`, { headers: owner.headers, data: { name: carol.name } })
+    expect(await roleOf(carol.name)).toEqual({ name: carol.name, role: "member" })
+    expect((await leaving.context.delete(`${hub.url}/api/v1/account`, { headers: leaving.headers, data: { confirm: carol.name, password: carol.password } })).status()).toBe(200)
+    expect(await roleOf(carol.name)).toEqual({ name: carol.name, role: null })
+
+    const wrongMethod = await owner.context.post(member(bob.name), { headers: owner.headers, data: {} })
+    expect(wrongMethod.status()).toBe(405)
+    expect(wrongMethod.headers()["allow"]).toBe("GET, HEAD, PUT, DELETE")
+  } finally {
+    for (const session of [owner, granted, leaving]) await session.context.dispose()
+  }
+})
+
+test("a private repository's member lookup is not found for those who can't read it", async ({ launch, request, playwright }) => {
+  const { hub, api } = await setUp(launch, playwright, "private")
+  const stranger = await loggedIn(hub.url, bob)
+  try {
+    await expectError(await stranger.context.get(`${api}/settings/members/${alice.name}`), 404, "not_found")
+    await expectError(await request.get(`${api}/settings/members/${alice.name}`), 404, "not_found")
+  } finally {
+    await stranger.context.dispose()
+  }
+})
+
 test("a granted owner can't perform main-owner-only actions through the API", async ({ launch, playwright }) => {
   let { backend, hub, api } = await setUp(launch, playwright, "public")
   const owner = await loggedIn(hub.url, alice)

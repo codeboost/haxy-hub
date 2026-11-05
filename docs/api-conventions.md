@@ -1040,3 +1040,35 @@ a timeout is an unknown outcome as above. Implemented in `haxy/src/api/issues.zi
 `haxy/src/test/api_issues.zig` and `haxy/src/test/thread_write.zig`. Haxy Hub:
 `src/lib/threads.ts` and `src/components/thread/` (`ThreadForm`, `ThreadNew`, `ThreadEdit`,
 `ThreadActions`).
+
+## Repository administration: one member's role
+
+From issue [#31](issues/31-admin-recovery-edge-cases.md), adding to Repository
+administration above.
+
+| Route | Method | Body | Answer |
+| --- | --- | --- | --- |
+| `/api/v1/repos/{owner}/{name}/settings/members/{member}` | `GET`/`HEAD` | — | `{"name","role"}` |
+
+- It reads one member's role as the member list holds it, in one request however long the
+  list, for the same people as the list (owners; anyone else as for the list). The `PUT` and
+  `DELETE` of the same path are unchanged; any other method is `unsupported` with
+  `Allow: GET, HEAD, PUT, DELETE`.
+- `{member}` is a path segment like any other: percent-encoded byte for byte and decoded
+  exactly once (`bobb%2579` names `bobb%79`). The answer's `name` is that name, with U+FFFD
+  where it isn't UTF-8.
+- `role` is `"owner"` or `"member"`; `"owner"` for the main owner (never listed, always an
+  owner); and `null` for anyone the list doesn't hold: no such user, a deleted account, a
+  reader, or someone without a grant. A non-member is answered `200` with `role: null`,
+  not `not_found`: `not_found` stays the answer for the repository itself (missing, hidden
+  from the viewer, or renamed or deleted meanwhile), so a client settling a write tells
+  "not a member" from "lost access" without parsing messages.
+- The repository and the grant are read from one moment of the owner's records
+  (`ui.Repo.Members.readRole`, beside `readWindow`).
+
+Haxy Hub settles a member write whose outcome is unknown, or that was refused as
+`conflict`/`not_found`, with this lookup (`memberRole` in `src/lib/repoAdmin.ts`), so
+"Check again" settles in one request even past the first thousand members and after a
+revoke. A deletion whose answer is lost and whose follow-up probe finds that another tab
+signed out or switched user says that the outcome couldn't be checked, never that nothing
+was deleted, and offers a reload; the deletion stays disabled.
