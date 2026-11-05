@@ -1,4 +1,5 @@
 import { canonicalPath, canonicalRef, refsRoute, repoRoute, type RepoLocator } from "@/lib/repo"
+import { hubPathForCommitPath } from "@/lib/commits"
 import { hubPathForIssuePath } from "@/lib/threads"
 
 /**
@@ -17,19 +18,20 @@ import { hubPathForIssuePath } from "@/lib/threads"
  * | `/<repo>/refs[/branch:<from>][/search:<s>]`             | `<hub repo>/branches?search=<s>`         |
  * | `/<repo>/refs/tag:<from>[/search:<s>]`                  | `<hub repo>/tags?search=<s>`             |
  * | `/<repo>/issues…`, `/<repo>/issue:<id>…`              | see `hubPathForIssuePath` (`@/lib/threads`) |
+ * | `/<repo>/commits…`                                      | see `hubPathForCommitPath` (`@/lib/commits`) |
  *
  * `<ref>` is `branch:<name>`, `tag:<name>` or `object:<oid>`, which become the
  * ref ids `branch:<name>`, `tag:<name>` and `commit:<oid>` with the name and
  * path re-encoded in Haxy's canonical form (docs/api-conventions.md, "Refs"
  * and "Repository paths"); a file's `line:` is its window's first line, as in
  * Hub. In local mode (`local`) Haxy's repository routes elide `/<repo>`: `/`
- * becomes `/repo` and issue routes are translated; local files and refs URLs
+ * becomes `/repo` and issue and commit routes are translated; local files and refs URLs
  * aren't yet, and home, about and user paths (which local mode lacks) stay as
  * written.
  *
  * `start:` and `from` windows are dropped: Hub pages use opaque cursors, which
  * only the backend can issue. Paths with no Hub equivalent yet (`find:` file
- * searches, commits, diffs, discussions, patches, …) come back unchanged.
+ * searches, diffs, discussions, patches, …) come back unchanged.
  */
 
 // Haxy's user name rule (event/User.zig validateName)
@@ -113,6 +115,7 @@ export function hubPathForHaxyPath(haxyPath: string, local = false): string {
   // Like the TUI, match on the path alone.
   const path = haxyPath.split(/[?#]/, 1)[0]
   const issue = hubPathForIssuePath(path, local); if (issue !== null) return issue
+  const commit = hubPathForCommitPath(path, local); if (commit !== null) return commit
   // local Haxy's root is its repository; it has no home, about or user pages
   if (local) return path === "/" ? "/repo" : haxyPath
   if (path === "/" || path === "/home") return "/about"

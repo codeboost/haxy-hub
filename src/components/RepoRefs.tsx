@@ -1,6 +1,7 @@
 import { Link } from "react-router"
 import { GitBranch, GitCommitHorizontal, GitPullRequest, Tag } from "lucide-react"
 import { EmptyState, FailureState, LoadingState, Pager, SearchForm, listQuery, useListParams } from "@/components/listing"
+import { commitsRoute } from "@/lib/commits"
 import { listRefs, refsRoute, repoRoute, type EncodedPath, type ReadRef, type RefId, type RefKind, type RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 
@@ -32,6 +33,7 @@ export function RefBar({ repo, path, refId, read }: { repo: RepoLocator; path: E
       </span>
       {read.kind !== "commit" && <span className="text-muted-foreground">at commit <code className="font-mono break-all">{read.commit}</code></span>}
       <Link to={refsRoute(repo, read.kind === "tag" ? "tag" : "branch")} className={linkClass}>Branches and tags</Link>
+      <Link to={commitsRoute(repo, refId)} className={linkClass}>History</Link>
       {refId !== null && <Link to={repoRoute(repo, path)} className={linkClass}>Default branch</Link>}
     </section>
   )

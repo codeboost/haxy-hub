@@ -34,8 +34,8 @@ mode. If Haxy is down, or is an older build without the status API, the page say
 (*Can't reach Haxy* / *Incompatible Haxy backend*) and offers **Retry**. Routes are
 client-side (`/`, `/connection`, `/login`, `/register`, `/account`, `/about`, `/users`,
 `/users/<name>`, `/repos/<owner>/<name>[/files/<path>]` and
-`/repos/<owner>/<name>/branches|tags` on a server, `/repo[/files/<path>]` and
-`/repo/branches|tags` in local mode; anything else is *Page not found*); refreshing any
+`/repos/<owner>/<name>/branches|tags` and `/repos/<owner>/<name>/commits[/<id>]` on a
+server, `/repo[/files/<path>]`, `/repo/branches|tags` and `/repo/commits[/<id>]` in local mode; anything else is *Page not found*); refreshing any
 URL reconstructs the same view, because Vite serves `index.html` for unknown paths. List
 searches and pages live in the query string (`?search=…&cursor=…`), the ref a files view
 is read at in `?ref=<id>` (`branch:<name>`, `tag:<name>`, `commit:<oid>` or
@@ -53,7 +53,9 @@ mode has no accounts and no login UI. `/account` (the signed-in name links there
 the email and password, manages SSH keys, and deletes the account. The session is Haxy's
 own HttpOnly cookie, shared with Haxy's browser-rendered UI.
 Repositories can be browsed at their default branch or any branch, tag, commit or patch
-revision; history, issue and patch screens are not implemented yet.
+revision, with the commit history at any of them (searchable where Haxy has a commit
+index, i.e. on a server) and each commit's whole message; patch screens are not
+implemented yet.
 
 The backend defaults to http://127.0.0.1:8080. To change it, copy `.env.example` to
 `.env.local`, edit `HAXY_BACKEND_URL`, and restart Vite. Alternatively:
@@ -106,7 +108,9 @@ This runs Playwright (Chromium) against real Haxy processes through Vite's proxy
      `backend.restart()` restarts it on the same port and data dir. Register users with
      `registerUser(backend, account)` (`e2e/support/accounts.ts`), which posts Haxy's own
      sign-up form; `writeHeaders(request, hub.url)` gives an API request context a CSRF
-     token for HTTP contract tests;
+     token for HTTP contract tests. `launch.server({ ssh: true })` also serves SSH, and
+     `pushRepo(…)` (`e2e/support/push.ts`) pushes a fixture repository to it over SSH as a
+     user, Haxy's only way in for commits, which also builds its commit and file indexes;
    - `launch.demo()` — the `zig build try` demo data (users, repos, issues, patches),
      seeded by Haxy's own event utilities via `try --cli`, inside the sandbox;
    - `launch.local()` — local mode (`haxy --no-tui --web-listen …`) in a fresh git repo;

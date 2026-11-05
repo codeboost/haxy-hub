@@ -416,6 +416,97 @@ two overlapping creations of one name never both succeed. Implemented in
 `haxy/src/api/repo_create.zig` (unit tests in `haxy/src/test/api_repo_create.zig`) and
 `haxy-hub/src/lib/repoCreate.ts`.
 
+## Commit history
+
+From issue [#07](issues/07-commit-history-and-search.md). A repository's history lives
+under its API path, `/api/v1/repos/{owner}/{name}/commits` on a server and
+`/api/v1/repo/commits` in local mode; both routes are `GET`/`HEAD`. They resolve and hide
+the repository like the repository routes (`ui.Repo.resolve`): a repository the viewer
+can't read is `not_found` with the repository message, and each mode answers the other's
+routes with `unsupported`. Every answer is read through the TUI's commits tab
+(`ui.Repo.Commits`), so the log, its page size and limits, its committer rule, its
+statistics and its search are the TUI's.
+
+| Route | Answer |
+| --- | --- |
+| `…/commits?ref=&search=&cursor=&page_size=` | `{"ref": Ref, "history", "search": Search, "query", "items": Commit[], "page"}`: a page of the history at `ref` (see Refs; the default branch without one), or of the commits matching `search`. |
+| `…/commits/{id}` | One commit (`id` is its full lowercase hex object id): a `Commit` plus `"message"` and `"message_truncated"`. |
+
+- The history is the TUI's log: first parents only, newest first, from the ref's commit
+  (a tag peeled). A `revision:` ref lists the revision's source commit back to its base
+  (exclusive), as the TUI lists a patch's commits. `ref` is the files view's `Ref` shape.
+  Each request reads one snapshot of the repository. The ref, its commits, their
+  statistics and count, the revision record and the search index all come from it, and
+  the page walks from `ref.commit`. A push that lands during the read therefore can't
+  mix two states into one answer.
+- `history` is `{"available": true, "reason": null}`, or `{"available": false,
+  "reason": {"code": "unsupported", "message"}}` when the history's commits aren't in
+  the repository. That happens to a patch revision whose fork was squash-merged: the
+  merge keeps the revision but brings in only the squashed commit, so its source commit
+  stays in the fork. The page is then empty, but by this field, never as an empty
+  history. The revision's files still read, since they are the squashed commit's tree.
+- `page_size` defaults to the TUI's page of 20 and is capped at 100. The cursor is the
+  id of the next page's first commit, which is how the TUI's pages are keyed (`from:`),
+  so a page never reads the log before it. Clients still treat it as opaque. A cursor
+  that isn't a commit of this repository is `validation` on `cursor`. A cursor whose commit
+  a force push has since removed from the ref still pages from that commit, as the TUI's
+  pages do.
+- `page.count` is `exact` where Haxy counts the first-parent log (xit repositories: the
+  depth xit records for the commit, or a revision's commit count) and `unknown` otherwise
+  (git repositories, and search results).
+- A `Commit` is `{"id", "parent", "summary", "author", "committer", "committed_at",
+  "merge", "stats"}`:
+  - `parent` is the first parent (what the commit's diff is against), null for a root
+    commit;
+  - `summary` is the message's first line; the list sends nothing more of the message;
+  - `author` and `committer` are thread authors (`{"kind": "user", "name"}` when an
+    account holds the email, else `{"kind": "email", "email"}`, or `{"kind": "unknown"}`).
+    `committer` is null when its identity (`Name <email>`) is the author's, as in the TUI;
+  - `committed_at` is the committer's timestamp, which the TUI shows;
+  - `merge` is true for a commit with more than one parent;
+  - `stats` is `{"first_parent_depth", "lines_added", "lines_changed", "lines_removed",
+    "bytes_added", "bytes_removed", "files_added", "files_changed", "files_removed"}`.
+    Xit computes these when commits arrive (a push), so zeros are real. `stats` is null
+    where Haxy has computed none (git repositories, and commits xit made in place), and
+    Hub shows "Statistics unavailable" then, never zero.
+- A commit's `message` is whole up to the TUI's limit of 100 KiB, trimmed of surrounding
+  whitespace. Past the limit, `message_truncated` is true and `message` is its start (an
+  incomplete UTF-8 sequence at the cut is dropped). Messages, summaries and emails are
+  bytes in git, so they are sent with ill-formed UTF-8 replaced by U+FFFD; they are for
+  display only.
+- `search` says whether commit search is offered and where. It is
+  `{"available": true, "ref": <ref id>, "reason": null}` or `{"available": false, "ref":
+  null, "reason": {"code": "unsupported", "message"}}`. Search is Haxy's commit index,
+  which a push (and a patch merge) builds for every branch and tag tip of a server
+  repository: forks and local mode have none, and the TUI offers no search box in local
+  mode. For a branch or tag, `ref` is the listed ref itself when its tip is indexed. For a
+  `commit:` or `revision:` ref, as in the TUI, it is the default branch when that is
+  indexed. Clients search by sending `search` with that `ref`.
+- `search` is Haxy's index query: words, each matching indexed words that start with it,
+  all required; results come newest first, a page at a time, with the same cursors.
+  `query` echoes it (null for the plain history). A search with no matches is an empty
+  page with `search.available` true. A search where the history isn't searchable
+  (unindexed, local mode, or a `commit:`/`revision:` ref) is refused with
+  `unsupported` (405), never answered with an empty list, so "unavailable" and "no
+  matches" stay distinct.
+- Errors: a malformed `ref`, `cursor` or `page_size` is `validation` on that field. A ref
+  that names nothing is `not_found` ("This repository has no such branch, tag, commit or
+  revision."). A history without `ref` whose default branch has no commits is `not_found`
+  ("This repository has no commits yet."). A `{id}` that isn't a full commit id of this
+  repository (a tree, blob or tag object too) is `not_found`.
+- Haxy Hub's routes are `<hub repo>/commits[?ref=<id>][&search=…][&cursor=…]` and
+  `<hub repo>/commits/<id>[?ref=<id>]`, where the ref is the history the commit was opened
+  from and its way back leads there. The Files and Commits section tabs keep the page's
+  ref, as the TUI's tabs do. A commit's diff (#08) will hang off both
+  `…/commits/{id}`s. Haxy's own commits URLs in Markdown are translated by
+  `hubPathForCommitPath` (`src/lib/commits.ts`, hooked into `hubPathForHaxyPath`):
+  `<repo>/commits[/branch:<n>|tag:<n>][/search:<s>][/from:<c>]` opens the history
+  (`from:` dropped) and `<repo>/commits/object:<oid>[/message]` opens the commit.
+  Base-bounded and merge lists (`base:`, `merge:`) have no Hub page yet and stay as written.
+
+Implemented in `haxy/src/api/commits.zig` (unit tests in `haxy/src/test/api_commits.zig`);
+Haxy Hub: `src/lib/commits.ts`, `src/pages/commits/CommitsSection.tsx`.
+
 ## Security notes
 
 - Sessions stay in Haxy's HttpOnly cookie. Tokens, password hashes, local paths, signing

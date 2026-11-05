@@ -25,7 +25,11 @@ export type Backend = {
   restart?(): Promise<Backend>
 }
 
-export type BackendOptions = { port?: number }
+export type BackendOptions = {
+  port?: number
+  /** `launch.server()` only: also serve SSH (on a free port), which git pushes need. */
+  ssh?: boolean
+}
 
 const servingLine = /serving web UI\b[^\n]*?http:\/\/[^:/\s]+:(\d+)\//
 
@@ -45,14 +49,14 @@ async function readyBackend(name: string, process: Managed, mode: BackendMode, d
 
 /** A multi-user server with a fresh data dir, initialised by `haxy serve` itself. */
 export async function startServer(binaries: Binaries, sandbox: Sandbox, options: BackendOptions = {}): Promise<Backend> {
-  return serveDataDir(binaries, sandbox, options.port ?? (await freePort()), sandbox.path("data"))
+  return serveDataDir(binaries, sandbox, options.port ?? (await freePort()), sandbox.path("data"), options.ssh ? await freePort() : null)
 }
 
-/** `haxy serve` on `dataDir`, restartable on the same port and data dir. */
-function serveDataDir(binaries: Binaries, sandbox: Sandbox, port: number, dataDir: string): Promise<Backend> {
+/** `haxy serve` on `dataDir`, restartable on the same ports and data dir. */
+function serveDataDir(binaries: Binaries, sandbox: Sandbox, port: number, dataDir: string, sshPort: number | null = null): Promise<Backend> {
   const start = async (): Promise<Backend> => {
     const process = startProcess("haxy serve", binaries.haxy, [
-      "serve", "--data-dir", dataDir, "--web-listen", `127.0.0.1:${port}`, "--ssh-listen", "none",
+      "serve", "--data-dir", dataDir, "--web-listen", `127.0.0.1:${port}`, "--ssh-listen", sshPort === null ? "none" : `127.0.0.1:${sshPort}`,
     ], { cwd: sandbox.root, env: sandbox.env })
     try {
       const backend = await readyBackend("haxy serve", process, "server", dataDir, 30_000)
@@ -90,7 +94,8 @@ export async function startDemoServer(binaries: Binaries, sandbox: Sandbox, opti
   }
 }
 
-export type LocalOptions = BackendOptions & {
+/** What a fixture repository holds: one commit on `main`, refs at or on top of it, and where HEAD points. */
+export type RepoContent = {
   /**
    * The files of the repository's one commit on `main`, by repo-relative
    * path. Defaults to a README; `null` leaves the repository without commits.
@@ -112,6 +117,8 @@ export type LocalOptions = BackendOptions & {
   head?: string
 }
 
+export type LocalOptions = BackendOptions & RepoContent
+
 export type FixtureRef = {
   kind: "branch" | "tag"
   name: string | Uint8Array
@@ -125,32 +132,7 @@ export type FixtureRef = {
 export async function startLocal(binaries: Binaries, sandbox: Sandbox, options: LocalOptions = {}): Promise<Backend> {
   const port = options.port ?? (await freePort())
   const repo = sandbox.path("repo")
-  await mkdir(repo, { recursive: true })
-  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, env: sandbox.env, stdio: "pipe" })
-  git("init", "--quiet", "--initial-branch=main")
-  const files = options.files === undefined ? { "README.md": "# e2e fixture\n" } : options.files
-  if (files !== null) {
-    for (const [name, content] of Object.entries(files)) {
-      const file = sandbox.path("repo", name)
-      await mkdir(path.dirname(file), { recursive: true })
-      await writeFile(file, content)
-    }
-    git("add", "--all")
-    // one blob per distinct content and one index update, so large fixtures stay fast
-    const blobs = new Map<string | Uint8Array, string>()
-    const entries = (options.byteNamedFiles ?? []).map((file) => {
-      let blob = blobs.get(file.content)
-      if (blob === undefined) {
-        blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: repo, env: sandbox.env, input: file.content }).toString().trim()
-        blobs.set(file.content, blob)
-      }
-      return Buffer.concat([Buffer.from(`100644 ${blob}\t`), file.path, Buffer.from("\n")])
-    })
-    if (entries.length > 0) execFileSync("git", ["update-index", "--add", "--index-info"], { cwd: repo, env: sandbox.env, input: Buffer.concat(entries) })
-    git("commit", "--quiet", "-m", "Initial commit")
-    if (options.refs) addRefs(repo, sandbox, options.refs)
-    if (options.head !== undefined) git("symbolic-ref", "HEAD", `refs/heads/${options.head}`)
-  }
+  await buildRepo(repo, sandbox, options)
 
   const process = startProcess("haxy (local)", binaries.haxy, ["--no-tui", "--web-listen", `127.0.0.1:${port}`], { cwd: repo, env: sandbox.env })
   try {
@@ -159,6 +141,36 @@ export async function startLocal(binaries: Binaries, sandbox: Sandbox, options: 
     await process.stop()
     throw error
   }
+}
+
+/** Creates a git repository at `repo` (inside `sandbox`) holding `content`. */
+export async function buildRepo(repo: string, sandbox: Sandbox, content: RepoContent): Promise<void> {
+  await mkdir(repo, { recursive: true })
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, env: sandbox.env, stdio: "pipe" })
+  git("init", "--quiet", "--initial-branch=main")
+  const files = content.files === undefined ? { "README.md": "# e2e fixture\n" } : content.files
+  if (files === null) return
+  for (const [name, text] of Object.entries(files)) {
+    // refuses a name that would escape the sandbox
+    const file = sandbox.path(path.relative(sandbox.root, repo), name)
+    await mkdir(path.dirname(file), { recursive: true })
+    await writeFile(file, text)
+  }
+  git("add", "--all")
+  // one blob per distinct content and one index update, so large fixtures stay fast
+  const blobs = new Map<string | Uint8Array, string>()
+  const entries = (content.byteNamedFiles ?? []).map((file) => {
+    let blob = blobs.get(file.content)
+    if (blob === undefined) {
+      blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: repo, env: sandbox.env, input: file.content }).toString().trim()
+      blobs.set(file.content, blob)
+    }
+    return Buffer.concat([Buffer.from(`100644 ${blob}\t`), file.path, Buffer.from("\n")])
+  })
+  if (entries.length > 0) execFileSync("git", ["update-index", "--add", "--index-info"], { cwd: repo, env: sandbox.env, input: Buffer.concat(entries) })
+  git("commit", "--quiet", "-m", "Initial commit")
+  if (content.refs) addRefs(repo, sandbox, content.refs)
+  if (content.head !== undefined) git("symbolic-ref", "HEAD", `refs/heads/${content.head}`)
 }
 
 /**

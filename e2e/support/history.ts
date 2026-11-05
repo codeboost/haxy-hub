@@ -1,0 +1,68 @@
+import { execFileSync } from "node:child_process"
+import path from "node:path"
+import type { Backend } from "./backend"
+import type { Git } from "./push"
+
+/** A person as git records one. */
+export type Identity = { name: string; email: string }
+
+export type FixtureCommit = {
+  message: string
+  author?: Identity
+  /** Defaults to the author. */
+  committer?: Identity
+  /** Unix seconds; commits made in a row get increasing defaults, so the order is stable. */
+  at?: number
+  /** Files the commit adds or replaces. */
+  files?: Record<string, string>
+  /** A branch to merge in (with `--no-ff`), making this a merge commit. */
+  merge?: string
+}
+
+export const alice: Identity = { name: "Alice", email: "alice@example.test" }
+
+let clock = 1_700_000_000
+
+/** A runner for git in `dir`, isolated from the developer's own git config. */
+export function gitIn(dir: string): Git {
+  const env: NodeJS.ProcessEnv = {
+    PATH: process.env.PATH,
+    HOME: path.dirname(dir),
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
+    LANG: "C.UTF-8",
+  }
+  return (args, options = {}) => execFileSync("git", args, { cwd: dir, env: { ...env, ...options.env }, input: options.input, stdio: "pipe" }).toString().trim()
+}
+
+/** The git runner of a local-mode backend's repository. */
+export function localGit(backend: Backend): Git {
+  if (backend.mode !== "local") throw new Error("Only a local backend's repository is on disk here.")
+  return gitIn(backend.dataDir)
+}
+
+/**
+ * Adds `commits` to the checked-out branch with `git`, in order, and returns
+ * their ids. Messages go through a file, so they may be any length.
+ */
+export function addCommits(git: Git, commits: FixtureCommit[]): string[] {
+  return commits.map((commit) => {
+    const author = commit.author ?? alice
+    const committer = commit.committer ?? author
+    const at = `${commit.at ?? (clock += 60)} +0000`
+    const env = {
+      GIT_AUTHOR_NAME: author.name, GIT_AUTHOR_EMAIL: author.email, GIT_AUTHOR_DATE: at,
+      GIT_COMMITTER_NAME: committer.name, GIT_COMMITTER_EMAIL: committer.email, GIT_COMMITTER_DATE: at,
+    }
+    for (const [name, content] of Object.entries(commit.files ?? {})) {
+      const blob = git(["hash-object", "-w", "--stdin"], { input: content })
+      git(["update-index", "--add", "--cacheinfo", `100644,${blob},${name}`])
+    }
+    if (commit.merge) {
+      git(["merge", "--quiet", "--no-ff", "--no-edit", commit.merge, "-m", commit.message], { env })
+    } else {
+      git(["commit", "--quiet", "--allow-empty", "--no-verify", "--cleanup=verbatim", "-F", "-"], { env, input: commit.message })
+    }
+    return git(["rev-parse", "HEAD"])
+  })
+}
