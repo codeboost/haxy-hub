@@ -203,6 +203,9 @@ test("authors edit and remove their own comments, the repository's owner moderat
   await editor.getByRole("button", { name: "Show the current version" }).click()
   await expect(editor.getByRole("region", { name: "Current version" })).toContainText("First! (moderated)")
   await editor.getByRole("button", { name: "Save comment" }).click()
+  // the editor's own field holds the text too, so the card shows it before
+  // the save lands; the editor closes once Haxy has answered
+  await expect(editor).toHaveCount(0)
   await expect(card(page, "First! (mine)")).toBeVisible()
   expect(await tuiThreadPage(backend, "/alice:tracker", issue)).toContain("First! (mine)")
   await page.context().clearCookies()
@@ -288,6 +291,8 @@ test("local mode comments, replies, edits and removes without logging in", async
   await card(page, "From the TUI").getByRole("button", { name: "Edit" }).click()
   await page.getByRole("form", { name: "Edit comment" }).getByLabel("Comment").fill("From the TUI, edited in Hub")
   await page.getByRole("form", { name: "Edit comment" }).getByRole("button", { name: "Save comment" }).click()
+  // the card shows the editor's text before the save lands; the editor closes once Haxy has answered
+  await expect(page.getByRole("form", { name: "Edit comment" })).toHaveCount(0)
   await expect(card(page, "edited in Hub")).toBeVisible()
   await card(page, "From Hub").getByRole("button", { name: "Remove" }).click()
   await page.getByRole("alertdialog", { name: "Remove this comment?" }).getByRole("button", { name: "Remove comment" }).click()
