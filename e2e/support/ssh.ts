@@ -19,6 +19,8 @@ import { waitUntil } from "./process"
  */
 export type SshUser = {
   name: string
+  /** The ssh command that authenticates as this user (its key only), for a `core.sshCommand` setting. */
+  sshCommand: string
   /** The repository's SSH URL, as its overview's clone command names it (the repository must be readable to this user). */
   remote(owner: string, name: string): Promise<string>
   /** Runs git in `cwd` as this user; rejects with git's output when it fails. */
@@ -46,13 +48,17 @@ export async function sshUser(backend: Backend, hubUrl: string, context: APIRequ
   const home = path.join(sandboxRoot(backend), `ssh-${name}`)
   await mkdir(home, { recursive: true })
   const key = path.join(home, "id_ed25519")
-  execFileSync("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-C", `${name}@e2e`, "-f", key], { stdio: "pipe" })
+  execFileSync("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-C", `${name}@e2e`, "-f", key], { stdio: "pipe", timeout: 30_000 })
   const added = await context.post(`${hubUrl}/api/v1/account/keys`, {
     headers: { ...(await writeHeaders(context, hubUrl)), "Content-Type": "application/json" },
     data: { key: (await readFile(`${key}.pub`, "utf8")).trim() },
   })
   if (added.status() !== 201) throw new Error(`Adding ${name}'s SSH key failed: HTTP ${added.status()} ${await added.text()}`)
 
+  // single quotes, which both git's shell and Haxy's own ssh command parsing
+  // read; options in their space form, since Haxy's git config reader (xit's)
+  // spaces out an "=" inside a value
+  const sshCommand = `ssh -F /dev/null -i '${key}' -o 'IdentitiesOnly yes' -o 'IdentityAgent none'`
   const gitconfig = path.join(home, ".gitconfig")
   await writeFile(gitconfig, `[user]\n\tname = ${name}\n\temail = ${name}@example.test\n[init]\n\tdefaultBranch = main\n`)
   const env: NodeJS.ProcessEnv = {
@@ -66,7 +72,7 @@ export async function sshUser(backend: Backend, hubUrl: string, context: APIRequ
     // this key only, no ssh config, and the test host's key unchecked; no
     // agent either, so a developer's loaded keys can't stand in for it (a
     // push that must be refused would otherwise run as someone else)
-    GIT_SSH_COMMAND: `ssh -F /dev/null -i "${key}" -o IdentitiesOnly=yes -o IdentityAgent=none -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR`,
+    GIT_SSH_COMMAND: `${sshCommand} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR`,
   }
   const git = (cwd: string, ...args: string[]) => new Promise<string>((resolve, reject) => {
     execFile("git", args, { cwd, env }, (error, stdout, stderr) => {
@@ -77,6 +83,7 @@ export async function sshUser(backend: Backend, hubUrl: string, context: APIRequ
   let trees = 0
   return {
     name,
+    sshCommand,
     async remote(owner, repo) {
       const overview = await context.get(`${hubUrl}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`)
       if (!overview.ok()) throw new Error(`Reading ${owner}/${repo} failed: HTTP ${overview.status()}`)

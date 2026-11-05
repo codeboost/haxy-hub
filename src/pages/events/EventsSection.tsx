@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { Link } from "react-router"
 import { EmptyState, FailureState, LoadingState, Pager, useListParams } from "@/components/listing"
 import { countText, linkClass } from "@/components/thread/config"
@@ -6,6 +7,7 @@ import type { Count } from "@/lib/api"
 import { eventsPage, eventsRoute, eventTargetRoute, eventViews, listEvents, type EventKind, type EventTarget, type EventView, type RepoEvent, type TransactionId } from "@/lib/events"
 import type { RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
+import { SyncPanel } from "@/pages/sync/SyncPanel"
 
 const kindLabels: Record<EventKind, string> = {
   user: "User",
@@ -118,6 +120,8 @@ function EventListView({ repo, view, transaction, cursor }: { repo: RepoLocator;
 export function EventsSection({ repo, tail }: { repo: RepoLocator; tail: string }) {
   const { cursor } = useListParams()
   const page = eventsPage(tail)
+  // each finished sync reads the events again
+  const [syncs, setSyncs] = useState(0)
   if (page.kind === "unknown") {
     return (
       <section className="mt-6">
@@ -126,5 +130,11 @@ export function EventsSection({ repo, tail }: { repo: RepoLocator; tail: string 
       </section>
     )
   }
-  return <EventListView key={`${page.transaction ?? ""} ${page.view}`} repo={repo} view={page.view} transaction={page.transaction} cursor={cursor} />
+  return (
+    <>
+      {/* local mode syncs its events with the remote here, as the TUI's events tab does */}
+      {repo.kind === "local" && page.transaction === undefined && <SyncPanel onSynced={() => setSyncs((value) => value + 1)} />}
+      <EventListView key={`${page.transaction ?? ""} ${page.view} ${syncs}`} repo={repo} view={page.view} transaction={page.transaction} cursor={cursor} />
+    </>
+  )
 }

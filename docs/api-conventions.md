@@ -1411,3 +1411,103 @@ The routes keep the Vite proxy's 10 s timeout (an undo is one small transaction)
 in `haxy/src/api/undo.zig` (unit tests in `haxy/src/test/api_undo.zig`), the shared operations
 in `haxy/src/ui/Repo/Undo.zig` (tests in `haxy/src/test/undo.zig`), and Haxy Hub's
 `src/lib/undo.ts` and `src/pages/undo/UndoSection.tsx`.
+
+## Local mode: event sync
+
+From issue [#27](issues/27-local-mode-sync.md). Local mode syncs its repository's events (the
+`haxy/events` branch) with the configured remote, as the TUI's events tab does. One route,
+`/api/v1/repo/sync`; a server answers it `unsupported` (405), since a server's repositories
+take pushes instead. Other methods are `unsupported` with `Allow: GET, HEAD, POST`. Like every
+`/api/` write the POST passes the shared write guard first. Both methods answer the same body:
+
+```json
+{
+  "remote": "origin",
+  "state": "in_sync",
+  "running": false,
+  "last": { "id": "9f2c41d07a3be815-3", "outcome": "failed", "finished_at": "2026-11-05T10:00:00Z",
+            "failure": { "stage": "fetch", "message": "Couldn't fetch the remote's events (…). Nothing changed here, and your local changes are kept.", "remote_message": null } },
+  "conflicts": { "issues": { "count": Count, "items": ThreadSummary[] }, "patches": { "count": Count } }
+}
+```
+
+- `remote` is the remote a sync reaches (the first with fetched events, else the first
+  configured; the TUI's choice), or null when none is configured. It is a display name:
+  bytes that aren't UTF-8 become U+FFFD, as for repository paths (`api/path.zig` `display`).
+  Sync takes no remote, so no encoded form is sent. (xit's config reader refuses a config
+  that isn't UTF-8 today, so this is defensive.)
+- `state` compares the events branch with the remote's **as last fetched**: `no_remote`,
+  `not_fetched` (Haxy holds no copy of the remote's events: never fetched, or the remote has
+  none), `in_sync`, or `sync_needed` (they differ). It says nothing about events the remote got since; only a sync fetches.
+  The TUI's "sync needed!" is `sync_needed` with local events; everything else is its
+  "nothing to sync".
+- `running` says a sync is running in this Haxy process now (from Hub or the TUI). It and
+  `last` are read together (`Events.syncSnapshot`): a sync that just finished is either still
+  `running` or already `last`, never neither.
+- `last` is the last sync this process finished (null since it started; a restart forgets
+  it). `id` is opaque: a different id is a different sync, and no id is reused, by this
+  process or a restarted one (a random per-process part plus a counter). `outcome` is `synced` or
+  `failed`; a failure names the `stage` it stopped at, which says what it left behind, and
+  `message` (Haxy's, user-facing, holding Haxy's error name but no paths) says so:
+  `remote` (no remote or URL: nothing done), `fetch` (nothing changed here), `merge`
+  (fetched but not merged: nothing pushed), `push` (the remote's events are merged here,
+  ours aren't sent), `confirm` (pushed, but the remote couldn't be read again, so `state`
+  may be stale). `remote_message` is what the remote itself reported, when it said why
+  (cut to 1024 bytes; dropped if it isn't UTF-8). **Local events are never discarded.**
+- `conflicts` counts the unresolved metadata conflicts the TUI's issues and patches tabs
+  list (`ui.Repo.Issues.init`/`ui.Repo.Patches.init`, conflicts view), after this sync and
+  any earlier ones, and names the first 20 conflicted issues (`ThreadSummary`, newest
+  first). Hub links each to its issue page; patches have no Hub pages yet. #25 resolves
+  them; until then a conflicted field keeps this repository's value. `conflicts` is null when
+  Haxy can't read them, e.g. after a sync fetched events that can't be consumed (that sync's
+  `last` is a `merge` failure); the rest of the answer still stands.
+- **A status read never waits on a sync.** It reads refs, which no sync step holds, and
+  brings the event db up to date first only when nothing holds the repository's database: a
+  xit repository's fetch keeps the database locked for its whole network exchange, so while
+  one runs the conflicts come from what is already committed.
+
+**Running a sync.** `POST /api/v1/repo/sync` (no body) runs `ui.Repo.Events.runSync`, the
+TUI's own sync: fetch `+refs/heads/haxy/events:refs/remotes/<remote>/haxy/events` (over the
+repository's `core.sshCommand` or `ssh`, in batch mode, as the TUI does), merge with
+`evt.mergeEvents` (the shared field-by-field merge rules), consume, push `haxy/events`, and
+fetch again. Only the events branch and its remote ref move, so the code HEAD, its branch
+and the work tree stay as they are. It answers **200 once the sync has finished**, with the
+body above and `last` being this sync, whether it synced or failed: a failed sync is a
+completed operation with an explicit failure, not an HTTP error. Errors keep their usual
+meaning: `conflict` (409) when another sync is running in this process (one at a time, the
+TUI's included; nothing ran), `internal` when Haxy itself failed (the repository couldn't be
+opened). A git repository's merge holds the same in-process lock as #12's shared event
+writes, so a concurrent issue write can't land between the merge's read and its write.
+
+**Histories that began apart.** A repository whose events were written locally and on the
+server before they ever synced has two event histories with no common ancestor. Haxy's
+merge commit for them was written, but consuming it failed (`NoCommonAncestor`), which left
+the events branch unreadable for every later read, on both sides once pushed. The shared
+consume now merges such parents with no baseline, the case `mergeFields` already defines:
+a record only one side has arrives whole, and a field the two sides set differently is a
+conflict (this side's value stands). The fix is in `evt.consume`/`evt.merge`, so the TUI's
+sync and a server consuming the pushed merge get it too.
+
+**Why one request, not start-and-poll.** A sync is one bounded operation that Haxy runs to
+completion whether or not anyone is waiting, so the request simply lasts as long as the sync,
+with no client timeout (`timeouts.write` is null) and no proxy timeout: `vite.config.ts`
+lists `^/api/v1/repo/sync` before the catch-all, beside `/api/v1/repos` (Timeouts). The
+status read covers what an operation resource would: `running` and `last` (with its `id`)
+settle a lost answer, without new storage or ids to keep. The remote's own transport bounds
+the wait (ssh in batch mode fails rather than prompts; a remote that accepts the connection
+and never answers holds the sync until it hangs up, as in the TUI).
+
+**Unknown outcomes.** When the POST's answer is lost (timeout, `unreachable`, `internal`,
+unreadable), Hub reads the status before offering another sync: `running` means it is still
+going (Hub offers "Check again"); a `last.id` other than the one Hub saw before the click
+means a sync finished since, and Hub shows that result; otherwise no sync finished (it may
+never have reached Haxy, or Haxy restarted) and Hub offers a new sync. A sync is safe to
+repeat: it fetches, merges and pushes whatever stands. A sync refused with `conflict`
+because another one runs (another tab, the TUI) is waited for the same way: Hub says one is
+running, and "Check again" shows the other sync's result once `last.id` changes and reads
+the events again.
+
+Implemented in `haxy/src/api/sync.zig` and `haxy/src/ui/Repo/Events.zig` (`runSync`,
+`syncStatus`, `lastSync`, `syncRunning`; the TUI's `sync` and `Header.local` now use them);
+unit tests in `haxy/src/test/sync.zig`. Haxy Hub: `src/lib/sync.ts` and
+`src/pages/sync/SyncPanel.tsx`, shown above the events list in local mode.
