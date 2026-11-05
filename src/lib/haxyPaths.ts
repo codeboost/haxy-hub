@@ -1,4 +1,5 @@
 import { canonicalPath, canonicalRef, refsRoute, repoRoute, type RepoLocator } from "@/lib/repo"
+import { hubPathForEventsPath } from "@/lib/events"
 import { hubPathForIssuePath } from "@/lib/threads"
 
 /**
@@ -17,6 +18,7 @@ import { hubPathForIssuePath } from "@/lib/threads"
  * | `/<repo>/refs[/branch:<from>][/search:<s>]`             | `<hub repo>/branches?search=<s>`         |
  * | `/<repo>/refs/tag:<from>[/search:<s>]`                  | `<hub repo>/tags?search=<s>`             |
  * | `/<repo>/issues…`, `/<repo>/issue:<id>…`              | see `hubPathForIssuePath` (`@/lib/threads`) |
+ * | `/<repo>/events…`, `/<repo>/event:<id>…`              | see `hubPathForEventsPath` (`@/lib/events`) |
  *
  * `<ref>` is `branch:<name>`, `tag:<name>` or `object:<oid>`, which become the
  * ref ids `branch:<name>`, `tag:<name>` and `commit:<oid>` with the name and
@@ -113,6 +115,7 @@ export function hubPathForHaxyPath(haxyPath: string, local = false): string {
   // Like the TUI, match on the path alone.
   const path = haxyPath.split(/[?#]/, 1)[0]
   const issue = hubPathForIssuePath(path, local); if (issue !== null) return issue
+  const events = hubPathForEventsPath(path, local); if (events !== null) return events
   // local Haxy's root is its repository; it has no home, about or user pages
   if (local) return path === "/" ? "/repo" : haxyPath
   if (path === "/" || path === "/home") return "/about"

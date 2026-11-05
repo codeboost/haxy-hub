@@ -6,6 +6,7 @@ import { RepoFiles } from "@/components/RepoFiles"
 import { RepoRefs } from "@/components/RepoRefs"
 import { getRepo, refsRoute, repoRoute, routePath, routeRef, type RefKind, type RepoLocator, type RepoOverview, type RepoSection } from "@/lib/repo"
 import { IssuesSection } from "@/pages/issues/IssuesSection"
+import { EventsSection } from "@/pages/events/EventsSection"
 import { useResource } from "@/lib/resource"
 
 const sectionLabels: Record<RepoSection, string> = {
@@ -27,6 +28,7 @@ const sectionRoutes: Partial<Record<RepoSection, (repo: RepoLocator) => string>>
   files: (repo) => repoRoute(repo),
   refs: (repo) => refsRoute(repo, "branch"),
   issues: (repo) => `${repoRoute(repo)}/issues`,
+  events: (repo) => `${repoRoute(repo)}/events`,
 }
 
 /** The sections Haxy offers this viewer. Those Haxy Hub doesn't have yet are listed, not linked. */
@@ -83,7 +85,7 @@ function NotFound({ repo }: { repo: RepoLocator }) {
  * its branches or tags (`…/branches`, `…/tags`); `section` picks another
  * section under the same header (`…/issues/…`).
  */
-export function RepoPage({ local = false, section = "files", refs }: { local?: boolean; section?: "files" | "issues"; refs?: RefKind }) {
+export function RepoPage({ local = false, section = "files", refs }: { local?: boolean; section?: "files" | "issues" | "events"; refs?: RefKind }) {
   const params = useParams()
   const location = useLocation()
   const repo: RepoLocator = local ? { kind: "local" } : { kind: "server", owner: params.owner ?? "", name: params.name ?? "" }
@@ -119,6 +121,8 @@ export function RepoPage({ local = false, section = "files", refs }: { local?: b
           <Header repo={repo} overview={data} section={refs ? "refs" : section} />
           {refs ? (
             <RepoRefs repo={repo} kind={refs} />
+          ) : section === "events" ? (
+            <EventsSection repo={repo} tail={params["*"] ?? ""} />
           ) : section === "issues" ? (
             <IssuesSection repo={repo} sections={data.sections} tail={params["*"] ?? ""} />
           ) : data.empty && refId === null ? (
@@ -153,4 +157,6 @@ export const repoRoutes: RouteObject[] = [
   { path: "repos/:owner/:name/branches", element: <RepoPage refs="branch" /> },
   { path: "repos/:owner/:name/tags", element: <RepoPage refs="tag" /> },
   { path: "repos/:owner/:name/issues/*", element: <RepoPage section="issues" /> },
+  { path: "repo/events/*", element: <RepoPage local section="events" /> },
+  { path: "repos/:owner/:name/events/*", element: <RepoPage section="events" /> },
 ]

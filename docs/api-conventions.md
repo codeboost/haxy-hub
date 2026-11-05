@@ -416,6 +416,75 @@ two overlapping creations of one name never both succeed. Implemented in
 `haxy/src/api/repo_create.zig` (unit tests in `haxy/src/test/api_repo_create.zig`) and
 `haxy-hub/src/lib/repoCreate.ts`.
 
+## Events and transactions
+
+From issue [#24](issues/24-events-browsing.md). A repository's events live under its API
+path (`/api/v1/repos/{owner}/{name}` on a server, `/api/v1/repo` in local mode). All are
+`GET`/`HEAD`, and each mode answers the other's routes with `unsupported`.
+
+| Route | Answer |
+| --- | --- |
+| `…/events?view=active\|removed&cursor=&page_size=` | One view's window: `{"view", "counts": {"active": Count, "removed": Count}, "items": Event[], "page"}`. `view` defaults to `active`. |
+| `…/transactions/{id}/events?view=&cursor=&page_size=` | The events one transaction wrote, read as that transaction left them: the same shape plus `"transaction": "{id}"`. |
+
+- Every answer is read by the TUI's events tab (`ui.Repo.Events.init`), so the two lists,
+  their order (most recently updated first), exact counts, windows and detail targets are
+  the TUI's. Active and removed events are separate lists, each with its own count and
+  pages; `counts` has both, as the TUI's tabs do.
+- **Who may see them.** The TUI shows the events tab only to viewers who may write to the
+  repository (`ui.Repo.hasSection(.events, …)`; the overview's `sections` lists `events`
+  then). Anyone else who can read the repository gets `not_found` ("Only people who may
+  write to this repository see its events.") from every event route, checked before
+  anything the request names, so a transaction id, cursor or view reveals nothing. It is
+  `not_found` rather than `forbidden` because the TUI answers these pages not found, and so
+  that no event route answers differently for an existing and a missing transaction. A
+  repository the viewer can't read is `not_found` with the repository message, as for
+  every repository route.
+- **Transactions.** A transaction id is the transaction's index in the repository's
+  history, sent as a decimal JSON string and treated as opaque. Haxy reads the events from
+  that transaction's own state, so later changes and undos don't change what it lists.
+  `not_found` ("There is no transaction with this id whose events can be shown.") for an id
+  that isn't canonical decimal, names no transaction, or lies below the history's undo floor
+  (the history a copied repository carries from its source), and for git repositories, which have no
+  transaction history (local mode on a git repository, as in the TUI). A transaction that
+  wrote no events lists none. Undo (#26) builds on these ids and shapes.
+- The cursor is opaque. (It names the next window's first event, as the TUI's "next" row
+  does, so it is not an offset.) A cursor naming an event this list no longer starts a
+  window at — since removed, or not one this transaction wrote — is `validation` on
+  `cursor`; so is a `view` other than `active` or `removed` (on `view`). `page_size` defaults
+  to the TUI's window of 20 and is capped at 100.
+- `Event` is `{"id", "kind", "author", "created_at", "target"}`. `kind` is Haxy's event kind
+  (`user`, `repo`, `fork`, `grant`, `notify`, `discuss`, `issue`, `comment`, `attach`,
+  `assign`, `patchrev`, `patch`); `author` is a thread's author shape; `created_at` is null
+  for kinds whose records don't keep a time (only discussions, issues, comments and patches
+  do).
+- `target` is what the event's detail opens, built by Haxy as a structure rather than a URL
+  for the client to parse: `{"kind": "thread", "thread_kind", "thread"}` or `{"kind":
+  "comment", "thread_kind", "thread", "comment"}`, where `thread_kind` is `discuss`,
+  `issue` or `patch` and the others are hex event ids. As in the TUI, only active events
+  have one, and only in a thread kind the repository has turned on; an attachment opens its
+  thread. Hub opens an issue's page for both shapes (a comment opens its issue until #13
+  adds comment pages); discussions, patches and comments on them have no Hub page yet and
+  are shown as unavailable rather than linked to Haxy.
+- Haxy's own event URLs in Markdown open the matching Hub pages (`hubPathForEventsPath` in
+  `src/lib/events.ts`, hooked into `hubPathForHaxyPath`). `<repo>` is `/<owner>:<name>` on a
+  server and empty in local mode:
+
+  | Haxy | Haxy Hub |
+  | --- | --- |
+  | `<repo>/events`, `<repo>/events/active` | `<hub repo>/events` |
+  | `<repo>/events/removed` | `<hub repo>/events/removed` |
+  | `<repo>/events[/active\|/removed]/moment:<n>` (`moment:` before or after the view) | `<hub repo>/events/transactions/<n>[/removed]` |
+  | `<repo>/event:<id>/kind:<kind>[/moment:<n>]` | `<hub repo>/events[/transactions/<n>]` |
+
+  An `event:` URL is a window rooted at that event; like `start:` windows it is dropped,
+  since only Haxy issues cursors.
+
+Implemented in `haxy/src/api/events.zig` (unit tests in `haxy/src/test/api_events.zig`);
+the TUI's reader (`ui.Repo.Events`) now builds each event's `Target` and creation time, from
+which the TUI derives its own link. Haxy Hub: `src/lib/events.ts` and
+`src/pages/events/EventsSection.tsx`.
+
 ## Security notes
 
 - Sessions stay in Haxy's HttpOnly cookie. Tokens, password hashes, local paths, signing
