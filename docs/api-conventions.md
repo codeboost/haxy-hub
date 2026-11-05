@@ -1322,3 +1322,92 @@ and `haxy/src/ui/Repo/Comment.zig` (`loadWindowSized`, `initSized`, `threadPosit
 unit tests in `haxy/src/test/thread_write.zig` and `haxy/src/test/api_issues.zig`. Haxy
 Hub: `src/lib/comments.ts` and `src/components/thread/` (`ThreadComments`,
 `CommentPermalink`, `CommentCard`, `CommentForms`).
+
+## Undo
+
+From issue [#26](issues/26-undo.md). A server repository's undo history lives under
+`/api/v1/repos/{owner}/{name}/undo`. Local mode leaves undo to xit itself: every route,
+including `/api/v1/repo/undo…`, answers `unsupported` (405, "Undo is not available in local
+mode."), whatever the method; a server answers the local routes `unsupported` too.
+
+| Route | Method | Body | Answer |
+| --- | --- | --- | --- |
+| `…/undo?cursor=&page_size=` | `GET`/`HEAD` | — | `{"revision", "newest", "items": UndoRecord[], "page"}`, newest first |
+| `…/undo/{id}?cursor=&page_size=` | `GET`/`HEAD` | — | the same, from transaction `{id}` down (the TUI's `/undo/<n>`) |
+| `…/undo` | `POST` | `{transaction, revision}` | 201 `{"revision", "record": UndoRecord}` |
+
+- **The rules are the TUI's.** Reads come from the TUI's undo tab (`ui.Repo.Undo.initWindow`)
+  and undos run through the TUI's own operation (`ui.Repo.Undo.executeAsOwner`). Who sees the
+  history is `ui.Repo.hasSection(.undo, …)`: people who may write to the repository (the
+  overview lists `undo` in `sections` then). Anyone else who can read it gets `not_found`
+  ("Only people who may write to this repository see its undo history.") from every route,
+  checked before anything the request names, as for events. Who may undo is
+  `RepoHandle.canUndo`: the repository's owners, its main owner and granted owners alike, as
+  in the TUI and Haxy's HTML form; a member gets `forbidden` ("Only the repository's owners can
+  undo."). What can be undone is `Undo.undoable`: any transaction above the history's floor,
+  never the initial state or the history a copied repository carries from its source.
+- **Transactions and pages.** A transaction id is its index in the repository's history, as
+  in Events and transactions: a decimal string, opaque to clients. `newest` is the history's
+  newest transaction when it was read, and `revision` an opaque string (32 hex digits today)
+  naming the history as that read saw it (`Undo.Revision`): a digest of the database's
+  generation (its file id, which every compaction draws anew), the newest transaction's index,
+  its place in the database and its undo record, and the record of the history's first
+  transaction. An index alone wouldn't do: clearing the history (the `:refs/haxy/undo` push)
+  compacts it to one transaction, so later ones reuse the indices a page read before the clear
+  showed; with the generation, even a history cleared and rebuilt the same way within one
+  second differs. Pages are the TUI's window of 20 by default (at most
+  100); the cursor is opaque (a `cursor` that names no listed transaction is `validation` on
+  `cursor`, and takes precedence over `{id}`), and `count` is exact: every transaction from the
+  floor up. `{id}` that isn't canonical decimal or isn't listed is `not_found` ("There is no
+  transaction with this id in the undo history.").
+- `UndoRecord` is `{"transaction", "action", "description", "created_at", "undone", "details",
+  "actions": {"undo": Action}}`, what the TUI's row and detail show: `action` is its row text
+  (`events (3)`, `undo`, `push`, `commit`…), `description` the text it shows when it has no
+  details, `created_at` null when the transaction has no undo record, and `undone` true when a
+  later undo discarded it. `details` stand in for the description, each `{"label", "text",
+  "target"}` as the TUI's labelled buttons (`what was undone`, `what was redone`, `events`,
+  `user`, `added to branch`, `created tag`…); `target` is null or what it opens, built by Haxy
+  as a structure: `{"kind": "transaction", "transaction"}` (the history at that transaction),
+  `{"kind": "events", "transaction"}` (the events it wrote), `{"kind": "user", "name"}`,
+  `{"kind": "commits", "tip", "base"}` (object ids; `base` may be null) or `{"kind": "branch" |
+  "tag", "ref", "name"}` (a ref id, see Refs). `actions.undo` says whether this viewer may undo
+  it, with the reason otherwise (`forbidden` for members; `unsupported` for the floor).
+- **An undo names the history it was chosen from.** `transaction` is undone with every
+  transaction after it, and `revision` must be the history's revision as the client read it:
+  when the history has moved on (another undo, a push, any change, a clear), nothing is undone
+  and the answer is `conflict` keyed by `revision` ("The undo history changed since you loaded
+  it. Review it again before undoing."). The check and the undo hold the repository's write
+  lock together. So a request repeated after a lost answer can't undo twice: the first one, if
+  it landed, moved the history on. Both fields are required (`validation` on each otherwise; no
+  id a client sends is ever added to, so ids past any history are refused, not overflowed);
+  a transaction that isn't listed or can't be undone is `not_found` ("There is no transaction
+  with this id that can be undone.").
+- **Authorization is read again when the undo runs.** The undo runs only while its actor still
+  owns the repository, under the lock role changes take (`evt.whileOwner`): an owner demoted
+  after loading the history undoes nothing and is answered as their authorization now reads
+  (`forbidden`, or `not_found` once they can't see the history), and a repository renamed or
+  deleted meanwhile is `not_found`. Like every `/api/` write, `POST` honours `X-Haxy-Viewer`.
+- The answer's `record` is the undo's own transaction (`action` `undo`, with a `what was
+  undone` detail naming the transaction it undid), and its `actions.undo` is the restoration
+  action: undoing the undo restores what it discarded (its record then says `what was
+  redone`). The record and the answer's `revision` (the history right after the undo, which
+  that reversal names) are read under the lock the undo ran in, so a clear landing just after
+  can't give the undo's index to another transaction's record.
+- Haxy's own undo URLs in Markdown open the Hub's undo pages (`hubPathForUndoPath` in
+  `src/lib/undo.ts`): `/<owner>:<name>/undo[/<n>]` → `/repos/<owner>/<name>/undo[/<n>]`.
+
+Haxy Hub shows an **Undo** section where Haxy lists it, at `/repos/<owner>/<name>/undo[/<id>]`
+with `?cursor=` (`/repo/undo` in local mode says undo isn't available there). Each row shows
+the transaction's action, time, description or linked details, and whether a later undo
+discarded it; owners get "Undo this" (the newest) or "Undo this and all after it", which asks
+for confirmation first. A completed undo shows its record and "Reverse this undo", even when
+reading the history again fails; once Haxy refuses that reversal for lost ownership, it is shown
+unavailable. A write refused because someone else is signed in now (another tab) keeps the
+confirmation open with the session-change message and its Reload button. A lost
+answer reads the history again and says what its newest transaction is now ("may or may not be
+from this attempt"); the list then names the new history, so nothing chosen from the old one
+can land. When that read fails too, no undo is offered until "Check again" gets an answer.
+The routes keep the Vite proxy's 10 s timeout (an undo is one small transaction). Implemented
+in `haxy/src/api/undo.zig` (unit tests in `haxy/src/test/api_undo.zig`), the shared operations
+in `haxy/src/ui/Repo/Undo.zig` (tests in `haxy/src/test/undo.zig`), and Haxy Hub's
+`src/lib/undo.ts` and `src/pages/undo/UndoSection.tsx`.
