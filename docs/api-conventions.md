@@ -1149,3 +1149,71 @@ filter). Long lines scroll sideways inside each hunk's own box.
 Implemented in `haxy/src/api/diff.zig`, dispatched from `haxy/src/api/commits.zig` (unit
 tests in `haxy/src/test/api_diff.zig`, and the shared windows' in `haxy/src/test/ui.zig`).
 Haxy Hub: `src/lib/diff.ts` and `src/pages/commits/CommitDiff.tsx`.
+
+## Threads: assignees
+
+From issue [#15](issues/15-assignment.md). An issue's assignees are part of its answers
+(`ThreadSummary.assignees`, see "Threads: issues"); each is
+`{"id", "name", "email", "search"}`: `name` when an account holds the assigned email (then
+`email` is null), else `email` alone, so an account's email is never shown. `id` is the
+assignment's event id (`evt.Assignment.idOf` the issue and the email), opaque to clients. In
+local mode, which has no accounts, every assignee shows by email. `search` is the
+`assignee:` filter that lists what they are assigned (Hub links each assignee to its own
+status's list with it, through `threadsRoute`).
+
+| Route | Method | Body | Answer |
+| --- | --- | --- | --- |
+| `…/issues/{id}/assignees` | `POST` | `{assignee}` | the issue as `…/issues/{id}` reads it, the assignee added |
+| `…/issues/{id}/assignees/{assignment}` | `DELETE` | — | the issue, the assignee removed |
+
+Wrong methods are `unsupported` with `Allow` (`POST`, `DELETE`). Like every `/api/` write
+they pass the shared write guard first, and Haxy Hub binds each to the viewer its page was
+loaded for.
+
+**One set of rules.** Both write through `thread_write.assign` and `thread_write.unassign`,
+which the TUI's thread tabs and Haxy's HTML forms (`…/issue:<id>/assign`,
+`…/assignee:<email>/unassign`) now use too:
+
+- *Who may write at all* is the issues tab's (`ui.authorizeUser`, as for every issue write:
+  `unauthenticated`, or `forbidden` "Your role in this repository doesn't allow writing
+  issues."). *Who may change who is assigned* is `ui.RepoSource.canModify` on the issue:
+  its author or anyone with the write role; others get `forbidden` ("Only the issue's author
+  and the repository's writers can change it."). Issue answers carry
+  `actions.assign`, the same decision.
+- *Who `assignee` names* is `ui.assigneeEmail`: text with an `@` is an email (trimmed); on a
+  server anything else is an account's name, assigned by that account's email. Refusals are
+  beside `assignee`: `validation` for a name no account holds, for blank text, and for an
+  email an assignment can't hold (whitespace, over 254 bytes); in local mode every name is
+  refused ("Enter an email address."). Someone already assigned, by name or by their
+  account's email, is `conflict` keyed by `assignee` ("This person is already assigned."),
+  the TUI's "already assigned".
+- An unknown or removed issue is `not_found` ("There is no issue with this id."), checked
+  before the viewer's rights. An `{assignment}` that isn't one of the issue's current
+  assignments (never made, already unassigned, or not an id) is `not_found` ("This person
+  isn't assigned to this issue."), and nothing changes.
+- **Atomic checks.** That the issue is live and whether the assignment is already active
+  are checked where the write lands: inside a xit repository's write transaction
+  (`evt.consumeGuarded`), or under #12's events lock for a Git repository (local mode), as
+  is the author check (so assignments now take that lock, unlike the note under #12's
+  "Atomic checks"). Local mode reads its events branch first, as every shared write does.
+  The answer is the issue read after the write.
+
+**Settling unknown outcomes.** Neither write is idempotent (the TUI's rules refuse a
+repeat), so Haxy Hub settles them: after an unknown outcome it reads the issue. An
+assignee shown under the typed name or email, or an unassigned `id` gone from the list,
+means done. Otherwise the user is told it couldn't be confirmed and that repeating is
+safe: a repeated assignment refused as `conflict` on `assignee`, or a repeated
+unassignment answered `not_found`, means the earlier attempt landed, and Hub says so rather
+than showing the refusal. (An email that belongs to an account shows as its name, so only
+the repeat can settle that case.) Whenever the read that would show the assignees as they
+are fails, including after a repeat that settled, the form holds itself until a "Check
+again" read succeeds (`useWrite`). The Assign button ignores the later clicks of a double
+click, as every Hub form does. An assignee answer updates only the assignees on the issue
+page, and a status answer everything else (`useThreadAnswers`), so answers that cross can't
+undo each other's change (#15 review).
+
+Implemented in `haxy/src/api/assignees.zig` (routes) and `haxy/src/thread_write.zig`
+(`assign`, `unassign`), with `id` and `actions.assign` in `haxy/src/api/thread.zig`; unit
+tests in `haxy/src/test/api_assignees.zig`, `haxy/src/test/api_issues.zig` and
+`haxy/src/test/thread_write.zig`. Haxy Hub: `src/lib/assignees.ts` and
+`src/components/assignees/ThreadAssignees.tsx`.
