@@ -416,6 +416,55 @@ two overlapping creations of one name never both succeed. Implemented in
 `haxy/src/api/repo_create.zig` (unit tests in `haxy/src/test/api_repo_create.zig`) and
 `haxy-hub/src/lib/repoCreate.ts`.
 
+## File finder
+
+From issue [#09](issues/09-file-finder.md). `GET`/`HEAD` `…/find?ref=<id>&search=<s>&cursor=&page_size=`
+(`…` = `/api/v1/repos/<owner>/<name>` or `/api/v1/repo`) finds the files at a ref whose
+names start with `search`, from the file index Haxy keeps for the TUI's files-tab finder. It
+resolves the repository and the `ref` (the default branch when absent) as the files view
+does, with the same `not_found` and `validation` answers.
+
+Haxy indexes only an **xit repository's branch tips** (a push, a merge or a fork indexes
+every branch in the same transaction), so every answer carries the `ref` it read and a
+`kind`:
+
+| `kind` | Meaning | Other fields |
+| --- | --- | --- |
+| `indexed` | The branch's latest commit is indexed. | `items` (`{"name", "path"}`, the path percent-encoded as every repository path is) and `page` |
+| `no_index` | A branch whose latest commit no index covers (such as `haxy/events`, or a repository indexed before the branch moved outside Haxy). | `reason: null` |
+| `unsupported` | A view Haxy never indexes: `reason` is `"ref"` for a tag, commit or patch revision, `"repository"` for a git repository (local mode). | `reason` |
+
+Neither `no_index` nor `unsupported` is an empty result, and Hub shows each differently.
+
+- Matching and order are the TUI's (`Files.fileIndex` and `Files.findFiles` in
+  `ui/Repo/Files.zig`, over `find.zig`): a file matches when its name (the last path
+  segment) starts with `search` byte for byte, ignoring ASCII case only; results are ordered
+  by that lowercased name, then by path. `search` is decoded once and never trimmed (a name
+  may start with a space). An empty `search` matches nothing; it only says whether the view
+  is indexed. Submodules aren't indexed.
+- Like the TUI, a search stops at 1000 results: past that, `count` is `{"kind":"at_least",
+  "value":1000}` and the rest aren't listed; otherwise it is `exact`. Those results page by
+  an opaque cursor; `page_size` defaults to the TUI's whole list (1000) and is capped at 100.
+- Haxy Hub's finder is `/repos/<owner>/<name>/find` (`/repo/find` in local mode) with the
+  ref, search and cursor in the query (`?ref=<id>&search=<s>&cursor=…`), reached from the
+  ref bar's **Find a file**. A result opens the file at the URL's ref
+  (`repoRoute(repo, path, ref)`). Haxy's own finder URLs are translated
+  (`hubPathForFindPath` in `src/lib/finder.ts`, hooked into `hubPathForHaxyPath`):
+
+  | Haxy | Haxy Hub |
+  | --- | --- |
+  | `<repo>/files[/<ref>]/find:<s>[/line:<n>]` | `<hub repo>/find?[ref=<id>&]search=<s>` |
+  | `<repo>/files[/<ref>]/find:<s>[/line:<n>]/path:<path>` | `<hub repo>/files/<path>[?ref=<id>][&line=<n>]`, the result it selects |
+
+  `<repo>` is `/<owner>:<name>`, or empty in local mode. A search that isn't UTF-8 has no
+  Hub form and stays as written.
+- The TUI shows its search box in server mode only, but Haxy answers `find:` routes in both
+  modes, and so does this route: a local xit repository with an index is searchable, and a
+  local git repository answers `unsupported`.
+
+Implemented in `haxy/src/api/find.zig` (unit tests in `haxy/src/test/api_find.zig`) and
+`haxy-hub/src/lib/finder.ts`.
+
 ## Security notes
 
 - Sessions stay in Haxy's HttpOnly cookie. Tokens, password hashes, local paths, signing
