@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import type { Backend } from "./backend"
 import type { Git } from "./push"
@@ -32,7 +34,9 @@ export function gitIn(dir: string): Git {
     GIT_CONFIG_NOSYSTEM: "1",
     LANG: "C.UTF-8",
   }
-  return (args, options = {}) => execFileSync("git", args, { cwd: dir, env: { ...env, ...options.env }, input: options.input, stdio: "pipe" }).toString().trim()
+  // a synchronous call blocks the test worker, so Playwright's own timeout
+  // can't end a hung git; this one does
+  return (args, options = {}) => execFileSync("git", args, { cwd: dir, env: { ...env, ...options.env }, input: options.input, stdio: "pipe", timeout: 60_000 }).toString().trim()
 }
 
 /** The git runner of a local-mode backend's repository. */
@@ -61,7 +65,16 @@ export function addCommits(git: Git, commits: FixtureCommit[]): string[] {
     if (commit.merge) {
       git(["merge", "--quiet", "--no-ff", "--no-edit", commit.merge, "-m", commit.message], { env })
     } else {
-      git(["commit", "--quiet", "--allow-empty", "--no-verify", "--cleanup=verbatim", "-F", "-"], { env, input: commit.message })
+      // not through stdin: a message past the pipe's buffer can leave git
+      // waiting for an end of input that never comes
+      const dir = mkdtempSync(path.join(os.tmpdir(), "haxy-hub-e2e-message-"))
+      try {
+        const file = path.join(dir, "message")
+        writeFileSync(file, commit.message)
+        git(["commit", "--quiet", "--allow-empty", "--no-verify", "--cleanup=verbatim", "-F", file], { env })
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
     }
     return git(["rev-parse", "HEAD"])
   })
