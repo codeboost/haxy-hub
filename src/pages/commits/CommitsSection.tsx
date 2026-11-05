@@ -7,6 +7,8 @@ import { AuthorName, Instant } from "@/components/thread/ThreadParts"
 import { commitRoute, commitsRoute, commitsView, getCommit, listCommits, type CommitPerson, type CommitStats, type CommitSummary, type History } from "@/lib/commits"
 import { refsRoute, repoRoute, routeRef, type ReadRef, type RefId, type RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
+import { commitDiffRoute } from "@/lib/diff"
+import { CommitDiffView } from "@/pages/commits/CommitDiff"
 
 // A repository's commit history at the default branch or the URL's `?ref=`,
 // a page at a time (`?cursor=`), with Haxy's indexed commit search
@@ -31,6 +33,7 @@ export function CommitsSection({ repo }: { repo: RepoLocator }) {
   switch (view.kind) {
     case "history": return <HistoryView repo={repo} refId={refId} />
     case "commit": return <CommitView key={view.id} repo={repo} id={view.id} refId={refId} />
+    case "diff": return <CommitDiffView key={view.id} repo={repo} id={view.id} refId={refId} />
     case "unknown": return <EmptyState title="Page not found">There is no such commits page. <Link to={commitsRoute(repo)} className={linkClass}>Open the history</Link></EmptyState>
   }
 }
@@ -239,7 +242,10 @@ function CommitView({ repo, id, refId }: { repo: RepoLocator; id: string; refId:
         <dt className="text-muted-foreground">Statistics</dt>
         <dd><Stats stats={data.stats} /></dd>
       </dl>
-      <p className="mt-4 text-sm"><Link to={repoRoute(repo, "", `commit:${data.id}`)} className={linkClass}>Browse files at this commit</Link></p>
+      <p className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        <Link to={commitDiffRoute(repo, data.id, refId)} className={linkClass}>View changes</Link>
+        <Link to={repoRoute(repo, "", `commit:${data.id}`)} className={linkClass}>Browse files at this commit</Link>
+      </p>
       {data.message_truncated && (
         <p role="status" aria-label="Truncated message" className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-2 text-sm">
           This message is longer than Haxy reads; only its start is shown.

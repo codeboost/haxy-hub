@@ -115,18 +115,20 @@ export function commitsRoute(repo: RepoLocator, ref: RefId | null = null, query:
 
 /**
  * The Hub route of one commit, `…/commits/<id>`. `ref` is the history it was
- * opened from, which its way back returns to. (A commit's diff, #08, hangs
- * off this route.)
+ * opened from, which its way back returns to. Its diff hangs off this route
+ * (`commitDiffRoute`, `@/lib/diff`).
  */
 export function commitRoute(repo: RepoLocator, id: ObjectId, ref: RefId | null = null): string {
   return `${repoRoute(repo)}/commits/${encodeURIComponent(id)}${routeQuery(ref, {})}`
 }
 
-/** What a commits route's tail (the raw pathname after `…/commits`) names. */
-export function commitsView(tail: string): { kind: "history" } | { kind: "commit"; id: ObjectId } | { kind: "unknown" } {
+/** What a commits route's tail (the raw pathname after `…/commits`) names: the history, a commit, or its diff (`<id>/diff`). */
+export function commitsView(tail: string): { kind: "history" } | { kind: "commit" | "diff"; id: ObjectId } | { kind: "unknown" } {
   const segments = tail.split("/").filter((segment) => segment.length > 0)
   if (segments.length === 0) return { kind: "history" }
-  if (segments.length === 1 && /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(segments[0])) return { kind: "commit", id: segments[0] }
+  if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(segments[0])) return { kind: "unknown" }
+  if (segments.length === 1) return { kind: "commit", id: segments[0] }
+  if (segments.length === 2 && segments[1] === "diff") return { kind: "diff", id: segments[0] }
   return { kind: "unknown" }
 }
 

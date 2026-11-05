@@ -487,6 +487,7 @@ Implemented in `haxy/src/api/events.zig` (unit tests in `haxy/src/test/api_event
 the TUI's reader (`ui.Repo.Events`) now builds each event's `Target` and creation time, from
 which the TUI derives its own link. Haxy Hub: `src/lib/events.ts` and
 `src/pages/events/EventsSection.tsx`.
+
 ## File finder
 
 From issue [#09](issues/09-file-finder.md). `GET`/`HEAD` `…/find?ref=<id>&search=<s>&cursor=&page_size=`
@@ -535,6 +536,7 @@ Neither `no_index` nor `unsupported` is an empty result, and Hub shows each diff
 
 Implemented in `haxy/src/api/find.zig` (unit tests in `haxy/src/test/api_find.zig`) and
 `haxy-hub/src/lib/finder.ts`.
+
 ## Commit history
 
 From issue [#07](issues/07-commit-history-and-search.md). A repository's history lives
@@ -625,6 +627,7 @@ statistics and its search are the TUI's.
 
 Implemented in `haxy/src/api/commits.zig` (unit tests in `haxy/src/test/api_commits.zig`);
 Haxy Hub: `src/lib/commits.ts`, `src/pages/commits/CommitsSection.tsx`.
+
 ## Repository administration
 
 From issue [#23](issues/23-repo-administration.md). A server repository's owners manage it
@@ -1072,3 +1075,77 @@ Haxy Hub settles a member write whose outcome is unknown, or that was refused as
 revoke. A deletion whose answer is lost and whose follow-up probe finds that another tab
 signed out or switched user says that the outcome couldn't be checked, never that nothing
 was deleted, and offers a reload; the deletion stays disabled.
+
+## Commit diffs
+
+From issue [#08](issues/08-commit-diffs.md). A commit's diff hangs off its route:
+`GET`/`HEAD` `…/commits/{id}/diff?path=&cursor=&page_size=` (`…` =
+`/api/v1/repos/{owner}/{name}` or `/api/v1/repo`). It resolves and hides the repository
+as the commit routes do (see Commit history), and `{id}` is a full commit id as there.
+The diff is against the commit's first parent (its `parent`), or against nothing for a
+root commit, so every file a root commit holds is added; a merge's diff therefore spans
+everything its other parents brought in.
+
+Every window is read through the TUI's diff pane (`ui.Repo.Diff.renderAt`), so what a
+window holds, its size, the path filter and the placeholders are the TUI's:
+
+```json
+{
+  "commit": "<id>", "parent": "<id>" | null, "path": "<encoded path>" | null,
+  "items": [{ "path", "name", "status", "kind", "lines": [{ "kind", "old_number", "new_number", "text" }] }],
+  "truncated": false,
+  "page": { "has_more": true, "next_cursor": "10", "count": { "kind": "unknown" } }
+}
+```
+
+- An **entry** is a hunk of a changed text file, or a whole file shown only by its path.
+  Files come in the order of Haxy's tree diff; a changed file's hunks are consecutive
+  entries with the same `path`. `path` is percent-encoded bytes and `name` its last
+  segment for display (see Repository paths).
+- `status` is `added`, `removed` or `changed`. `kind` says what the entry shows:
+  - `hunk`: `lines` of a changed text file, each `context`, `added` or `removed`, with
+    1-based `old_number`/`new_number` (null on the side a line isn't on) and its `text`.
+    Xit breaks a long change into hunks of at most 500 edits.
+  - `file`: an added or removed text file, which shows only its path, as in the TUI.
+  - `binary`: a file xit reads as binary: not UTF-8, or past its text limits (50 MB, a
+    line of 10,000 bytes or more, a million lines). Such a file is never diffed.
+  - `too_large`: a change past xit's limit on a file's edits (a million). The entries
+    of that file before the limit stay, and the rest of the file is this one entry.
+  The last three carry no `lines`.
+- `truncated` is true when the diff passes xit's limit on the lines a diff reads (50
+  million across its files). The window ends there, with `has_more` false. Clients must
+  not read an empty window then as "no changes": the files it would have held were never
+  examined (a path filter's file included). The TUI pane says "the rest of this diff is
+  too large to show", and Hub shows "These changes are incomplete" in place of any
+  "no changes" state.
+- **Windows.** `page_size` counts entries; it defaults to the TUI's window of 10 and is
+  capped at 100. A window also stops before an entry that would take it past a million
+  cells (lines × widest line, as the TUI lays them out), but always holds at least one.
+  The cursor is the next window's first entry, counted from the start of the diff, which
+  is how the TUI keys its windows (`start:`); clients treat it as opaque. A cursor past the
+  end is an empty window. The count is `unknown`, as the TUI doesn't count a diff.
+- **Path filter.** `path` (sent back as a response encoded it, decoded once, as the files
+  view reads it) narrows the diff to the file at exactly that path, as the TUI's filter
+  does; it isn't a directory prefix. A path the commit doesn't change is an empty window,
+  not an error. The answer echoes it as `path`.
+- One repository snapshot is read per request: the commit, its parent, and every file.
+- Errors: a `{id}` that isn't a full commit id of this repository (a tree, blob or tag
+  object too) is `not_found` ("This repository has no commit with this id."). A malformed
+  `path`, `cursor` or `page_size` is `validation` on that field.
+
+The shared operation (`Diff.renderAt`) now also serves the TUI: a changed binary file,
+which the TUI used to leave out, shows there labelled "binary", and a change past xit's
+limits shows "too large to diff" instead of failing the page.
+
+Haxy Hub's route is `<hub repo>/commits/<id>/diff[?ref=<id>][&path=<encoded path>][&cursor=…]`
+(`commitDiffRoute`), reached from the commit page's "View changes". `ref` is the history the
+commit was opened from, as for the commit page. The path is put in exactly as Haxy encoded
+it and read back from the raw `location.search` (`diffParams`), so a path that isn't UTF-8
+round-trips through refresh, back/forward and shared links; paths are shown with U+FFFD
+replacement. Each file's entries show under its path with "View file" (the files view at
+`commit:<id>`, or at `commit:<parent>` for a removed file) and "Only this file" (the
+filter). Long lines scroll sideways inside each hunk's own box.
+
+Implemented in `haxy/src/api/diff.zig`, dispatched from `haxy/src/api/commits.zig` (unit
+tests in `haxy/src/test/api_diff.zig`, and the shared windows' in `haxy/src/test/ui.zig`).
+Haxy Hub: `src/lib/diff.ts` and `src/pages/commits/CommitDiff.tsx`.
