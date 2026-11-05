@@ -1,5 +1,6 @@
 import { canonicalPath, canonicalRef, refsRoute, repoRoute, type RepoLocator } from "@/lib/repo"
 import { hubPathForEventsPath } from "@/lib/events"
+import { hubPathForUndoPath } from "@/lib/undo"
 import { hubPathForCommitPath } from "@/lib/commits"
 import { hubPathForIssuePath } from "@/lib/threads"
 import { hubPathForFindPath } from "@/lib/finder"
@@ -120,6 +121,7 @@ export function hubPathForHaxyPath(haxyPath: string, local = false): string {
   const path = haxyPath.split(/[?#]/, 1)[0]
   const issue = hubPathForIssuePath(path, local); if (issue !== null) return issue
   const events = hubPathForEventsPath(path, local); if (events !== null) return events
+  const undo = hubPathForUndoPath(path, local); if (undo !== null) return undo
   const find = hubPathForFindPath(path, local); if (find !== null) return find
   const commit = hubPathForCommitPath(path, local); if (commit !== null) return commit
   // local Haxy's root is its repository; it has no home, about or user pages
