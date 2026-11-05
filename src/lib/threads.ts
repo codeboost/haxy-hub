@@ -22,8 +22,11 @@ export type ThreadAuthor = { kind: "user"; name: string } | { kind: "email"; ema
  */
 export type FilterLink = { name: string; search: string }
 
-/** An assignee: by account name when one holds the email, otherwise by email. */
-export type ThreadAssignee = { name: string | null; email: string | null; search: string }
+/**
+ * An assignee: by account name when one holds the email, otherwise by email.
+ * `id` is the assignment's (opaque) event id, which unassigns them.
+ */
+export type ThreadAssignee = { id: EventId; name: string | null; email: string | null; search: string }
 
 export type ThreadSummary<Status extends string> = {
   id: EventId
@@ -39,7 +42,7 @@ export type ThreadSummary<Status extends string> = {
 }
 
 /** What the viewer may do to one thread; Haxy checks again when it is done. */
-export type ThreadActions = Record<"edit" | "set_status" | "remove", ActionAvailability>
+export type ThreadActions = Record<"edit" | "set_status" | "remove" | "assign", ActionAvailability>
 
 /** What the viewer may do to a kind's list: open a thread. */
 export type ThreadListActions = Record<"create", ActionAvailability>
@@ -78,7 +81,8 @@ export type ThreadListQuery<Status extends string> = PageQuery & { status: Statu
 
 type Options = Pick<RequestOptions, "signal">
 
-function apiBase(repo: RepoLocator, kind: ThreadKind): string {
+/** The API path of a repository's threads of `kind`. */
+export function apiBase(repo: RepoLocator, kind: ThreadKind): string {
   const base = repo.kind === "local" ? "/api/v1/repo" : `/api/v1/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`
   return `${base}/${kind}`
 }

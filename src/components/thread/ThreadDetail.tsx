@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react"
+import type { ReactNode } from "react"
 import { Link } from "react-router"
 import { ArrowLeft, MessageSquare, TriangleAlert } from "lucide-react"
 import { FailureState, LoadingState } from "@/components/listing"
@@ -10,7 +10,9 @@ import { useResource } from "@/lib/resource"
 import { getThread, threadsRoute, type ThreadDetail, type WriteViewer } from "@/lib/threads"
 import { linkClass, type ThreadConfig } from "./config"
 import { ThreadActions } from "./ThreadActions"
-import { AssigneeLinks, AuthorName, Instant, LabelLinks, SectionUnavailable } from "./ThreadParts"
+import { AuthorName, Instant, LabelLinks, SectionUnavailable } from "./ThreadParts"
+import { ThreadAssignees } from "@/components/assignees/ThreadAssignees"
+import { useThreadAnswers } from "@/components/assignees/useThreadAnswers"
 
 function Field({ title, children }: { title: string; children: ReactNode }) {
   const id = `thread-${title.toLowerCase()}`
@@ -23,9 +25,8 @@ function Field({ title, children }: { title: string; children: ReactNode }) {
 }
 
 function Body<Status extends string>({ repo, config, loaded, viewer }: { repo: RepoLocator; config: ThreadConfig<Status>; loaded: ThreadDetail<Status>; viewer: WriteViewer }) {
-  // what a change on this page answered with, until the page loads again
-  const [changed, setChanged] = useState<{ from: ThreadDetail<Status>; thread: ThreadDetail<Status> } | null>(null)
-  const thread = changed?.from === loaded ? changed.thread : loaded
+  // what the changes on this page answered with, until the page loads again
+  const { thread, onChanged, onAssigneesChanged } = useThreadAnswers(loaded)
   const listOf = (search: string) => threadsRoute(repo, config.kind, config.statuses, thread.status, { search })
   return (
     <article className="mt-6">
@@ -38,14 +39,14 @@ function Body<Status extends string>({ repo, config, loaded, viewer }: { repo: R
         <span>Opened <Instant value={thread.created_at} /> by <AuthorName author={thread.author} /></span>
         <span className="inline-flex items-center gap-1"><MessageSquare size={14} aria-hidden />{thread.comment_count} {thread.comment_count === 1 ? "comment" : "comments"}</span>
       </div>
-      <ThreadActions repo={repo} config={config} thread={thread} viewer={viewer} onChanged={(updated) => setChanged({ from: loaded, thread: updated })} />
+      <ThreadActions repo={repo} config={config} thread={thread} viewer={viewer} onChanged={onChanged} />
       {thread.conflicted && (
         <p className="mt-4 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-2 text-sm">
           <TriangleAlert size={16} aria-hidden />Concurrent edits to this {config.noun.toLowerCase()} conflict; the values shown are this server's.
         </p>
       )}
       {thread.labels.length > 0 && <Field title="Labels"><div className="flex flex-wrap gap-1"><LabelLinks labels={thread.labels} to={listOf} /></div></Field>}
-      {thread.assignees.length > 0 && <Field title="Assignees"><div className="flex flex-wrap gap-1"><AssigneeLinks assignees={thread.assignees} to={listOf} /></div></Field>}
+      <ThreadAssignees repo={repo} config={config} thread={thread} viewer={viewer} onChanged={onAssigneesChanged} />
       <Field title="Description">
         <div className="rounded-xl border bg-card p-4 sm:p-6">
           {thread.description.length === 0 ? <p className="text-muted-foreground">No description.</p> : <Markdown blocks={thread.description} resolveLink={(destination) => linkTarget(destination, repo.kind === "local")} />}

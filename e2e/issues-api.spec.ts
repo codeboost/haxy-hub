@@ -9,7 +9,10 @@ import type { Backend } from "./support/backend"
 // tab (its server-rendered TUI page) shows for the same fixture.
 
 type Count = { kind: "exact" | "at_least"; value: number } | { kind: "unknown" }
-type Summary = { id: string; title: string; status: string; labels: Array<{ name: string; search: string }>; assignees: Array<{ name: string | null; email: string | null; search: string }> }
+// an assignment's id: opaque, 32 hex digits
+const assignment = expect.stringMatching(/^[0-9a-f]{32}$/)
+
+type Summary = { id: string; title: string; status: string; labels: Array<{ name: string; search: string }>; assignees: Array<{ id: string; name: string | null; email: string | null; search: string }> }
 type List = { status: string; items: Summary[]; page: { has_more: boolean; next_cursor: string | null; count: Count }; counts: { open: Count; closed: Count }; filters: unknown }
 
 const id = expect.stringMatching(/^[0-9a-f]{32}$/)
@@ -67,7 +70,7 @@ test.describe("with the demo data", () => {
       status: "open",
       labels: [{ name: "maintenance", search: "label:maintenance" }, { name: "plugins", search: "label:plugins" }],
       author: { kind: "user", name: expect.any(String) },
-      assignees: [{ name: "alice", email: null, search: "assignee:alice" }, { name: "bobby", email: null, search: "assignee:bobby" }],
+      assignees: [{ id: assignment, name: "alice", email: null, search: "assignee:alice" }, { id: assignment, name: "bobby", email: null, search: "assignee:bobby" }],
       created_at: expect.stringMatching(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/),
       comment_count: expect.any(Number),
       conflicted: false,
@@ -166,7 +169,7 @@ test.describe("with the demo data", () => {
     const issue = await response.json()
     // the same issue as listed, its links extending no list's search
     expect(issue).toMatchObject({ id: summary.id, title: summary.title, status: "open", labels: summary.labels.map((label) => ({ name: label.name, search: `label:${label.name}` })) })
-    expect(issue.assignees).toEqual([{ name: "admin", email: null, search: "assignee:admin" }])
+    expect(issue.assignees).toEqual([{ id: assignment, name: "admin", email: null, search: "assignee:admin" }])
     expect(issue.comment_count).toBeGreaterThan(0)
     // the demo makes this description longer than the TUI's detail preview
     expect(issue.description.length).toBeGreaterThan(3)
@@ -269,7 +272,7 @@ test("local mode lists the opened repository's issues, with labels, assignees an
   await closeIssue(request, backend, "", first)
 
   const open = await list(request, `${hub.url}/api/v1/repo`)
-  expect(open.items).toEqual([expect.objectContaining({ id: second, title: "Local idea", labels: [{ name: "idea", search: "label:idea" }], assignees: [{ name: null, email: "dev@example.test", search: "assignee:dev@example.test" }] })])
+  expect(open.items).toEqual([expect.objectContaining({ id: second, title: "Local idea", labels: [{ name: "idea", search: "label:idea" }], assignees: [{ id: assignment, name: null, email: "dev@example.test", search: "assignee:dev@example.test" }] })])
   expect(open.counts).toEqual({ open: { kind: "exact", value: 1 }, closed: { kind: "exact", value: 1 } })
   expect((await list(request, `${hub.url}/api/v1/repo`, "?search=assignee:dev@example.test")).items.map((issue) => issue.id)).toEqual([second])
 
