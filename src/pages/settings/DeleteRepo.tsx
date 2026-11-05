@@ -11,7 +11,7 @@ import { linkClass, useWrite } from "./shared"
  * A deletion whose outcome is unknown: what can be said is only whether the
  * repository exists now, never what this attempt did.
  */
-type Uncertain = { cause: string; check: "checking" | "gone" | "exists" | "unchecked" } | { cause: string; check: "viewer"; failure: Failure }
+type Uncertain = { cause: string; check: "checking" | "gone" | "exists" | "unchecked" } | { cause: string; check: "viewer"; failure: Failure; now: ViewerChangedError["viewer"] }
 
 /**
  * Deletes the repository behind Haxy's safeguards (`ui.Delete.perform`): its
@@ -42,8 +42,9 @@ export function DeleteRepo({ repo, viewer, settings }: { repo: AdminRepo; viewer
     try {
       found = { cause, check: (await repoExistsFor(repo, viewer)) ? "exists" : "gone" }
     } catch (error) {
-      // the probe answered for someone else: it says nothing about this deletion
-      found = error instanceof ViewerChangedError ? { cause, check: "viewer", failure: failureOf(error, "") } : { cause, check: "unchecked" }
+      // the probe answered for someone else: it says nothing about this deletion,
+      // which may have landed all the same
+      found = error instanceof ViewerChangedError ? { cause, check: "viewer", failure: failureOf(error, ""), now: error.viewer } : { cause, check: "unchecked" }
     }
     if (current()) setUncertain(found)
   }
@@ -121,8 +122,12 @@ function UnknownOutcome({ uncertain, userPage, label, onCheck }: { uncertain: Un
     case "unchecked":
       body = <>{lead} Haxy couldn't say whether it still exists either, so check before trying again.{checkAgain}</>
       break
-    case "viewer":
-      return <FailureMessage failure={uncertain.failure}>{lead} {uncertain.failure.message}</FailureMessage>
+    case "viewer": {
+      // never the failure's own message, which says the change wasn't made
+      const who = uncertain.now ? `You're signed in as ${uncertain.now.name} now` : "You're signed out now"
+      const next = uncertain.now ? `Reload to continue as ${uncertain.now.name}.` : "Reload to continue."
+      return <FailureMessage failure={uncertain.failure}>{lead} {who} (perhaps from another tab), so Haxy couldn't check whether {label} was deleted. {next}</FailureMessage>
+    }
   }
   return <FormMessage kind="error"><p>{body}</p></FormMessage>
 }

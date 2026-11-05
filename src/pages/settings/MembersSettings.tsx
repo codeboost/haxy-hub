@@ -6,26 +6,12 @@ import { FailureMessage, FormMessage, TextField, failureOf, type Failure } from 
 import { FailureState, LoadingState, Pager, useListParams } from "@/components/listing"
 import { ApiError } from "@/lib/api"
 import { repoRoute } from "@/lib/repo"
-import { addMember, listMembers, revokeMember, setMemberRole, type AdminRepo, type Member, type MemberRole } from "@/lib/repoAdmin"
+import { addMember, listMembers, memberRole, revokeMember, setMemberRole, type AdminRepo, type Member, type MemberRole } from "@/lib/repoAdmin"
 import { useResource } from "@/lib/resource"
 import { adminRoute, linkClass, lostAccess, useLeaveSettings, useWrite } from "./shared"
 import { Unresolved } from "./Unresolved"
 
 const roleLabels: Record<MemberRole, string> = { owner: "Owner", member: "Member" }
-
-/** The role `name` holds now, read from the first pages of the list (null when not listed). */
-async function currentRole(repo: AdminRepo, name: string): Promise<MemberRole | null> {
-  let cursor: string | undefined
-  // the list is short in practice; stop after a few pages rather than guess
-  for (let pages = 0; pages < 10; pages++) {
-    const page = await listMembers(repo, { cursor, page_size: 100 })
-    const found = page.items.find((member) => member.name === name)
-    if (found) return found.role
-    if (!page.page.next_cursor) return null
-    cursor = page.page.next_cursor
-  }
-  throw new Error("too many members to check")
-}
 
 /**
  * What a read that settles a member write found: something to say, that the
@@ -37,7 +23,7 @@ type Reading = { kind: "known"; said: string } | { kind: "lost" } | { kind: "unk
 /** `name`'s role as Haxy holds it now, said in words. */
 async function roleNow(repo: AdminRepo, name: string): Promise<Reading> {
   try {
-    const role = await currentRole(repo, name)
+    const role = await memberRole(repo, name)
     return { kind: "known", said: role === null ? `${name} isn't a member now` : `${name} is ${role === "owner" ? "an owner" : "a member"} now` }
   } catch (error) {
     return lostAccess(error) ? { kind: "lost" } : { kind: "unknown" }

@@ -316,8 +316,8 @@ test("a member change refused before it applied leaves the row usable once Haxy'
   const bobRow = page.getByRole("list", { name: "Members" }).getByRole("listitem").filter({ hasText: bob.name })
   await expect(bobRow).toContainText("Member")
 
-  // the promote never reaches Haxy, and its answer is an internal error
-  await page.route(`**/api/v1/repos/*/tools/settings/members/${bob.name}`, (route) => route.fulfill(internalError))
+  // the promote never reaches Haxy, and its answer is an internal error (the lookup of bob's role does)
+  await page.route(`**/api/v1/repos/*/tools/settings/members/${bob.name}`, (route) => route.request().method() === "GET" ? route.continue() : route.fulfill(internalError))
   await bobRow.getByRole("button", { name: `Promote ${bob.name} to owner` }).click()
   await expect(page.getByRole("status").filter({ hasText: "may or may not be from this attempt" })).toContainText(`${bob.name} is a member now`)
   await expect(bobRow.getByRole("button", { name: `Promote ${bob.name} to owner` })).toBeEnabled()
@@ -326,7 +326,7 @@ test("a member change refused before it applied leaves the row usable once Haxy'
   // a demotion another owner made first: the row is read again and stays usable
   await page.unroute(`**/api/v1/repos/*/tools/settings/members/${bob.name}`)
   await bobRow.getByRole("button", { name: `Remove ${bob.name}` }).click()
-  await page.route(`**/api/v1/repos/*/tools/settings/members/${bob.name}`, (route) =>
+  await page.route(`**/api/v1/repos/*/tools/settings/members/${bob.name}`, (route) => route.request().method() === "GET" ? route.continue() :
     route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: { code: "conflict", message: `${bob.name}'s role changed meanwhile. Reload the members and try again.` } }) }))
   await bobRow.getByRole("button", { name: "Remove member" }).click()
   await expect(page.getByRole("status").filter({ hasText: "role changed meanwhile" })).toBeVisible()
@@ -472,6 +472,85 @@ test("a lost deletion answer probed after another tab signed out says so, rather
   // signed in again, the repository is still there
   await logIn(page, hub.url, alice, `/repos/${alice.name}/tools`)
   await expect(page.getByRole("heading", { level: 1 })).toContainText("tools")
+})
+
+test("a deletion that lands with its answer lost, probed after another tab signed out, says the outcome couldn't be checked", async ({ page, context, launch, playwright, request }) => {
+  const { hub, api } = await setUp(launch, playwright, "public")
+  await logIn(page, hub.url, alice, `/repos/${alice.name}/tools/settings/delete`)
+  const form = page.getByRole("form", { name: "Delete repository" })
+  const otherTab = await context.newPage()
+  await otherTab.goto(hub.url)
+  // the deletion lands; before its answer arrives, the other tab signs out, and the answer is lost
+  await page.route(`**/api/v1/repos/${alice.name}/tools`, async (route) => {
+    if (route.request().method() !== "DELETE") return route.continue()
+    await route.fetch()
+    await otherTab.getByRole("banner").getByRole("button", { name: "Log out" }).click()
+    await expect(otherTab.getByRole("banner").getByRole("link", { name: "Log in" })).toBeVisible()
+    await route.abort("connectionreset")
+  })
+  await form.getByLabel(`Type ${alice.name}:tools to confirm`).fill(`${alice.name}:tools`)
+  await form.getByLabel("Password").fill(alice.password)
+  await form.getByRole("button", { name: "Permanently delete this repository" }).click()
+  const alert = form.getByRole("alert")
+  await expect(alert).toContainText("You're signed out now")
+  await expect(alert).toContainText(`couldn't check whether ${alice.name}/tools was deleted`)
+  await expect(alert).not.toContainText("wasn't made")
+  await expect(alert).not.toContainText("still exists")
+  await expect(alert.getByRole("button", { name: "Reload" })).toBeVisible()
+  await expect(form.getByRole("button", { name: "Permanently delete this repository" })).toBeDisabled()
+  // it was in fact deleted
+  expect(await overviewStatus(request, api)).toBe(404)
+})
+
+test("member recovery reads the one member it settles, however many members there are, including after a revoke", async ({ page, launch, playwright }) => {
+  const { hub, owner, api } = await setUp(launch, playwright, "public")
+  await grant(owner, hub.url, api, bob.name)
+  // 1,100 members added after bob, so bob is listed past the first thousand
+  const others = Array.from({ length: 1100 }, (_, index) => ({ name: `member-${String(index).padStart(4, "0")}`, role: "member" }))
+  // reads of the list other than the page shown
+  let otherPages = 0
+  await page.route((url) => url.pathname.endsWith("/tools/settings/members"), async (route) => {
+    if (route.request().method() !== "GET") return route.continue()
+    // the real members (bob alone, if anyone), all on Haxy's first page
+    const url = new URL(route.request().url())
+    const first = new URL(url)
+    first.search = ""
+    const real = (await (await route.fetch({ url: first.toString() })).json()) as { main_owner: string; items: unknown[] }
+    const start = Number(url.searchParams.get("cursor") ?? "0")
+    const size = Number(url.searchParams.get("page_size") ?? "20")
+    if (start !== 1100) otherPages++
+    const all = [...others, ...real.items]
+    const next = start + size < all.length ? String(start + size) : null
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ main_owner: real.main_owner, items: all.slice(start, start + size), page: { has_more: next !== null, next_cursor: next, count: { kind: "unknown" } } }),
+    })
+  })
+  let lookups = 0
+  // every change lands, and its answer is lost
+  await page.route(`**/api/v1/repos/*/tools/settings/members/${bob.name}`, async (route) => {
+    if (route.request().method() === "GET") {
+      lookups++
+      return route.continue()
+    }
+    await route.fetch()
+    await route.fulfill(internalError)
+  })
+  await logIn(page, hub.url, alice, `/repos/${alice.name}/tools/settings/members?cursor=1100`)
+  const bobRow = page.getByRole("list", { name: "Members" }).getByRole("listitem").filter({ hasText: bob.name })
+  await expect(bobRow).toContainText("Member")
+
+  await bobRow.getByRole("button", { name: `Promote ${bob.name} to owner` }).click()
+  await expect(page.getByRole("status").filter({ hasText: "may or may not be from this attempt" })).toContainText(`${bob.name} is an owner now`)
+  expect(lookups).toBe(1)
+
+  await bobRow.getByRole("button", { name: `Remove ${bob.name}` }).click()
+  await bobRow.getByRole("button", { name: "Remove member" }).click()
+  await expect(page.getByRole("status").filter({ hasText: "may or may not be from this attempt" })).toContainText(`${bob.name} isn't a member now`)
+  expect(lookups).toBe(2)
+  await expect(page.getByRole("button", { name: "Check again" })).toHaveCount(0)
+  // only the page shown was read again, never a scan of the list
+  expect(otherPages).toBe(0)
 })
 
 test("a settings save in progress takes no further edits, so what it says it saved is what the form shows", async ({ page, launch, playwright }) => {
@@ -634,6 +713,7 @@ test("a member change that lands while another owner reverses it leaves the row 
   const bobRow = page.getByRole("list", { name: "Members" }).getByRole("listitem").filter({ hasText: bob.name })
   await expect(bobRow).toContainText("Member")
   await page.route(`**/api/v1/repos/*/tools/settings/members/${bob.name}`, async (route) => {
+    if (route.request().method() === "GET") return route.continue()
     const response = await route.fetch()
     // another owner demotes bob again before the list is read
     const headers = { ...(await writeHeaders(owner, hub.url)), "Content-Type": "application/json" }
@@ -700,6 +780,8 @@ test("a granted owner whose own demotion lands with its answer lost is told they
   await logIn(page, hub.url, bob, `/repos/${alice.name}/tools/settings/members`)
   const bobRow = page.getByRole("list", { name: "Members" }).getByRole("listitem").filter({ hasText: bob.name })
   await page.route(`**/api/v1/repos/*/tools/settings/members/${bob.name}`, async (route) => {
+    // the demotion lands and its answer is lost; the lookup that settles it reaches Haxy
+    if (route.request().method() === "GET") return route.continue()
     await route.fetch()
     await route.abort("connectionreset")
   })
