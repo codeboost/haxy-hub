@@ -23,7 +23,22 @@ export type Launch = {
   freePort(): Promise<number>
 }
 
+/** The Haxy API under any origin: the requests `page.route` interceptions are about. */
+const apiRequests = /^https?:\/\/[^/]+\/api(?:[/?]|$)/
+
 export const test = base.extend<{ launch: Launch }>({
+  // Keeps request interception on for the whole test. In Chromium, Playwright
+  // turns interception off when a page's last route goes (a `times` route used
+  // up, `unroute`, `unrouteAll`), and a request the page sends at that moment
+  // can be paused by the browser but never continued: it hangs without ever
+  // reaching Vite. Lost-answer tests hit this, since the app reads again right
+  // after the answer is lost. A context route outlives every page route, so
+  // interception never turns off; it passes each request on unchanged to the
+  // test's own routes or the network.
+  context: async ({ context }, use) => {
+    await context.route(apiRequests, (route) => route.fallback())
+    await use(context)
+  },
   launch: async ({}, use, testInfo) => {
     const binaries = selectedBinaries()
     const cleanups: Array<() => Promise<void>> = []
