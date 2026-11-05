@@ -13,6 +13,8 @@ export type ThreadConfig<Status extends string> = {
   plural: string
   statuses: readonly Status[]
   statusLabels: Record<Status, string>
+  /** The status a thread's button moves it to from each status, with the button's label ("Close issue"). */
+  statusChanges: Partial<Record<Status, { to: Status; label: string }>>
 }
 
 /** A count as a tab shows it: "22", "1000+" when counting stopped there, nothing when unknown. */
