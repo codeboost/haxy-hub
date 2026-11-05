@@ -20,7 +20,7 @@ export type Backend = {
   stop(): Promise<void>
   /**
    * Stops this backend and starts it again on the same port and data dir,
-   * resolving once it is ready. Only `launch.server()` and `launch.demo()` backends can restart.
+   * resolving once it is ready. `launch.server()`, `launch.demo()` and `launch.local()` backends can restart.
    */
   restart?(): Promise<Backend>
 }
@@ -117,7 +117,14 @@ export type RepoContent = {
   head?: string
 }
 
-export type LocalOptions = BackendOptions & RepoContent
+export type LocalOptions = BackendOptions & RepoContent & {
+  /**
+   * Git config entries written into the repository before Haxy starts, by
+   * name (`remote.origin.url`, `core.sshCommand`), as a person configures a
+   * clone; for instance the remote a sync reaches.
+   */
+  config?: Record<string, string>
+}
 
 export type FixtureRef = {
   kind: "branch" | "tag"
@@ -133,14 +140,22 @@ export async function startLocal(binaries: Binaries, sandbox: Sandbox, options: 
   const port = options.port ?? (await freePort())
   const repo = sandbox.path("repo")
   await buildRepo(repo, sandbox, options)
-
-  const process = startProcess("haxy (local)", binaries.haxy, ["--no-tui", "--web-listen", `127.0.0.1:${port}`], { cwd: repo, env: sandbox.env })
-  try {
-    return await readyBackend("haxy (local)", process, "local", repo, 30_000)
-  } catch (error) {
-    await process.stop()
-    throw error
+  for (const [name, value] of Object.entries(options.config ?? {})) {
+    execFileSync("git", ["config", name, value], { cwd: repo, env: sandbox.env, stdio: "pipe", timeout: 10_000 })
   }
+
+  // a restart serves the same repository on the same port, as reopening it would
+  const start = async (): Promise<Backend> => {
+    const process = startProcess("haxy (local)", binaries.haxy, ["--no-tui", "--web-listen", `127.0.0.1:${port}`], { cwd: repo, env: sandbox.env })
+    try {
+      const backend = await readyBackend("haxy (local)", process, "local", repo, 30_000)
+      return { ...backend, restart: async () => { await backend.stop(); return start() } }
+    } catch (error) {
+      await process.stop()
+      throw error
+    }
+  }
+  return start()
 }
 
 /** Creates a git repository at `repo` (inside `sandbox`) holding `content`. */

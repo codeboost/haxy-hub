@@ -48,6 +48,9 @@ export default defineConfig(({ mode }) => {
     // Creating a repository may copy a large one. Like every write it has no
     // client timeout, so the proxy waits for Haxy's answer too.
     "^/api/v1/repos(?:\\?|$)": backend,
+    // A sync (local mode) waits on the remote's fetch and push, and answers
+    // once it finished, so the proxy waits for that answer too.
+    "^/api/v1/repo/sync(?:\\?|$)": backend,
     "^/api(?:/|$)": { ...backend, proxyTimeout: 10_000 },
   }
   return {
