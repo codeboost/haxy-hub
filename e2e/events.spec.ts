@@ -53,12 +53,12 @@ test("a writer pages through active events, opens their threads, and switches to
   const events = page.getByRole("list", { name: "Active events" })
   await expect(events.getByRole("listitem")).toHaveCount(20)
 
-  // newest first: the comment opens its issue (Hub has no comment pages yet)
+  // newest first: the comment opens its own page
   const newest = events.getByRole("listitem").first()
   await expect(newest).toContainText("Comment")
   await expect(newest.getByRole("link", { name: "alice" })).toBeVisible()
   await expect(newest.locator("time")).toHaveAttribute("datetime", /^\d{4}-\d\d-\d\dT/)
-  await expect(newest.getByRole("link", { name: "View comment" })).toHaveAttribute("href", `/repos/alice/history/issues/${issues[0]}`)
+  await expect(newest.getByRole("link", { name: "View comment" })).toHaveAttribute("href", `/repos/alice/history/issues/${issues[0]}/comments/${comment}`)
   // a discussion has no Hub page yet
   const discussionRow = events.getByRole("listitem").filter({ hasText: "Discussion" })
   await expect(discussionRow).toContainText("No Haxy Hub page for discussions yet")

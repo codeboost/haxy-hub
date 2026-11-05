@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react"
-import { Link } from "react-router"
+import { Link, useLocation } from "react-router"
 import { ArrowLeft, MessageSquare, TriangleAlert } from "lucide-react"
 import { FailureState, LoadingState } from "@/components/listing"
 import { Markdown } from "@/components/Markdown"
@@ -10,6 +10,7 @@ import { useResource } from "@/lib/resource"
 import { getThread, threadsRoute, type ThreadDetail, type WriteViewer } from "@/lib/threads"
 import { linkClass, type ThreadConfig } from "./config"
 import { ThreadActions } from "./ThreadActions"
+import { ThreadComments } from "./ThreadComments"
 import { AssigneeLinks, AuthorName, Instant, LabelLinks, SectionUnavailable } from "./ThreadParts"
 
 function Field({ title, children }: { title: string; children: ReactNode }) {
@@ -51,6 +52,7 @@ function Body<Status extends string>({ repo, config, loaded, viewer }: { repo: R
           {thread.description.length === 0 ? <p className="text-muted-foreground">No description.</p> : <Markdown blocks={thread.description} resolveLink={(destination) => linkTarget(destination, repo.kind === "local")} />}
         </div>
       </Field>
+      <ThreadComments repo={repo} config={config} thread={thread.id} />
     </article>
   )
 }
@@ -58,9 +60,12 @@ function Body<Status extends string>({ repo, config, loaded, viewer }: { repo: R
 /** One thread's own page: its fields and whole description, independent of any list. */
 export function ThreadDetailView<Status extends string>({ repo, config, id, unavailable }: { repo: RepoLocator; config: ThreadConfig<Status>; id: string; unavailable: string | null }) {
   const { viewer, viewerKey } = useSession()
+  const location = useLocation()
   const key = repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
-  // what the viewer may do is part of the answer, so another viewer reads it again
-  const thread = useResource(`${config.kind} ${key} ${id} ${viewerKey}`, (signal) => getThread<Status>(repo, config.kind, id, { signal }))
+  // what the viewer may do is part of the answer, so another viewer reads it
+  // again; a navigation within the page (a comment posted, another comment
+  // page) reads it again in the background, so its counts stay current
+  const thread = useResource(`${config.kind} ${key} ${id} ${viewerKey}`, (signal) => getThread<Status>(repo, config.kind, id, { signal }), location.key)
   switch (thread.kind) {
     case "loading":
       return <LoadingState>Loading the {config.noun.toLowerCase()}…</LoadingState>
