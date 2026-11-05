@@ -357,14 +357,14 @@ already shows the repository.
   | `<repo>/issues`, `<repo>/issues/open[/search:<s>]` | `<hub repo>/issues[?search=<s>]` |
   | `<repo>/issues/closed[/search:<s>]` | `<hub repo>/issues/closed[?search=<s>]` |
   | `<repo>/issues/labels[/search:<s>]` | `<hub repo>/issues/labels[?search=<s>]` |
-  | `<repo>/issue:<id>[/search:<s>][/start:<n>]`, `…/description`, `…/comment:<c>[/start:<n>]` | `<hub repo>/issues/<id>` |
+  | `<repo>/issue:<id>[/search:<s>][/start:<n>]`, `…/description` | `<hub repo>/issues/<id>` |
+  | `<repo>/issue:<id>/comment:<c>[/start:<n>]` | `<hub repo>/issues/<id>/comments/<c>` (#13) |
   | `<repo>/issues/new` | `<hub repo>/issues/new` (#12) |
   | `<repo>/issue:<id>/edit` | `<hub repo>/issues/<id>/edit` (#12) |
 
   The other forms (`…/remove`, `…/resolve`) and `…/issues/conflicts` have no Hub page yet
   and stay as written. In local mode, `/` is the repository (`/repo`), and the
-  home, about and user paths, which local Haxy doesn't have, stay as written. A comment permalink opens its issue until #13 adds
-  comment pages.
+  home, about and user paths, which local Haxy doesn't have, stay as written.
 - Hub always requests a thread route rather than trusting a sections list it read
   earlier; the repository overview is read again on each navigation within the
   repository, so a kind another client turned on or off shows without a reload.
@@ -466,8 +466,7 @@ path (`/api/v1/repos/{owner}/{name}` on a server, `/api/v1/repo` in local mode).
   "comment", "thread_kind", "thread", "comment"}`, where `thread_kind` is `discuss`,
   `issue` or `patch` and the others are hex event ids. As in the TUI, only active events
   have one, and only in a thread kind the repository has turned on; an attachment opens its
-  thread. Hub opens an issue's page for both shapes (a comment opens its issue until #13
-  adds comment pages); discussions, patches and comments on them have no Hub page yet and
+  thread. Hub opens an issue's page for a thread and a comment's own page for a comment (#13); discussions, patches and comments on them have no Hub page yet and
   are shown as unavailable rather than linked to Haxy.
 - Haxy's own event URLs in Markdown open the matching Hub pages (`hubPathForEventsPath` in
   `src/lib/events.ts`, hooked into `hubPathForHaxyPath`). `<repo>` is `/<owner>:<name>` on a
@@ -1217,3 +1216,109 @@ Implemented in `haxy/src/api/assignees.zig` (routes) and `haxy/src/thread_write.
 tests in `haxy/src/test/api_assignees.zig`, `haxy/src/test/api_issues.zig` and
 `haxy/src/test/thread_write.zig`. Haxy Hub: `src/lib/assignees.ts` and
 `src/components/assignees/ThreadAssignees.tsx`.
+
+## Comments
+
+From issue [#13](issues/13-comments.md). A thread's comments live under the thread's own
+route, so every kind shares them (issues now; discussions in #16 and patches in #17 hook
+the same module in with their own `Kind`). `<thread>` is `…/issues/{id}`. Like the issue
+routes, they resolve the repository as the viewer (one they can't read is `not_found`
+with the repository message), answer as the issue routes do when the kind is off, and
+answer `not_found` ("There is no issue with this id.") for a thread the id doesn't name or
+a removed one.
+
+| Route | Method | Body | Answer |
+| --- | --- | --- | --- |
+| `<thread>/comments?cursor=&page_size=` | `GET`/`HEAD` | — | `{"items": Comment[], "page", "previous_cursor", "actions": {"create": Availability}}` |
+| `<thread>/comments` | `POST` | `{id?, parent_id?, body}` | 201, the new comment as its own route reads it |
+| `<thread>/comments/{comment}?cursor=&page_size=` | `GET`/`HEAD` | — | `{"comment": Comment, "thread_cursor", "replies": {"items", "page", "previous_cursor"}}` |
+| `<thread>/comments/{comment}` | `PATCH` | `{revision, body}` | the comment, as its own route reads it |
+| `<thread>/comments/{comment}` | `DELETE` | — | the comment, removed, as its own route reads it |
+
+Wrong methods are `unsupported` with `Allow` (`GET, HEAD, POST` on the list,
+`GET, HEAD, PATCH, DELETE` on a comment). A comment that isn't in the route's thread is
+`not_found` ("There is no comment with this id in this thread.").
+
+**Reads are the TUI's.** Both routes read through the TUI's own comment reader
+(`ui.Repo.Comment`, which the TUI's thread pages and permalink pages use), from one moment
+of the repository's events:
+
+- A thread's comments are every comment in it, replies included, **oldest first** (the
+  TUI's order, an exception to "newest first"), in windows of the TUI's 10 by default
+  (`page_size` up to 100). A comment's own route has the comment and a window of its
+  **immediate** replies, the TUI's permalink page. Counts are `exact`.
+- Cursors are opaque (they are the window's offset, as the TUI's `start:` is, but clients
+  never build or parse them). `previous_cursor` is the window before this one, null on the
+  first; a cursor past the end lists nothing. An unreadable cursor is `validation`.
+- `thread_cursor` names the thread's comment window (at the default size) that shows the
+  comment, null when that is the first: a link to a comment on a later page carries it.
+- A `Comment` is `{"id", "parent_id", "author", "parent_author", "created_at", "removed",
+  "body": MarkdownBlock[], "body_text", "revision", "actions": {"reply", "edit",
+  "remove"}}`. `parent_id` is null for a comment on the thread and names the parent comment
+  of a reply; `parent_author` is that comment's author (the TUI's "replying to"), null for
+  a comment on the thread. Authors have the thread `Author` shape. `body` is the body parsed
+  by Haxy's Markdown reader.
+- **Removed comments stay** in their thread, as in the TUI, so their replies stay
+  connected: `removed` is true, `body` is empty and `body_text` is `""` (the removed text
+  is never sent), and they can still be replied to, as in the TUI.
+
+**Who may do what** is the TUI's, rechecked when a write runs:
+
+- *Comment or reply*: whoever may write in the kind's tab (`ui.authorizeUser` with the
+  kind's thread role, as for opening a thread). Anonymous viewers get `unauthenticated`
+  ("Log in to comment on issues."), a role below the tab's `forbidden`.
+- *Edit or remove*: the comment's author, or anyone with the repository's write role
+  (`ui.RepoSource.canModify`, the TUI's `can_modify`); others get `forbidden` ("Only the
+  comment's author and the repository's writers can change it."). The tab's role is checked
+  first, so a member whose role was revoked can't change even their own.
+- `actions` say so per comment: `reply` (as `create`), and `edit`/`remove`, which are
+  unavailable with `conflict` ("This comment has been removed.") once it is removed.
+- Local mode writes without logging in, as its repository's owner (`ui.localAuthor`).
+
+**One set of rules.** Every write goes through `haxy/src/thread_write.zig`, which the TUI's
+comment forms and Haxy's HTML comment forms (`…/new`, `…/comment:<c>/new`, `…/edit`,
+`…/remove`) now use too: `comment` (posting; a reply's parent must be a comment in the
+same thread, `evt.threadHolds`), `editComment` and `remove`. A body must not be empty
+(`evt.Comment.fieldsValid`; `validation` on `body`, "Write a comment."); CRLF line breaks
+become `\n`. Git-backed (local) repositories take the process-wide events lock, and catch
+up with their events branch first, as the issue writes do.
+
+- **Posting is idempotent by id**, as creating an issue is (#12's decision): `id`, when
+  sent, is the new comment's event id (32 lowercase hex digits, `validation` on `id`
+  otherwise); one any event already has is `conflict` keyed by `id`, checked inside the
+  write's transaction (or under the lock). `parent_id` is empty for a comment on the
+  thread, else a comment's id (`validation` on `parent_id` when malformed; `not_found` when
+  it is no comment in this thread). Because removed comments are still readable, a client
+  that lost the answer reads `<thread>/comments/{id}`: found means posted (and, if
+  `removed`, removed since); `not_found` means not posted, and the same post can be sent
+  again.
+- **Edits name the revision they replace**, as issue edits do: `revision` is a digest of
+  the body (`evt.Comment.contentRevision`), and `PATCH` must send it (`validation` on
+  `revision` otherwise). A body changed since is `conflict` keyed by `revision`; a removed
+  comment is `conflict` without field errors ("This comment has been removed."). A xit
+  repository re-checks both inside the write's transaction. The TUI and the HTML edit form
+  still replace the body without a revision.
+- **Removing a removed comment changes nothing** and answers as a removal does (no second
+  event is written), so a retry is safe.
+
+**Haxy Hub.** A thread's page lists one window of its comments (`?comments=<cursor>` keeps
+the page in the URL; first, previous and next page links), each with its author, reply
+context (a link to the parent comment's page) and time, which links to the comment's own
+page, `<hub repo>/issues/<id>/comments/<comment>` (`?replies=<cursor>` for its reply
+windows). That page shows the comment, its reply context and its replies, and links back
+into the thread at the window holding the comment, with the comment's fragment
+(`…?comments=<thread_cursor>#comment-<id>`): the thread page brings that comment into view
+and focuses it once loaded, after a refresh too. A new comment or reply opens the same
+way. Reply, edit and remove are offered only when the comment's `actions` say so; removal
+asks first; each form holds itself while a write is pending and ignores the later clicks
+of a double click. Unknown outcomes are settled by reading the comment: a post by its id
+(as above), an edit by comparing the body with what was sent and the revision with the one
+edited, a removal by `removed`. Haxy's comment permalinks in Markdown and the events list
+open the comment's page.
+
+The write routes keep the Vite proxy's 10 s timeout. Implemented in
+`haxy/src/api/comments.zig` (hooked in by `api/issues.zig`), `haxy/src/thread_write.zig`
+and `haxy/src/ui/Repo/Comment.zig` (`loadWindowSized`, `initSized`, `threadPosition`);
+unit tests in `haxy/src/test/thread_write.zig` and `haxy/src/test/api_issues.zig`. Haxy
+Hub: `src/lib/comments.ts` and `src/components/thread/` (`ThreadComments`,
+`CommentPermalink`, `CommentCard`, `CommentForms`).

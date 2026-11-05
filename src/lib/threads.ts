@@ -87,6 +87,11 @@ export function apiBase(repo: RepoLocator, kind: ThreadKind): string {
   return `${base}/${kind}`
 }
 
+/** The API path of one thread, which its comment routes extend. */
+export function threadApiPath(repo: RepoLocator, kind: ThreadKind, id: EventId): string {
+  return `${apiBase(repo, kind)}/${encodeURIComponent(id)}`
+}
+
 function withParams(path: string, entries: Array<[string, string | number | undefined]>): string {
   const params = new URLSearchParams()
   for (const [key, value] of entries) if (value !== undefined && value !== "") params.set(key, String(value))
@@ -204,6 +209,12 @@ export function threadRoute(repo: RepoLocator, kind: ThreadKind, id: EventId): s
   return `${repoRoute(repo)}/${kind}/${encodeURIComponent(id)}`
 }
 
+/** The Hub route of a comment's permalink page, at one of its reply windows (`?replies=<cursor>`). */
+export function commentRoute(repo: RepoLocator, kind: ThreadKind, thread: EventId, comment: EventId, replies: string | null = null): string {
+  const query = replies ? `?${new URLSearchParams({ replies }).toString()}` : ""
+  return `${threadRoute(repo, kind, thread)}/comments/${encodeURIComponent(comment)}${query}`
+}
+
 /** The Hub route of the form that opens a thread. */
 export function newThreadRoute(repo: RepoLocator, kind: ThreadKind): string {
   return `${repoRoute(repo)}/${kind}/new`
@@ -226,12 +237,15 @@ export type ThreadView<Status extends string> =
   | { kind: "new" }
   | { kind: "thread"; id: EventId }
   | { kind: "edit"; id: EventId }
+  | { kind: "comment"; id: EventId; comment: EventId }
   | { kind: "unknown" }
 
 export function threadView<Status extends string>(statuses: readonly Status[], tail: string): ThreadView<Status> {
   const segments = tail.split("/").filter((segment) => segment.length > 0)
   if (segments.length === 0) return { kind: "list", status: statuses[0] }
-  if (segments.length === 2 && segments[1] === "edit" && !["labels", "new", ...statuses].includes(segments[0])) return { kind: "edit", id: segments[0] }
+  const reserved = ["labels", "new", ...statuses]
+  if (segments.length === 2 && segments[1] === "edit" && !reserved.includes(segments[0])) return { kind: "edit", id: segments[0] }
+  if (segments.length === 3 && segments[1] === "comments" && !reserved.includes(segments[0])) return { kind: "comment", id: segments[0], comment: segments[2] }
   if (segments.length > 1) return { kind: "unknown" }
   const [segment] = segments
   if (segment === "labels") return { kind: "labels" }
@@ -271,7 +285,8 @@ function routeParams(segments: string[], allowed: string[]): Map<string, string>
  * | `<repo>/issues`, `<repo>/issues/open[/search:<s>]`         | `<hub repo>/issues?search=<s>`   |
  * | `<repo>/issues/closed[/search:<s>]`                        | `<hub repo>/issues/closed?…`     |
  * | `<repo>/issues/labels[/search:<s>]`                        | `<hub repo>/issues/labels?…`     |
- * | `<repo>/issue:<id>[/search:<s>][/start:<n>]`, `…/description`, `…/comment:<c>[/start:<n>]` | `<hub repo>/issues/<id>` |
+ * | `<repo>/issue:<id>[/search:<s>][/start:<n>]`, `…/description`         | `<hub repo>/issues/<id>`         |
+ * | `<repo>/issue:<id>/comment:<c>[/start:<n>]`                 | `<hub repo>/issues/<id>/comments/<c>` |
  * | `<repo>/issues/new`                                        | `<hub repo>/issues/new`          |
  * | `<repo>/issue:<id>/edit`                                   | `<hub repo>/issues/<id>/edit`    |
  *
@@ -300,11 +315,14 @@ export function hubPathForIssuePath(path: string, local = false): string | null 
   if (tab.startsWith("issue:")) {
     const id = tab.slice("issue:".length)
     if (!id) return null
-    // a comment permalink opens its issue until Hub has comment pages
-    const tail = rest[0]?.startsWith("comment:") ? rest.slice(1) : rest
+    // a comment permalink opens the comment's own page (its reply window dropped)
+    const comment = rest[0]?.startsWith("comment:") ? rest[0].slice("comment:".length) : null
+    if (comment === "") return null
+    const tail = comment !== null ? rest.slice(1) : rest
     const words = tail.filter((segment) => !segment.includes(":"))
     if (words.length > 1 || (words.length === 1 && (!["description", "edit"].includes(words[0]) || tail !== rest))) return null
     if (routeParams(tail.filter((segment) => segment.includes(":")), ["search", "start"]) === null) return null
+    if (comment !== null) return commentRoute(repo, "issues", id, comment)
     return words[0] === "edit" ? editThreadRoute(repo, "issues", id) : threadRoute(repo, "issues", id)
   }
   if (tab !== "issues") return null

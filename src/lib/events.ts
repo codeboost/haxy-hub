@@ -6,7 +6,7 @@
  */
 import { getJson, type Count, type EventId, type OpaqueId, type Page, type PageQuery, type RequestOptions, type Timestamp } from "@/lib/api"
 import { repoRoute, type RepoLocator } from "@/lib/repo"
-import { threadRoute, type ThreadAuthor } from "@/lib/threads"
+import { commentRoute, threadRoute, type ThreadAuthor } from "@/lib/threads"
 
 /** What an event records, as Haxy names its event kinds. */
 export type EventKind = "user" | "repo" | "fork" | "grant" | "notify" | "discuss" | "issue" | "comment" | "attach" | "assign" | "patchrev" | "patch"
@@ -97,13 +97,13 @@ export function eventsPage(tail: string): EventsPage {
 
 /**
  * The Hub page an event's detail opens, or null where Hub has none yet:
- * issues open their page, and a comment on an issue opens the issue (Hub has
- * no comment pages until #13). Discussions, patches and comments on them
- * have no Hub page yet, and are shown as unavailable.
+ * issues open their page, and a comment on an issue opens the comment's
+ * page. Discussions, patches and comments on them have no Hub page yet, and
+ * are shown as unavailable.
  */
 export function eventTargetRoute(repo: RepoLocator, target: EventTarget): string | null {
   if (target.thread_kind !== "issue") return null
-  return threadRoute(repo, "issues", target.thread)
+  return target.kind === "comment" ? commentRoute(repo, "issues", target.thread, target.comment) : threadRoute(repo, "issues", target.thread)
 }
 
 // --- Haxy's own event URLs -----------------------------------------------------

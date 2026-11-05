@@ -211,7 +211,7 @@ test("Haxy's own issue links in a description open the matching Hub issue pages"
   await expect(href("issue")).toHaveAttribute("href", `/repos/alice/tracker/issues/${target}`)
   await expect(href("issue in a filtered list")).toHaveAttribute("href", `/repos/alice/tracker/issues/${target}`)
   await expect(href("description")).toHaveAttribute("href", `/repos/alice/tracker/issues/${target}`)
-  await expect(href("comment")).toHaveAttribute("href", `/repos/alice/tracker/issues/${target}`)
+  await expect(href("comment")).toHaveAttribute("href", `/repos/alice/tracker/issues/${target}/comments/${target}`)
   await expect(href("open")).toHaveAttribute("href", "/repos/alice/tracker/issues")
   await expect(href("closed bugs")).toHaveAttribute("href", "/repos/alice/tracker/issues/closed?search=label%3Abug+crash")
   await expect(href("labels")).toHaveAttribute("href", "/repos/alice/tracker/issues/labels")

@@ -3,6 +3,7 @@ import { useListParams } from "@/components/listing"
 import type { RepoLocator } from "@/lib/repo"
 import { threadView, threadsRoute } from "@/lib/threads"
 import { linkClass, type ThreadConfig } from "./config"
+import { CommentPermalinkView } from "./CommentPermalink"
 import { ThreadDetailView } from "./ThreadDetail"
 import { ThreadEditView } from "./ThreadEdit"
 import { ThreadNewView } from "./ThreadNew"
@@ -11,7 +12,8 @@ import { ThreadLabelsView, ThreadListView } from "./ThreadList"
 /**
  * A repository's threads of one kind, as `<repo>/<kind>/<tail>` names them:
  * a status's list (`?search=&cursor=`), the labels, one thread by id, or
- * the forms that open (`new`) and edit (`<id>/edit`) one.
+ * the forms that open (`new`) and edit (`<id>/edit`) one, or one comment's
+ * page (`<id>/comments/<comment>`).
  * `unavailable`, when set, says why the kind is off; it is shown when Haxy
  * answers not found, instead of that answer.
  */
@@ -29,6 +31,8 @@ export function ThreadSection<Status extends string>({ repo, config, tail, unava
       return <ThreadNewView repo={repo} config={config} unavailable={unavailable} />
     case "edit":
       return <ThreadEditView key={view.id} repo={repo} config={config} id={view.id} unavailable={unavailable} />
+    case "comment":
+      return <CommentPermalinkView key={`${view.id} ${view.comment}`} repo={repo} config={config} thread={view.id} comment={view.comment} unavailable={unavailable} />
     case "unknown":
       return (
         <section className="mt-6">
