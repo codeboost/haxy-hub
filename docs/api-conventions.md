@@ -1232,7 +1232,12 @@ are fails, including after a repeat that settled, the form holds itself until a 
 again" read succeeds (`useWrite`). The Assign button ignores the later clicks of a double
 click, as every Hub form does. An assignee answer updates only the assignees on the issue
 page, and a status answer everything else (`useThreadAnswers`), so answers that cross can't
-undo each other's change (#15 review).
+undo each other's change (#15 review). The issue page also reads the issue again in the background (a
+comment posted, another comment page). Each answer notes when it arrived and each read when it
+started, so an answer stands over any read that started before it and gives way to one that
+started after it; and a background read that fails keeps the page, and every draft in it, with a
+"Couldn't refresh" alert and a retry (`useKept`). Only the first load may show a failure
+(batch-4 merge review, `e2e/thread-refresh.spec.ts`).
 
 Implemented in `haxy/src/api/assignees.zig` (routes) and `haxy/src/thread_write.zig`
 (`assign`, `unassign`), with `id` and `actions.assign` in `haxy/src/api/thread.zig`; unit

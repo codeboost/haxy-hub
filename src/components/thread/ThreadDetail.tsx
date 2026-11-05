@@ -11,9 +11,9 @@ import { getThread, threadsRoute, type ThreadDetail, type WriteViewer } from "@/
 import { linkClass, type ThreadConfig } from "./config"
 import { ThreadActions } from "./ThreadActions"
 import { AuthorName, Instant, LabelLinks, SectionUnavailable } from "./ThreadParts"
-import { ThreadComments } from "./ThreadComments"
+import { RefreshFailed, ThreadComments, useKept } from "./ThreadComments"
 import { ThreadAssignees } from "@/components/assignees/ThreadAssignees"
-import { useThreadAnswers } from "@/components/assignees/useThreadAnswers"
+import { useAnswerClock, useThreadAnswers, type AnswerClock } from "@/components/assignees/useThreadAnswers"
 
 function Field({ title, children }: { title: string; children: ReactNode }) {
   const id = `thread-${title.toLowerCase()}`
@@ -25,9 +25,9 @@ function Field({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-function Body<Status extends string>({ repo, config, loaded, viewer }: { repo: RepoLocator; config: ThreadConfig<Status>; loaded: ThreadDetail<Status>; viewer: WriteViewer }) {
-  // what the changes on this page answered with, until the page loads again
-  const { thread, onChanged, onAssigneesChanged } = useThreadAnswers(loaded)
+function Body<Status extends string>({ repo, config, loaded, readStartedAt, clock, viewer }: { repo: RepoLocator; config: ThreadConfig<Status>; loaded: ThreadDetail<Status>; readStartedAt: number; clock: AnswerClock; viewer: WriteViewer }) {
+  // what the changes on this page answered with, over reads that started before them
+  const { thread, onChanged, onAssigneesChanged } = useThreadAnswers(loaded, readStartedAt, clock)
   const listOf = (search: string) => threadsRoute(repo, config.kind, config.statuses, thread.status, { search })
   return (
     <article className="mt-6">
@@ -66,7 +66,16 @@ export function ThreadDetailView<Status extends string>({ repo, config, id, unav
   // what the viewer may do is part of the answer, so another viewer reads it
   // again; a navigation within the page (a comment posted, another comment
   // page) reads it again in the background, so its counts stay current
-  const thread = useResource(`${config.kind} ${key} ${id} ${viewerKey}`, (signal) => getThread<Status>(repo, config.kind, id, { signal }), location.key)
+  const clock = useAnswerClock()
+  const resourceKey = `${config.kind} ${key} ${id} ${viewerKey}`
+  const read = useResource(resourceKey, (signal) => {
+    // when this read started, against the answers to this page's own changes
+    const startedAt = clock.now
+    return getThread<Status>(repo, config.kind, id, { signal }).then((data) => ({ data, startedAt }))
+  }, location.key)
+  // once loaded, a background read that fails keeps the page (and every draft
+  // in it) and says so; only the first load may replace it with a failure
+  const thread = useKept(read, resourceKey)
   switch (thread.kind) {
     case "loading":
       return <LoadingState>Loading the {config.noun.toLowerCase()}…</LoadingState>
@@ -81,8 +90,13 @@ export function ThreadDetailView<Status extends string>({ repo, config, id, unav
           </section>
         )
       }
-      return <FailureState title={`Couldn't load this ${config.noun.toLowerCase()}`} error={thread.error} onRetry={thread.reload} />
+      return <FailureState title={`Couldn't load this ${config.noun.toLowerCase()}`} error={thread.error} onRetry={read.reload} />
     case "loaded":
-      return <Body repo={repo} config={config} loaded={thread.data} viewer={viewer?.name ?? null} />
+      return (
+        <>
+          {thread.refreshFailed && <div className="mt-6"><RefreshFailed title={`Couldn't refresh this ${config.noun.toLowerCase()}`} error={thread.refreshFailed} onRetry={read.reload} /></div>}
+          <Body repo={repo} config={config} loaded={thread.data.data} readStartedAt={thread.data.startedAt} clock={clock} viewer={viewer?.name ?? null} />
+        </>
+      )
   }
 }
