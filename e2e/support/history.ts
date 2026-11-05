@@ -16,7 +16,7 @@ export type FixtureCommit = {
   /** Unix seconds; commits made in a row get increasing defaults, so the order is stable. */
   at?: number
   /** Files the commit adds or replaces. */
-  files?: Record<string, string>
+  files?: Record<string, string | Uint8Array>
   /** A branch to merge in (with `--no-ff`), making this a merge commit. */
   merge?: string
 }
@@ -59,7 +59,7 @@ export function addCommits(git: Git, commits: FixtureCommit[]): string[] {
       GIT_COMMITTER_NAME: committer.name, GIT_COMMITTER_EMAIL: committer.email, GIT_COMMITTER_DATE: at,
     }
     for (const [name, content] of Object.entries(commit.files ?? {})) {
-      const blob = git(["hash-object", "-w", "--stdin"], { input: content })
+      const blob = git(["hash-object", "-w", "--stdin"], { input: typeof content === "string" ? content : Buffer.from(content) })
       git(["update-index", "--add", "--cacheinfo", `100644,${blob},${name}`])
     }
     if (commit.merge) {
