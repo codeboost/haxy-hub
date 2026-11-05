@@ -260,10 +260,8 @@ test.describe("with the demo data", () => {
       ["revision", "/repos/bobby/linux/files/x.txt?ref=revision:00ff"],
       ["tags", "/repos/bobby/linux/tags?search=v"],
       ["refs", "/repos/bobby/linux/branches"],
-      // the file finder (#09)
       ["finder", "/repos/bobby/linux/find?search=main"],
-      // no Hub equivalent yet
-      ["commits", "/bobby:linux/commits"],
+      ["commits", "/repos/bobby/linux/commits"],
     ]
     for (const [name, href] of expected) await expect(main.getByRole("link", { name, exact: true }), name).toHaveAttribute("href", href)
 

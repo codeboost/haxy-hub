@@ -4,7 +4,9 @@ import { CommandList } from "@/components/GitCommands"
 import { EmptyState, FailureState, LoadingState, UnavailableState } from "@/components/listing"
 import { RepoFiles } from "@/components/RepoFiles"
 import { RepoRefs } from "@/components/RepoRefs"
-import { getRepo, refsRoute, repoRoute, routePath, routeRef, type RefKind, type RepoLocator, type RepoOverview, type RepoSection } from "@/lib/repo"
+import { getRepo, refsRoute, repoRoute, routePath, routeRef, type RefId, type RefKind, type RepoLocator, type RepoOverview, type RepoSection } from "@/lib/repo"
+import { CommitsSection } from "@/pages/commits/CommitsSection"
+import { commitsRoute } from "@/lib/commits"
 import { IssuesSection } from "@/pages/issues/IssuesSection"
 import { EventsSection } from "@/pages/events/EventsSection"
 import { FileFinder } from "@/components/finder/FileFinder"
@@ -24,21 +26,22 @@ const sectionLabels: Record<RepoSection, string> = {
 
 const linkClass = "text-primary underline-offset-4 hover:underline"
 
-/** The sections Hub shows so far, and where each starts. */
-const sectionRoutes: Partial<Record<RepoSection, (repo: RepoLocator) => string>> = {
-  files: (repo) => repoRoute(repo),
+/** The sections Hub shows so far, and where each starts; files and commits stay at the URL's ref, as the TUI's tabs do. */
+const sectionRoutes: Partial<Record<RepoSection, (repo: RepoLocator, ref: RefId | null) => string>> = {
+  files: (repo, ref) => repoRoute(repo, "", ref),
   refs: (repo) => refsRoute(repo, "branch"),
+  commits: (repo, ref) => commitsRoute(repo, ref),
   issues: (repo) => `${repoRoute(repo)}/issues`,
   events: (repo) => `${repoRoute(repo)}/events`,
 }
 
 /** The sections Haxy offers this viewer. Those Haxy Hub doesn't have yet are listed, not linked. */
-function Sections({ repo, sections, current }: { repo: RepoLocator; sections: RepoSection[]; current: RepoSection }) {
+function Sections({ repo, refId, sections, current }: { repo: RepoLocator; refId: RefId | null; sections: RepoSection[]; current: RepoSection }) {
   return (
     <nav aria-label="Repository sections" className="mt-6 flex flex-wrap gap-1 border-b">
       {sections.map((section) =>
         sectionRoutes[section] ? (
-          <Link key={section} to={sectionRoutes[section](repo)} aria-current={section === current ? "page" : undefined} className={`-mb-px border-b-2 px-3 py-2 text-sm ${section === current ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{sectionLabels[section]}</Link>
+          <Link key={section} to={sectionRoutes[section](repo, refId)} aria-current={section === current ? "page" : undefined} className={`-mb-px border-b-2 px-3 py-2 text-sm ${section === current ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{sectionLabels[section]}</Link>
         ) : (
           <span key={section} aria-disabled="true" title="Not available in Haxy Hub yet" className="px-3 py-2 text-sm text-muted-foreground">{sectionLabels[section]}</span>
         ),
@@ -47,7 +50,7 @@ function Sections({ repo, sections, current }: { repo: RepoLocator; sections: Re
   )
 }
 
-function Header({ repo, overview, section }: { repo: RepoLocator; overview: RepoOverview; section: RepoSection }) {
+function Header({ repo, refId, overview, section }: { repo: RepoLocator; refId: RefId | null; overview: RepoOverview; section: RepoSection }) {
   return (
     <>
       {overview.owner !== null && (
@@ -62,7 +65,7 @@ function Header({ repo, overview, section }: { repo: RepoLocator; overview: Repo
         )}
       </h1>
       {overview.description && <p className="mt-2 text-muted-foreground">{overview.description}</p>}
-      <Sections repo={repo} sections={overview.sections} current={section} />
+      <Sections repo={repo} refId={refId} sections={overview.sections} current={section} />
     </>
   )
 }
@@ -84,9 +87,9 @@ function NotFound({ repo }: { repo: RepoLocator }) {
  * `?ref=`: `/repos/<owner>/<name>[/files/<path>]` on a server,
  * `/repo[/files/<path>]` for the repository a local Haxy opened; with `refs`,
  * its branches or tags (`…/branches`, `…/tags`); `section` picks another
- * section under the same header (`…/issues/…`).
+ * section under the same header (`…/issues/…`, `…/commits/…`).
  */
-export function RepoPage({ local = false, section = "files", refs }: { local?: boolean; section?: "files" | "issues" | "events" | "find"; refs?: RefKind }) {
+export function RepoPage({ local = false, section = "files", refs }: { local?: boolean; section?: "files" | "issues" | "events" | "find" | "commits"; refs?: RefKind }) {
   const params = useParams()
   const location = useLocation()
   const repo: RepoLocator = local ? { kind: "local" } : { kind: "server", owner: params.owner ?? "", name: params.name ?? "" }
@@ -119,9 +122,11 @@ export function RepoPage({ local = false, section = "files", refs }: { local?: b
       const data = overview.data
       return (
         <>
-          <Header repo={repo} overview={data} section={refs ? "refs" : section === "find" ? "files" : section} />
+          <Header repo={repo} refId={refId} overview={data} section={refs ? "refs" : section === "find" ? "files" : section} />
           {refs ? (
             <RepoRefs repo={repo} kind={refs} />
+          ) : section === "commits" ? (
+            <CommitsSection repo={repo} />
           ) : section === "events" ? (
             <EventsSection repo={repo} tail={params["*"] ?? ""} />
           ) : section === "issues" ? (
@@ -164,4 +169,6 @@ export const repoRoutes: RouteObject[] = [
   { path: "repos/:owner/:name/events/*", element: <RepoPage section="events" /> },
   { path: "repo/find", element: <RepoPage local section="find" /> },
   { path: "repos/:owner/:name/find", element: <RepoPage section="find" /> },
+  { path: "repo/commits/*", element: <RepoPage local section="commits" /> },
+  { path: "repos/:owner/:name/commits/*", element: <RepoPage section="commits" /> },
 ]
