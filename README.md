@@ -34,8 +34,8 @@ mode. If Haxy is down, or is an older build without the status API, the page say
 (*Can't reach Haxy* / *Incompatible Haxy backend*) and offers **Retry**. Routes are
 client-side (`/`, `/connection`, `/login`, `/register`, `/account`, `/about`, `/users`,
 `/users/<name>`, `/repos/<owner>/<name>[/files/<path>]` and
-`/repos/<owner>/<name>/branches|tags` on a server, `/repo[/files/<path>]` and
-`/repo/branches|tags` in local mode; anything else is *Page not found*); refreshing any
+`/repos/<owner>/<name>/branches|tags|find` on a server, `/repo[/files/<path>]` and
+`/repo/branches|tags|find` in local mode; anything else is *Page not found*); refreshing any
 URL reconstructs the same view, because Vite serves `index.html` for unknown paths. List
 searches and pages live in the query string (`?search=…&cursor=…`), the ref a files view
 is read at in `?ref=<id>` (`branch:<name>`, `tag:<name>`, `commit:<oid>` or

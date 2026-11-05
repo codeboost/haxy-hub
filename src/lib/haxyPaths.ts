@@ -1,6 +1,7 @@
 import { canonicalPath, canonicalRef, refsRoute, repoRoute, type RepoLocator } from "@/lib/repo"
 import { hubPathForEventsPath } from "@/lib/events"
 import { hubPathForIssuePath } from "@/lib/threads"
+import { hubPathForFindPath } from "@/lib/finder"
 
 /**
  * Haxy's own page URLs (the TUI and its browser renderer, as written in
@@ -19,19 +20,20 @@ import { hubPathForIssuePath } from "@/lib/threads"
  * | `/<repo>/refs/tag:<from>[/search:<s>]`                  | `<hub repo>/tags?search=<s>`             |
  * | `/<repo>/issues…`, `/<repo>/issue:<id>…`              | see `hubPathForIssuePath` (`@/lib/threads`) |
  * | `/<repo>/events…`, `/<repo>/event:<id>…`              | see `hubPathForEventsPath` (`@/lib/events`) |
+ * | `/<repo>/files[/<ref>]/find:<s>…`                       | see `hubPathForFindPath` (`@/lib/finder`) |
  *
  * `<ref>` is `branch:<name>`, `tag:<name>` or `object:<oid>`, which become the
  * ref ids `branch:<name>`, `tag:<name>` and `commit:<oid>` with the name and
  * path re-encoded in Haxy's canonical form (docs/api-conventions.md, "Refs"
  * and "Repository paths"); a file's `line:` is its window's first line, as in
  * Hub. In local mode (`local`) Haxy's repository routes elide `/<repo>`: `/`
- * becomes `/repo` and issue routes are translated; local files and refs URLs
+ * becomes `/repo` and issue and file-finder routes are translated; local files and refs URLs
  * aren't yet, and home, about and user paths (which local mode lacks) stay as
  * written.
  *
  * `start:` and `from` windows are dropped: Hub pages use opaque cursors, which
- * only the backend can issue. Paths with no Hub equivalent yet (`find:` file
- * searches, commits, diffs, discussions, patches, …) come back unchanged.
+ * only the backend can issue. Paths with no Hub equivalent yet (commits,
+ * diffs, discussions, patches, …) come back unchanged.
  */
 
 // Haxy's user name rule (event/User.zig validateName)
@@ -116,6 +118,7 @@ export function hubPathForHaxyPath(haxyPath: string, local = false): string {
   const path = haxyPath.split(/[?#]/, 1)[0]
   const issue = hubPathForIssuePath(path, local); if (issue !== null) return issue
   const events = hubPathForEventsPath(path, local); if (events !== null) return events
+  const find = hubPathForFindPath(path, local); if (find !== null) return find
   // local Haxy's root is its repository; it has no home, about or user pages
   if (local) return path === "/" ? "/repo" : haxyPath
   if (path === "/" || path === "/home") return "/about"

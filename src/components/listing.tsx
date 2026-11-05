@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react"
-import { Link, useSearchParams } from "react-router"
+import { Link, useNavigate, useSearchParams } from "react-router"
 import { LoaderCircle, RefreshCw, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { ApiError, PageInfo } from "@/lib/api"
@@ -23,13 +23,20 @@ export function listQuery(search: string, cursor = ""): string {
   return text ? `?${text}` : ""
 }
 
+/** `base` (a route, which may carry a query of its own) with a list position's `query` joined to it. */
+function withQuery(base: string, query: string): string {
+  return query && base.includes("?") ? `${base}&${query.slice(1)}` : base + query
+}
+
 /**
  * A list's search box. The term is trimmed unless `exact` is set, for lists
  * whose names may start or end with whitespace (such as git refs), where it
- * is a prefix matched byte for byte.
+ * is a prefix matched byte for byte. A search replaces the URL's query, or
+ * goes to `base` (as for `Pager`) when the list's route carries one of its own.
  */
-export function SearchForm({ label, search, exact = false }: { label: string; search: string; exact?: boolean }) {
+export function SearchForm({ label, search, exact = false, base }: { label: string; search: string; exact?: boolean; base?: string }) {
   const [, setParams] = useSearchParams()
+  const navigate = useNavigate()
   const [value, setValue] = useState(search)
   return (
     <form
@@ -39,7 +46,8 @@ export function SearchForm({ label, search, exact = false }: { label: string; se
         event.preventDefault()
         const term = exact ? value : value.trim()
         // A new search starts from the first page.
-        setParams(term ? { search: term } : {})
+        if (base !== undefined) navigate(withQuery(base, listQuery(term)))
+        else setParams(term ? { search: term } : {})
       }}
     >
       <label className="sr-only" htmlFor="list-search">{label}</label>
@@ -66,7 +74,7 @@ export function SearchForm({ label, search, exact = false }: { label: string; se
 export function Pager({ page, search, cursor, noun, base = "" }: { page: PageInfo; search: string; cursor: string; noun: string; base?: string }) {
   if (!cursor && !page.has_more) return null
   const linkClass = "rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-  const to = (query: string) => (query && base.includes("?") ? `${base}&${query.slice(1)}` : base + query)
+  const to = (query: string) => withQuery(base, query)
   return (
     <nav aria-label={`${noun} pages`} className="mt-6 flex gap-3">
       {cursor && <Link to={to(listQuery(search))} className={linkClass}>First page</Link>}

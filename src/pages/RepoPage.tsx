@@ -7,6 +7,7 @@ import { RepoRefs } from "@/components/RepoRefs"
 import { getRepo, refsRoute, repoRoute, routePath, routeRef, type RefKind, type RepoLocator, type RepoOverview, type RepoSection } from "@/lib/repo"
 import { IssuesSection } from "@/pages/issues/IssuesSection"
 import { EventsSection } from "@/pages/events/EventsSection"
+import { FileFinder } from "@/components/finder/FileFinder"
 import { useResource } from "@/lib/resource"
 
 const sectionLabels: Record<RepoSection, string> = {
@@ -85,7 +86,7 @@ function NotFound({ repo }: { repo: RepoLocator }) {
  * its branches or tags (`…/branches`, `…/tags`); `section` picks another
  * section under the same header (`…/issues/…`).
  */
-export function RepoPage({ local = false, section = "files", refs }: { local?: boolean; section?: "files" | "issues" | "events"; refs?: RefKind }) {
+export function RepoPage({ local = false, section = "files", refs }: { local?: boolean; section?: "files" | "issues" | "events" | "find"; refs?: RefKind }) {
   const params = useParams()
   const location = useLocation()
   const repo: RepoLocator = local ? { kind: "local" } : { kind: "server", owner: params.owner ?? "", name: params.name ?? "" }
@@ -118,13 +119,15 @@ export function RepoPage({ local = false, section = "files", refs }: { local?: b
       const data = overview.data
       return (
         <>
-          <Header repo={repo} overview={data} section={refs ? "refs" : section} />
+          <Header repo={repo} overview={data} section={refs ? "refs" : section === "find" ? "files" : section} />
           {refs ? (
             <RepoRefs repo={repo} kind={refs} />
           ) : section === "events" ? (
             <EventsSection repo={repo} tail={params["*"] ?? ""} />
           ) : section === "issues" ? (
             <IssuesSection repo={repo} sections={data.sections} tail={params["*"] ?? ""} />
+          ) : section === "find" ? (
+            <FileFinder repo={repo} />
           ) : data.empty && refId === null ? (
             // `empty` describes the default branch; an explicit ref resolves on its own
             <>
@@ -159,4 +162,6 @@ export const repoRoutes: RouteObject[] = [
   { path: "repos/:owner/:name/issues/*", element: <RepoPage section="issues" /> },
   { path: "repo/events/*", element: <RepoPage local section="events" /> },
   { path: "repos/:owner/:name/events/*", element: <RepoPage section="events" /> },
+  { path: "repo/find", element: <RepoPage local section="find" /> },
+  { path: "repos/:owner/:name/find", element: <RepoPage section="find" /> },
 ]

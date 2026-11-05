@@ -3,6 +3,7 @@ import { GitBranch, GitCommitHorizontal, GitPullRequest, Tag } from "lucide-reac
 import { EmptyState, FailureState, LoadingState, Pager, SearchForm, listQuery, useListParams } from "@/components/listing"
 import { listRefs, refsRoute, repoRoute, type EncodedPath, type ReadRef, type RefId, type RefKind, type RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
+import { findRoute } from "@/lib/finder"
 
 // Choosing a ref: the repository's branches and tags, searchable and paged
 // like the TUI's refs tab (whose search and window this reads), each leading
@@ -32,6 +33,7 @@ export function RefBar({ repo, path, refId, read }: { repo: RepoLocator; path: E
       </span>
       {read.kind !== "commit" && <span className="text-muted-foreground">at commit <code className="font-mono break-all">{read.commit}</code></span>}
       <Link to={refsRoute(repo, read.kind === "tag" ? "tag" : "branch")} className={linkClass}>Branches and tags</Link>
+      <Link to={findRoute(repo, refId)} className={linkClass}>Find a file</Link>
       {refId !== null && <Link to={repoRoute(repo, path)} className={linkClass}>Default branch</Link>}
     </section>
   )

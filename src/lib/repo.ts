@@ -108,7 +108,7 @@ export type FilesQuery = PageQuery & {
 
 type Options = Pick<RequestOptions, "signal">
 
-function apiBase(repo: RepoLocator): string {
+export function apiBase(repo: RepoLocator): string {
   return repo.kind === "local" ? "/api/v1/repo" : `/api/v1/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`
 }
 
