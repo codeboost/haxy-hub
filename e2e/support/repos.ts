@@ -26,3 +26,18 @@ export async function createRepo(context: APIRequestContext, backend: Backend, r
   })
   if (response.status() !== 303) throw new Error(`Creating ${repo.name} failed: HTTP ${response.status()}\n${backend.output()}`)
 }
+
+async function postMembers(context: APIRequestContext, backend: Backend, path: string, form?: Record<string, string>) {
+  const response = await context.post(`${backend.origin}${path}`, { form, maxRedirects: 0 })
+  if (response.status() !== 303) throw new Error(`POST ${path} failed: HTTP ${response.status()}\n${backend.output()}`)
+}
+
+/** Adds `user` as a member (the write role) through the repository's members form; an owner must be signed in. */
+export async function grantMember(context: APIRequestContext, backend: Backend, repo: { owner: string; name: string }, user: string): Promise<void> {
+  await postMembers(context, backend, `/${repo.owner}:${repo.name}/repo/members/grant`, { name: user })
+}
+
+/** Removes `user`'s role through the repository's members form; an owner must be signed in. */
+export async function revokeMember(context: APIRequestContext, backend: Backend, repo: { owner: string; name: string }, user: string): Promise<void> {
+  await postMembers(context, backend, `/${repo.owner}:${repo.name}/repo/members/user:${encodeURIComponent(user)}/revoke`)
+}

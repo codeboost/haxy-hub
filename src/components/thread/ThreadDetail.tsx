@@ -1,13 +1,15 @@
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { Link } from "react-router"
 import { ArrowLeft, MessageSquare, TriangleAlert } from "lucide-react"
 import { FailureState, LoadingState } from "@/components/listing"
 import { Markdown } from "@/components/Markdown"
 import { linkTarget } from "@/lib/markdown"
 import type { RepoLocator } from "@/lib/repo"
+import { useSession } from "@/app/session"
 import { useResource } from "@/lib/resource"
-import { getThread, threadsRoute, type ThreadDetail } from "@/lib/threads"
+import { getThread, threadsRoute, type ThreadDetail, type WriteViewer } from "@/lib/threads"
 import { linkClass, type ThreadConfig } from "./config"
+import { ThreadActions } from "./ThreadActions"
 import { AssigneeLinks, AuthorName, Instant, LabelLinks, SectionUnavailable } from "./ThreadParts"
 
 function Field({ title, children }: { title: string; children: ReactNode }) {
@@ -20,7 +22,10 @@ function Field({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-function Body<Status extends string>({ repo, config, thread }: { repo: RepoLocator; config: ThreadConfig<Status>; thread: ThreadDetail<Status> }) {
+function Body<Status extends string>({ repo, config, loaded, viewer }: { repo: RepoLocator; config: ThreadConfig<Status>; loaded: ThreadDetail<Status>; viewer: WriteViewer }) {
+  // what a change on this page answered with, until the page loads again
+  const [changed, setChanged] = useState<{ from: ThreadDetail<Status>; thread: ThreadDetail<Status> } | null>(null)
+  const thread = changed?.from === loaded ? changed.thread : loaded
   const listOf = (search: string) => threadsRoute(repo, config.kind, config.statuses, thread.status, { search })
   return (
     <article className="mt-6">
@@ -33,6 +38,7 @@ function Body<Status extends string>({ repo, config, thread }: { repo: RepoLocat
         <span>Opened <Instant value={thread.created_at} /> by <AuthorName author={thread.author} /></span>
         <span className="inline-flex items-center gap-1"><MessageSquare size={14} aria-hidden />{thread.comment_count} {thread.comment_count === 1 ? "comment" : "comments"}</span>
       </div>
+      <ThreadActions repo={repo} config={config} thread={thread} viewer={viewer} onChanged={(updated) => setChanged({ from: loaded, thread: updated })} />
       {thread.conflicted && (
         <p className="mt-4 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-2 text-sm">
           <TriangleAlert size={16} aria-hidden />Concurrent edits to this {config.noun.toLowerCase()} conflict; the values shown are this server's.
@@ -51,8 +57,10 @@ function Body<Status extends string>({ repo, config, thread }: { repo: RepoLocat
 
 /** One thread's own page: its fields and whole description, independent of any list. */
 export function ThreadDetailView<Status extends string>({ repo, config, id, unavailable }: { repo: RepoLocator; config: ThreadConfig<Status>; id: string; unavailable: string | null }) {
+  const { viewer, viewerKey } = useSession()
   const key = repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
-  const thread = useResource(`${config.kind} ${key} ${id}`, (signal) => getThread<Status>(repo, config.kind, id, { signal }))
+  // what the viewer may do is part of the answer, so another viewer reads it again
+  const thread = useResource(`${config.kind} ${key} ${id} ${viewerKey}`, (signal) => getThread<Status>(repo, config.kind, id, { signal }))
   switch (thread.kind) {
     case "loading":
       return <LoadingState>Loading the {config.noun.toLowerCase()}…</LoadingState>
@@ -69,6 +77,6 @@ export function ThreadDetailView<Status extends string>({ repo, config, id, unav
       }
       return <FailureState title={`Couldn't load this ${config.noun.toLowerCase()}`} error={thread.error} onRetry={thread.reload} />
     case "loaded":
-      return <Body repo={repo} config={config} thread={thread.data} />
+      return <Body repo={repo} config={config} loaded={thread.data} viewer={viewer?.name ?? null} />
   }
 }

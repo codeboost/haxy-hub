@@ -1,10 +1,12 @@
 import { Link } from "react-router"
-import { MessageSquare, TriangleAlert } from "lucide-react"
+import { MessageSquare, Plus, TriangleAlert } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { useSession } from "@/app/session"
 import { EmptyState, FailureState, LoadingState, Pager } from "@/components/listing"
 import type { Count } from "@/lib/api"
 import type { RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
-import { listThreadLabels, listThreads, threadLabelsRoute, threadRoute, threadsRoute, type ThreadSummary } from "@/lib/threads"
+import { listThreadLabels, listThreads, newThreadRoute, threadLabelsRoute, threadRoute, threadsRoute, type ThreadListActions, type ThreadSummary } from "@/lib/threads"
 import { countText, linkClass, type ThreadConfig } from "./config"
 import { AssigneeLinks, AuthorName, FilterSummary, Instant, LabelLinks, SectionUnavailable, ThreadSearchForm, ThreadTabs } from "./ThreadParts"
 
@@ -30,8 +32,16 @@ function ThreadRow<Status extends string>({ repo, config, thread }: { repo: Repo
 }
 
 /** One status's list of threads: tabs with counts, Haxy's search, the window and its pager. */
+/** The way to open a thread, for a viewer Haxy says may. */
+function NewThreadLink<Status extends string>({ repo, config, actions }: { repo: RepoLocator; config: ThreadConfig<Status>; actions: ThreadListActions }) {
+  if (!actions.create.available) return null
+  return <Button asChild size="sm" className="mt-4"><Link to={newThreadRoute(repo, config.kind)}><Plus />New {config.noun.toLowerCase()}</Link></Button>
+}
+
 export function ThreadListView<Status extends string>({ repo, config, status, search, cursor, unavailable }: { repo: RepoLocator; config: ThreadConfig<Status>; status: Status; search: string; cursor: string; unavailable: string | null }) {
-  const threads = useResource(`${config.kind} ${repoKey(repo)} ${status} ${search} ${cursor}`, (signal) => listThreads(repo, config.kind, { status, search, cursor }, { signal }))
+  const { viewerKey } = useSession()
+  // what the viewer may do is part of the answer, so another viewer reads it again
+  const threads = useResource(`${config.kind} ${repoKey(repo)} ${status} ${search} ${cursor} ${viewerKey}`, (signal) => listThreads(repo, config.kind, { status, search, cursor }, { signal }))
   if (threads.kind === "failed" && threads.error.code === "not_found" && unavailable) return <SectionUnavailable>{unavailable}</SectionUnavailable>
   const statusLabel = config.statusLabels[status]
   const listName = `${statusLabel} ${config.plural.toLowerCase()}`
@@ -51,6 +61,7 @@ export function ThreadListView<Status extends string>({ repo, config, status, se
       )}
       {threads.kind === "loaded" && (
         <>
+          <NewThreadLink repo={repo} config={config} actions={threads.data.actions} />
           <FilterSummary filters={threads.data.filters} noun={listName} />
           {threads.data.items.length === 0 ? (
             cursor ? <EmptyState title={`No more ${listName}`}><Link to={firstPage} className={linkClass}>Back to the first page</Link></EmptyState>

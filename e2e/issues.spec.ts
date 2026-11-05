@@ -199,6 +199,8 @@ test("Haxy's own issue links in a description open the matching Hub issue pages"
       "[closed bugs](/alice:tracker/issues/closed/search:label%3Abug%20crash)",
       "[labels](/alice:tracker/issues/labels)",
       "[new issue](/alice:tracker/issues/new)",
+      `[edit](/alice:tracker/issue:${target}/edit)`,
+      `[remove](/alice:tracker/issue:${target}/remove)`,
     ].join("\n\n"),
   })
   await owner.dispose()
@@ -213,8 +215,10 @@ test("Haxy's own issue links in a description open the matching Hub issue pages"
   await expect(href("open")).toHaveAttribute("href", "/repos/alice/tracker/issues")
   await expect(href("closed bugs")).toHaveAttribute("href", "/repos/alice/tracker/issues/closed?search=label%3Abug+crash")
   await expect(href("labels")).toHaveAttribute("href", "/repos/alice/tracker/issues/labels")
-  // Hub has no page for Haxy's new-issue form yet, so that link stays as written
-  await expect(href("new issue")).toHaveAttribute("href", "/alice:tracker/issues/new")
+  await expect(href("new issue")).toHaveAttribute("href", "/repos/alice/tracker/issues/new")
+  await expect(href("edit")).toHaveAttribute("href", `/repos/alice/tracker/issues/${target}/edit`)
+  // Hub has no page for Haxy's removal form, so that link stays as written
+  await expect(href("remove")).toHaveAttribute("href", `/alice:tracker/issue:${target}/remove`)
 
   await href("issue").click()
   await expect(page).toHaveURL(`${hub.url}/repos/alice/tracker/issues/${target}`)

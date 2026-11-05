@@ -307,7 +307,8 @@ and `haxy-hub/src/lib/account.ts`.
 From issue [#11](issues/11-issues-read.md). A repository's threads of one kind (issues now;
 discussions and patches reuse the same routes and shapes in #16/#17) live under the
 repository's API path, `/api/v1/repos/{owner}/{name}/<kind>` on a server and
-`/api/v1/repo/<kind>` in local mode. All are `GET`/`HEAD`. They resolve the repository
+`/api/v1/repo/<kind>` in local mode. The routes below are `GET`/`HEAD`; the writes are
+under "Threads: writing issues". They resolve the repository
 with `ui.Repo.resolve` like the repository routes, so a repository the viewer can't read
 is `not_found` with the repository message; each mode answers the other's routes with
 `unsupported`. A repository whose issues are turned off (`issue_role` "nobody", so the
@@ -357,9 +358,11 @@ already shows the repository.
   | `<repo>/issues/closed[/search:<s>]` | `<hub repo>/issues/closed[?search=<s>]` |
   | `<repo>/issues/labels[/search:<s>]` | `<hub repo>/issues/labels[?search=<s>]` |
   | `<repo>/issue:<id>[/search:<s>][/start:<n>]`, `…/description`, `…/comment:<c>[/start:<n>]` | `<hub repo>/issues/<id>` |
+  | `<repo>/issues/new` | `<hub repo>/issues/new` (#12) |
+  | `<repo>/issue:<id>/edit` | `<hub repo>/issues/<id>/edit` (#12) |
 
-  Forms (`…/new`, `…/edit`, `…/remove`, `…/resolve`) and `…/issues/conflicts` have no Hub
-  page yet and stay as written. In local mode, `/` is the repository (`/repo`), and the
+  The other forms (`…/remove`, `…/resolve`) and `…/issues/conflicts` have no Hub page yet
+  and stay as written. In local mode, `/` is the repository (`/repo`), and the
   home, about and user paths, which local Haxy doesn't have, stay as written. A comment permalink opens its issue until #13 adds
   comment pages.
 - Hub always requests a thread route rather than trusting a sections list it read
@@ -819,3 +822,123 @@ with no host.
 - Vite's 10s `proxyTimeout` is now scoped per route (see Timeouts); only repository
   creation is exempt so far. Long-running endpoints (merge, sync, uploads) must be added to
   the exempt list as they land.
+
+## Threads: writing issues
+
+From issue [#12](issues/12-issues-write.md). The issue routes of "Threads: issues" also
+take writes. Like every `/api/` write they pass the shared write guard first (CSRF token,
+`Origin`, optional `X-Haxy-Viewer`), and Haxy Hub binds each to the viewer its page was
+loaded for. Bodies are JSON objects of strings (form encodings and other types are
+refused with `validation`, no field errors); a missing field reads as empty.
+
+| Route | Method | Body | Answer |
+| --- | --- | --- | --- |
+| `…/issues` | `POST` | `{id?, title, labels, description}` | 201, the new issue as `…/issues/{id}` reads it |
+| `…/issues/{id}` | `PATCH` | `{revision, title, labels, description}` | the issue, its fields replaced |
+| `…/issues/{id}/status` | `PUT` | `{status: "open" \| "closed"}` | the issue |
+| `…/issues/{id}` | `DELETE` | — | `{"id"}` |
+
+Wrong methods are `unsupported` with `Allow` (`GET, HEAD, POST` on the list,
+`GET, HEAD, PATCH, DELETE` on an issue, `PUT` on its status, `GET, HEAD` on the labels).
+
+**One set of rules.** Every write goes through `haxy/src/thread_write.zig`, which the
+TUI's thread tabs and Haxy's HTML forms (`…/issues/new`, `…/edit`, `…/close`, `…/open`,
+`…/remove`) now use too: `create`, `editIssue`, `setStatus` and `remove`, generic over the
+thread kind where the kinds agree, so discussions (#16) and patches (#18) extend them.
+
+- *Who may write at all* is `ui.authorizeUser`, read from the admin db **when the write
+  runs**: the viewer's role in the repository, then the kind's thread-creation role
+  (`issue_role`: anybody who can read, members, or nobody, which turns issues off).
+  Anonymous (or deleted-account) viewers get `unauthenticated`; a role below the threshold
+  gets `forbidden` ("Your role in this repository doesn't allow writing issues."). A role
+  revoked after the page loaded is refused the same way, never a false success.
+- *Who may change an issue* is `ui.RepoSource.canModify`: anyone with the write role,
+  otherwise only its author (by email). Others get `forbidden`.
+- *What an issue holds* is `evt.Issue.fieldsValid` (via `thread_write.checkFields`): a
+  non-blank title (`validation` on `title`) and labels of at most 64 bytes each
+  (`validation` on `labels`). The description's CRLF line breaks become `\n`, as the HTML
+  form stores them.
+- An issue the id doesn't name (or a removed one) is `not_found` ("There is no issue with
+  this id."), checked before the viewer's rights. A repository the viewer can't read is
+  `not_found` with the repository message, and one whose issues are off answers as reads do.
+- **Local mode** writes without logging in, as its repository's owner, with the author
+  from the repository's (and the global) Git config (`ui.localAuthor`), as the TUI's local
+  event editing does.
+
+**What the viewer may do.** List answers carry `"actions": {"create": Availability}` and
+issue answers `"actions": {"edit", "set_status", "remove"}`, in the shape of "Capabilities
+and action availability": the TUI's own decision (its issues tab viewer, and each entry's
+`can_modify`), with `unauthenticated` or `forbidden` reasons. Haxy Hub shows a control only
+when its action is available (readers and anonymous viewers see none); Haxy checks again
+when the write runs. Because the answer depends on the viewer, Hub reads it again when the
+viewer changes.
+
+**Creation is idempotent by id (decision, #12).** `id`, when sent, is the new issue's
+event id: 32 lowercase hex digits (`validation` on `id` otherwise); without it Haxy picks a
+random one. An id any event in the repository already has is `conflict` keyed by `id`, and
+nothing is written. The check runs inside the write's own transaction for a xit repository
+(every server repository); a Git repository's events (local mode) have none, so every
+shared write to one holds an in-process lock across its read, check and write (local mode is
+one process serving one repository; see "Atomic checks" below). Haxy Hub generates one id per form, so when an outcome is
+unknown (timeout, `unreachable`, `internal`, unreadable answer) it reads `…/issues/{id}`:
+found means the issue was opened; `not_found` means it wasn't, and the same submission can
+be sent again safely, since a second creation under the id is refused rather than opening a
+duplicate (Hub reads a `conflict` on its own `id` as "already opened"). This was chosen over
+an idempotency-key store (new state to keep) and over matching by title (ambiguous).
+
+**Edits name the revision they replace (decision, #12).** Issue answers carry `revision`,
+an opaque string: a digest of exactly what an edit replaces (title, labels and description;
+`evt.Issue.contentRevision`), computed from the stored issue. It moves whenever any of
+those changes, however the change arrived (an edit from any client, a conflict resolution,
+or a merge from another host, which may leave the record's event order where it was), and
+stays when only the status, comments or assignees change, which an edit keeps. `PATCH` must
+send it (`validation` on `revision` otherwise); when the fields have changed since, the edit
+is `conflict` keyed by `revision` and nothing is written, so an edit based on stale fields
+never silently overwrites someone else's. A xit repository re-checks inside the write's
+transaction (`evt.Issue.updateAt`); a Git repository's under the lock below. Haxy Hub keeps the user's text, offers to show the current version (which moves the
+revision it saves against), and only then lets them save over it. After an unknown outcome
+Hub reads the issue: holding exactly what was sent means saved; still at the old revision
+means not saved (a retry is safe, the revision guards it); anything else is someone else's
+change. The TUI and the HTML edit form still replace the fields without a revision, as
+before. A merge that leaves a field conflict keeps this server's values, so the revision
+stays; the answer's `conflicted` says so, and an edit settles the conflict as every event
+does (#25 resolves conflicts).
+
+**Atomic checks (#12 review).** A write never re-emits fields it didn't mean to change from
+a stale read. In a xit repository `evt.Issue.updateAt` builds the event again inside the
+write's transaction from the issue as it is there: an edit changes only title, labels and
+description and keeps the live status, and a status change keeps the live fields (setting
+the status the issue already has writes nothing). In a Git repository every
+`thread_write` operation (`create`'s id check, `editIssue`'s revision check, `setStatus`,
+`remove`'s author and existence checks) holds one process-wide lock across its read, check
+and write, so two concurrent edits from one revision can't both pass: one lands and the
+other is `conflict`. Writes outside `thread_write` (comments, assignments, conflict
+resolution) don't take it; none of them checks issue fields before writing them, except a
+resolution, which #25 owns.
+
+**Local mode reads its events branch first.** Every shared write in local mode first brings
+the repository's event db up to date with its events branch (as each TUI page build and API
+read there does), so a branch cloned, fetched or synced since nothing read it is seen by the
+checks a write makes: whether an id is free, who wrote an issue, what it holds. A server's
+repositories consume every event, pushed ones included, in the transaction that writes it.
+
+**Removed versus never opened.** `GET …/issues/{id}` answers `not_found` alike for an id
+never used and for a removed issue (decision, #12): the API exposes no removed records.
+Hub doesn't need it to: removed events keep their ids, so a creation refused as `conflict`
+on the form's own (random) id, followed by `not_found`, means the issue was opened and then
+removed. Hub says so, keeps the draft, and opens it under a new id only when the user asks.
+
+**Status and removal** need no revision: setting the status an issue already has changes
+nothing (so a retry is safe), and removing a removed issue is `not_found`. Hub settles an
+unknown outcome by reading the issue (and treats `not_found` after a removal as done).
+Hub asks for confirmation before a removal; every Hub form and action holds itself while a
+write is pending, and ignores the later clicks of a double click (`detail > 1`) even when the
+first one's answer has already arrived, so a double click on Close can't reopen the issue.
+
+The write routes keep the Vite proxy's 10 s timeout (they are single small transactions);
+a timeout is an unknown outcome as above. Implemented in `haxy/src/api/issues.zig`,
+`haxy/src/api/thread.zig` (`Availability`, `listActions`, `threadActions`, `parseNewId`,
+`parseRevision`, `fieldsError`) and `haxy/src/thread_write.zig`; unit tests in
+`haxy/src/test/api_issues.zig` and `haxy/src/test/thread_write.zig`. Haxy Hub:
+`src/lib/threads.ts` and `src/components/thread/` (`ThreadForm`, `ThreadNew`, `ThreadEdit`,
+`ThreadActions`).

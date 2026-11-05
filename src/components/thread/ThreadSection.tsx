@@ -4,11 +4,14 @@ import type { RepoLocator } from "@/lib/repo"
 import { threadView, threadsRoute } from "@/lib/threads"
 import { linkClass, type ThreadConfig } from "./config"
 import { ThreadDetailView } from "./ThreadDetail"
+import { ThreadEditView } from "./ThreadEdit"
+import { ThreadNewView } from "./ThreadNew"
 import { ThreadLabelsView, ThreadListView } from "./ThreadList"
 
 /**
  * A repository's threads of one kind, as `<repo>/<kind>/<tail>` names them:
- * a status's list (`?search=&cursor=`), the labels, or one thread by id.
+ * a status's list (`?search=&cursor=`), the labels, one thread by id, or
+ * the forms that open (`new`) and edit (`<id>/edit`) one.
  * `unavailable`, when set, says why the kind is off; it is shown when Haxy
  * answers not found, instead of that answer.
  */
@@ -22,6 +25,10 @@ export function ThreadSection<Status extends string>({ repo, config, tail, unava
       return <ThreadLabelsView repo={repo} config={config} search={search} cursor={cursor} unavailable={unavailable} />
     case "thread":
       return <ThreadDetailView key={view.id} repo={repo} config={config} id={view.id} unavailable={unavailable} />
+    case "new":
+      return <ThreadNewView repo={repo} config={config} unavailable={unavailable} />
+    case "edit":
+      return <ThreadEditView key={view.id} repo={repo} config={config} id={view.id} unavailable={unavailable} />
     case "unknown":
       return (
         <section className="mt-6">

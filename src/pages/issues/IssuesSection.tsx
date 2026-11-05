@@ -9,6 +9,7 @@ export const issueThreads: ThreadConfig<IssueStatus> = {
   plural: "Issues",
   statuses: ["open", "closed"],
   statusLabels: { open: "Open", closed: "Closed" },
+  statusChanges: { open: { to: "closed", label: "Close issue" }, closed: { to: "open", label: "Reopen issue" } },
 }
 
 /**
