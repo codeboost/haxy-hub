@@ -6,6 +6,8 @@ import { RepoFiles } from "@/components/RepoFiles"
 import { RepoRefs } from "@/components/RepoRefs"
 import { getRepo, refsRoute, repoRoute, routePath, routeRef, type RefKind, type RepoLocator, type RepoOverview, type RepoSection } from "@/lib/repo"
 import { IssuesSection } from "@/pages/issues/IssuesSection"
+import { SettingsSection } from "@/pages/settings/SettingsSection"
+import { adminRoute } from "@/pages/settings/shared"
 import { useResource } from "@/lib/resource"
 
 const sectionLabels: Record<RepoSection, string> = {
@@ -27,6 +29,7 @@ const sectionRoutes: Partial<Record<RepoSection, (repo: RepoLocator) => string>>
   files: (repo) => repoRoute(repo),
   refs: (repo) => refsRoute(repo, "branch"),
   issues: (repo) => `${repoRoute(repo)}/issues`,
+  settings: (repo) => adminRoute(repo),
 }
 
 /** The sections Haxy offers this viewer. Those Haxy Hub doesn't have yet are listed, not linked. */
@@ -83,7 +86,7 @@ function NotFound({ repo }: { repo: RepoLocator }) {
  * its branches or tags (`…/branches`, `…/tags`); `section` picks another
  * section under the same header (`…/issues/…`).
  */
-export function RepoPage({ local = false, section = "files", refs }: { local?: boolean; section?: "files" | "issues"; refs?: RefKind }) {
+export function RepoPage({ local = false, section = "files", refs }: { local?: boolean; section?: "files" | "issues" | "settings"; refs?: RefKind }) {
   const params = useParams()
   const location = useLocation()
   const repo: RepoLocator = local ? { kind: "local" } : { kind: "server", owner: params.owner ?? "", name: params.name ?? "" }
@@ -91,8 +94,8 @@ export function RepoPage({ local = false, section = "files", refs }: { local?: b
   const path = routePath(repo, location.pathname)
   const refId = routeRef(location.search)
   const key = repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
-  // read again on each navigation, so sections another client turned on or off show
-  const overview = useResource(`repo ${key}`, (signal) => getRepo(repo, { signal }), location.pathname + location.search)
+  // read again on each navigation (also to the same URL, as after a settings change), so sections another client turned on or off show
+  const overview = useResource(`repo ${key}`, (signal) => getRepo(repo, { signal }), location.pathname + location.search + location.key)
 
   switch (overview.kind) {
     case "loading":
@@ -121,6 +124,8 @@ export function RepoPage({ local = false, section = "files", refs }: { local?: b
             <RepoRefs repo={repo} kind={refs} />
           ) : section === "issues" ? (
             <IssuesSection repo={repo} sections={data.sections} tail={params["*"] ?? ""} />
+          ) : section === "settings" ? (
+            <SettingsSection repo={repo} tail={params["*"] ?? ""} />
           ) : data.empty && refId === null ? (
             // `empty` describes the default branch; an explicit ref resolves on its own
             <>
@@ -153,4 +158,6 @@ export const repoRoutes: RouteObject[] = [
   { path: "repos/:owner/:name/branches", element: <RepoPage refs="branch" /> },
   { path: "repos/:owner/:name/tags", element: <RepoPage refs="tag" /> },
   { path: "repos/:owner/:name/issues/*", element: <RepoPage section="issues" /> },
+  { path: "repo/settings/*", element: <RepoPage local section="settings" /> },
+  { path: "repos/:owner/:name/settings/*", element: <RepoPage section="settings" /> },
 ]

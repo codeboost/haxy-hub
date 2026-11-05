@@ -49,7 +49,7 @@ const hashLabels: Record<HashFormat, Choice<HashFormat>> = {
 }
 
 /** A labelled group of radio buttons that shows its field error beside it. */
-function RadioGroup<T extends string>({ legend, name, choices, value, onValue, disabled, error, hint }: {
+export function RadioGroup<T extends string>({ legend, name, choices, value, onValue, disabled, error, hint }: {
   legend: string
   name: string
   choices: Choice<T>[]
