@@ -25,7 +25,7 @@ Use Haxy's domain language: repositories, issues, discussions, patches, patch re
 | Notifications | Existing inbox, subscriptions, mute, and unread behavior | Unavailable |
 | Repository administration | Existing settings, member management, branch protection, and deletion permissions | Server administration unavailable |
 | Events | Active/removed event browsing and supported transaction filtering | Event browsing plus synchronization with the configured remote |
-| Undo | History visible to eligible roles; execution restricted to the main owner | Unavailable |
+| Undo | History visible to eligible roles; execution restricted to the repository's owners (main or granted, as in the TUI) | Unavailable |
 
 This matrix describes the current capability split, not a grant of additional permissions. Backend capabilities and current authorization determine each action's availability, including exceptions involving removed targets or stale state.
 
@@ -138,8 +138,8 @@ This matrix describes the current capability split, not a grant of additional pe
 85. As a local user, I want to synchronize events with the configured remote through Zig, so that local and remote metadata can converge using existing merge rules.
 86. As a local user, I want sync failures reported accurately while retaining any locally applied changes, so that I can resolve transport or conflict problems without assuming everything rolled back.
 87. As an eligible server user, I want to browse paginated undo history with action descriptions, timestamps, and related details, so that I can inspect restorable changes.
-88. As a repository main owner, I want to confirm and execute an available undo, so that I can restore a prior state under the backend's current authorization and history rules.
-89. As a repository main owner, I want to see the resulting undo record and any supported restoration action, so that I can understand and, where allowed, reverse the undo itself.
+88. As a repository owner, I want to confirm and execute an available undo, so that I can restore a prior state under the backend's current authorization and history rules.
+89. As a repository owner, I want to see the resulting undo record and any supported restoration action, so that I can understand and, where allowed, reverse the undo itself.
 
 ### Notifications and administration
 
@@ -262,7 +262,7 @@ The user confirmed browser workflows through Vite's proxy to a real Zig backend,
 | Local sync | Offline local edits survive; sync reaches the configured remote, reports failures honestly, preserves the code HEAD, and exposes unresolved metadata conflicts |
 | Notifications | Relevant activity updates the inbox; opening content updates read state; subscriptions/mute respect access and existing limits |
 | Administration | Repository creation and supported copying work; visibility, member roles, feature settings, default branch, and branch protection apply to later reads/writes; confirmation and main-owner restrictions hold for deletion |
-| Events and undo | Event views distinguish active/removed records and supported transaction context; eligible users can inspect history; only current authorized main owners can execute undo; local mode rejects it |
+| Events and undo | Event views distinguish active/removed records and supported transaction context; eligible users can inspect history; only current owners can execute undo (main or granted, as in the TUI; ownership re-checked at execution); local mode rejects it |
 | Cross-client behavior | React mutations are readable through existing Zig views, and changes made through existing Haxy operations become visible after React refresh |
 | Browser usability | Deep links, refresh, back/forward, keyboard-only use, narrow screens, safe Markdown, and form errors remain usable |
 

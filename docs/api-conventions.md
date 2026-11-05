@@ -224,8 +224,9 @@ Resources that offer actions include what the current viewer may do:
   unknown — reload", never as failure or success.
 - The Vite proxy's 10s `proxyTimeout` is scoped per route (`vite.config.ts`; Vite uses
   the first matching entry). Every `/api/` route keeps it except those listed before the
-  catch-all, which have no proxy timeout: so far `/api/v1/repos` (repository creation,
-  #10). A slow write route lands in that list along with its endpoint.
+  catch-all, which have no proxy timeout: `/api/v1/repos` (repository creation, #10) and
+  `/api/v1/repo/sync` (local-mode sync, #27). A slow write route lands in that list along
+  with its endpoint.
 
 ## Session
 
@@ -617,8 +618,8 @@ statistics and its search are the TUI's.
 - Haxy Hub's routes are `<hub repo>/commits[?ref=<id>][&search=…][&cursor=…]` and
   `<hub repo>/commits/<id>[?ref=<id>]`, where the ref is the history the commit was opened
   from and its way back leads there. The Files and Commits section tabs keep the page's
-  ref, as the TUI's tabs do. A commit's diff (#08) will hang off both
-  `…/commits/{id}`s. Haxy's own commits URLs in Markdown are translated by
+  ref, as the TUI's tabs do. A commit's diff hangs off both
+  `…/commits/{id}`s (see Commit diffs). Haxy's own commits URLs in Markdown are translated by
   `hubPathForCommitPath` (`src/lib/commits.ts`, hooked into `hubPathForHaxyPath`):
   `<repo>/commits[/branch:<n>|tag:<n>][/search:<s>][/from:<c>]` opens the history
   (`from:` dropped) and `<repo>/commits/object:<oid>[/message]` opens the commit.
@@ -916,12 +917,34 @@ with no host.
   is `conflict`. The TUI and HTML forms still overwrite as before (user decisions, #12, #23).
 - The file finder is offered in both modes wherever an index exists; commit search only on
   a server, where Haxy builds commit indexes on push (user decisions, #09, #07).
+- A commit's diff is against its first parent; added and removed files list their path,
+  not their lines; the path filter names one exact file; binary and too-large files show
+  placeholders, and the TUI now shows them too instead of omitting the file or failing the
+  page (user decisions, #08).
+- Comments page oldest first, replies included, as in the TUI; removed comments stay
+  listed as removed, without their text (user decisions, #13).
+- Assigning someone already assigned is `conflict`, as in the TUI, not an idempotent
+  success; Hub settles a lost answer by reading the issue again or by a safe repeat (user
+  decision, #15).
+- Any owner of a repository may execute an undo, granted owners included, as in the TUI
+  and Haxy's HTML form (the spec's "main owner" is amended); ownership is re-checked at
+  execution, and an undo must name the history's `revision` (user decisions, #26).
+- A local-mode sync is one request that answers when it finishes; a failed sync answers
+  200 with `outcome: "failed"` and the step that failed; the last result lives in memory,
+  and conflict counts include every unresolved conflict. `evt.consume` merges histories
+  with no common ancestor with no baseline, which also fixes the TUI's first sync after
+  both sides wrote (user decisions, #27).
+- A member lookup for someone the member list doesn't hold answers 200 with `role: null`,
+  not `not_found`, which the settings pages read as lost access (user decision, #31).
 
 ## Known follow-up
 
-- Vite's 10s `proxyTimeout` is now scoped per route (see Timeouts); only repository
-  creation is exempt so far. Long-running endpoints (merge, sync, uploads) must be added to
-  the exempt list as they land.
+- Vite's 10s `proxyTimeout` is now scoped per route (see Timeouts); repository creation and
+  local-mode sync are exempt. Long-running endpoints still to come (merge, uploads) must be
+  added to the exempt list as they land.
+- A sync that fetches events Haxy can't read reports a `merge` failure, but leaves the local
+  events branch at the unreadable commit, so later local reads fail; the TUI does the same.
+  Tracked as [#32](issues/32-sync-unreadable-remote-events.md).
 
 ## Threads: writing issues
 

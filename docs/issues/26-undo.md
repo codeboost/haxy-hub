@@ -13,7 +13,7 @@ Eligible server users browse paginated undo history with descriptions, timestamp
 ## Acceptance criteria
 
 - [x] History visible to eligible roles and hidden from others
-- [x] Only the current main owner can execute; ownership change after page load is enforced
+- [x] Only a current owner can execute (any owner, as in the TUI: user decision, which amends "main owner"); ownership change after page load is enforced
 - [x] Executing undo shows the resulting record and restoration action where allowed
 - [x] Local mode rejects undo in UI and API
 - [x] Zig JSON endpoints follow the API conventions from #01 and share underlying operations with the TUI (no duplicated rules)
