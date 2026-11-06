@@ -15,7 +15,7 @@ import { RefreshFailed, ThreadComments, useKept } from "./ThreadComments"
 import { ThreadAssignees } from "@/components/assignees/ThreadAssignees"
 import { ThreadAttachments } from "@/components/attachments/ThreadAttachments"
 import { useAnswerClock, useThreadAnswers, type AnswerClock } from "@/components/assignees/useThreadAnswers"
-import { ThreadNotifications } from "@/components/notifications/ThreadNotifications"
+import { ThreadNotifications, useCommentsShown } from "@/components/notifications/ThreadNotifications"
 import { withNotification, type NotificationRead } from "@/lib/notifications"
 
 function Field({ title, children }: { title: string; children: ReactNode }) {
@@ -41,8 +41,7 @@ function Body<Status extends string>({ repo, config, loaded, readStartedAt, cloc
   // assigning someone may notify them (yourself, say): the panel reads its state again after each assignee change
   const [assigneeChanges, setAssigneeChanges] = useState(0)
   // the comments the page has shown, so it acknowledges only after showing them
-  const [commentsFrom, setCommentsFrom] = useState(0)
-  const [commentReads, setCommentReads] = useState(0)
+  const shown = useCommentsShown(stateAt)
   const listOf = (search: string) => threadsRoute(repo, config.kind, config.statuses, thread.status, { search })
   return (
     <article className="mt-6">
@@ -65,14 +64,14 @@ function Body<Status extends string>({ repo, config, loaded, readStartedAt, cloc
       {thread.labels.length > 0 && <Field title="Labels"><div className="flex flex-wrap gap-1"><LabelLinks labels={thread.labels} to={listOf} /></div></Field>}
       <ThreadAssignees repo={repo} config={config} thread={thread} viewer={viewer} onChanged={(value) => { onAssigneesChanged(value); setAssigneeChanges((count) => count + 1) }} />
       <ThreadNotifications repo={repo} config={config} thread={thread.id} viewer={viewer} read={notification} readStartedAt={readStartedAt} clock={clock} onRetry={reload} refresh={assigneeChanges}
-        comments={{ stateAt, commentsFrom, readComments: () => setCommentReads((count) => count + 1) }} />
+        comments={shown.comments} />
       <Field title="Description">
         <div className="rounded-xl border bg-card p-4 sm:p-6">
           {thread.description.length === 0 ? <p className="text-muted-foreground">No description.</p> : <Markdown blocks={thread.description} resolveLink={(destination) => linkTarget(destination, repo.kind === "local")} />}
         </div>
       </Field>
       <ThreadAttachments repo={repo} config={config} thread={thread} viewer={viewer} onChanged={onAttachmentsChanged} />
-      <ThreadComments repo={repo} config={config} thread={thread.id} refresh={commentReads} onLoaded={(at) => setCommentsFrom((latest) => Math.max(latest, at))} />
+      <ThreadComments repo={repo} config={config} thread={thread.id} {...shown.commentReads} />
     </article>
   )
 }

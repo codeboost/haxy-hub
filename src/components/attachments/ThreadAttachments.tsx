@@ -4,7 +4,7 @@ import { FileText, Image, LoaderCircle, Paperclip, Trash2, X } from "lucide-reac
 import { Button } from "@/components/ui/button"
 import { FailureMessage, FormMessage, failureOf, type Failure } from "@/components/form"
 import { ApiError } from "@/lib/api"
-import { alreadyAttached, attachmentUrl, formatBytes, refusal, removeAttachment, uploadAttachment, type ThreadAttachment } from "@/lib/attachments"
+import { alreadyAttached, attachmentUrl, formatBytes, refusal, removeAttachment, uploadAttachment, type Attached, type ThreadAttachment } from "@/lib/attachments"
 import type { RepoLocator } from "@/lib/repo"
 import { findThread, newThreadId, threadsRoute, type ThreadDetail, type WriteViewer } from "@/lib/threads"
 import { useWrite } from "@/pages/settings/shared"
@@ -49,10 +49,11 @@ type Chosen = { file: File; id: string }
 export function ThreadAttachments<Status extends string>({ repo, config, thread, viewer, onChanged }: {
   repo: RepoLocator
   config: ThreadConfig<Status>
-  thread: ThreadDetail<Status>
+  /** The thread (of any kind) as the page shows it. */
+  thread: Pick<ThreadDetail<Status>, "id" | "status"> & Attached
   viewer: WriteViewer
   /** The thread as Haxy now has it, after a change (or a check). */
-  onChanged(thread: ThreadDetail<Status>): void
+  onChanged(thread: Attached): void
 }) {
   const navigate = useNavigate()
   const write = useWrite<Unknown>()

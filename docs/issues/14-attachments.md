@@ -114,3 +114,16 @@ attachments. `vite.config.ts` exempts the attachment routes from the proxy's 10 
 - `e2e/thread-refresh.spec.ts`'s "a read … that started before Close answered" no longer waits
   for the held stale read to land: the read after the close's answer now supersedes (aborts) it.
   It still checks that the close stands and the comment shows.
+
+**Wired after merge (batch 5).** Discussions and patches take attachments through the same
+routes: `api/discussions.zig` and `api/patches.zig` hook `api_attachments.handle` in with their
+own `Kind` (one `readDetail` each; `Kind.authorize` is gone, since who may write is
+`api_thread.authorize` with the kind), and their thread answers carry `attachments`,
+`attachment_limits` and `actions.attach` (a patch's `actions` holds only `attach`, its one write
+through the API until #18). Who may attach or remove is the thread's, as the TUI and Haxy's
+upload form decide it for every kind: the tab role, then the thread's (or attachment's) author or
+a writer. Hub: discussions take the attachments from Haxy's answer (`asThreadDetail`), upload and
+removal answers go through the kind's adapter (`detailOf`), `ThreadAttachments` takes any kind's
+attachment fields (`Attached`), and the patch page renders it with `useAttachmentAnswers` (the
+attachment part of `useThreadAnswers`, extracted). e2e: `e2e/thread-kinds-api.spec.ts` and
+`e2e/thread-kinds.spec.ts`.

@@ -1,6 +1,7 @@
-import type { APIRequestContext } from "@playwright/test"
+import type { APIRequestContext, PlaywrightWorkerArgs } from "@playwright/test"
+import type { Account } from "./accounts"
 import type { Backend } from "./backend"
-import type { Git } from "./push"
+import { pushRepo, type Git } from "./push"
 import { addCommits, type FixtureCommit } from "./history"
 
 /**
@@ -33,6 +34,14 @@ export async function createBranchPatch(context: APIRequestContext, backend: Bac
   return match[1]
 }
 
+/** Posts a comment on the patch through Haxy's own comment form; returns the new comment's id. */
+export async function commentOnPatch(context: APIRequestContext, backend: Backend, repoBase: string, id: string, body: string): Promise<string> {
+  const response = await post(context, backend, `${repoBase}/patch:${id}/new`, { body })
+  const match = /\/comment:([0-9a-f]{32})$/.exec(response.headers().location ?? "")
+  if (!match) throw new Error(`Commenting redirected to ${response.headers().location}`)
+  return match[1]
+}
+
 type SettingsRepo = { owner: string; name: string; description?: string; access: "public" | "private" }
 
 /**
@@ -53,6 +62,22 @@ export async function setPatchRole(context: APIRequestContext, backend: Backend,
 
 export async function closePatch(context: APIRequestContext, backend: Backend, repoBase: string, id: string): Promise<void> {
   await post(context, backend, `${repoBase}/patch:${id}/close`, {})
+}
+
+/**
+ * On a server (launched with `{ ssh: true }`): pushes `account`'s existing,
+ * empty repository `name` with a `feature` branch one commit ahead of `main`,
+ * opens its patches tab to anybody who can read it, and opens a patch from
+ * `feature` into `main` as `account` (`context` signed in as them). Returns
+ * the patch's id.
+ */
+export async function pushedPatch(playwright: PlaywrightWorkerArgs["playwright"], backend: Backend, hubUrl: string, account: Account, context: APIRequestContext, name: string, title: string): Promise<string> {
+  await pushRepo(playwright, backend, hubUrl, account, { owner: account.name, name }, {
+    files: { "README.md": `# ${name}\n` },
+    history: (git) => { divergeBranch(git, "feature", [{ message: "Add the feature", files: { "feature.txt": "new\n" } }]) },
+  })
+  await setPatchRole(context, backend, { owner: account.name, name, access: "public" }, "anybody")
+  return createBranchPatch(context, backend, `/${account.name}:${name}`, { title, source: "feature", target: "main" })
 }
 
 /**
@@ -100,4 +125,10 @@ export async function tuiPatches(backend: Backend, repoBase: string, status: "op
     if (!text.includes("next →") && !text.includes("← previous") && !ids.includes(patch)) ids.push(patch)
   }
   return { counts: { open: count("open"), closed: count("closed"), merged: count("merged") }, ids }
+}
+
+/** The text of a patch's own page in Haxy's web UI (the TUI's), without its scripts. */
+export async function tuiPatchPage(backend: Backend, repoBase: string, id: string): Promise<string> {
+  const response = await fetch(`${backend.origin}${repoBase}/patch:${id}`)
+  return pageText(await response.text())
 }

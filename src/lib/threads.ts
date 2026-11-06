@@ -1,7 +1,7 @@
 /**
- * Threads: a repository's issues and discussions (and, in a later slice, its
- * patches), read through the routes in haxy's src/api/thread.zig,
- * src/api/issues.zig and src/api/discussions.zig. Lists, counts, windows and search filters are Haxy's
+ * Threads: a repository's issues, discussions and patches, read through the
+ * routes in haxy's src/api/thread.zig, src/api/issues.zig,
+ * src/api/discussions.zig and src/api/patches.zig. Lists, counts, windows and search filters are Haxy's
  * own (the TUI's issues tab): Hub never parses a search or builds a filter.
  */
 import { ApiError, getJson, requestJson, type ActionAvailability, type Count, type EventId, type Page, type PageQuery, type RequestOptions, type Timestamp } from "@/lib/api"
@@ -111,7 +111,8 @@ function listOf<Status extends string>(kind: ThreadKind, answer: Promise<unknown
   return answer.then((value) => (kind === "discussions" ? asThreadList(value as DiscussionPage) : value) as ThreadList<Status>)
 }
 
-function detailOf<Status extends string>(kind: ThreadKind, answer: Promise<unknown>): Promise<ThreadDetail<Status>> {
+/** A thread's answer (its own route's, or a write's on it) in the shape every kind shares. */
+export function detailOf<Status extends string>(kind: ThreadKind, answer: Promise<unknown>): Promise<ThreadDetail<Status>> {
   return answer.then((value) => (kind === "discussions" ? asThreadDetail(value as DiscussionDetail) : value) as ThreadDetail<Status>)
 }
 

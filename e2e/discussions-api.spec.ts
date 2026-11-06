@@ -106,6 +106,7 @@ test("the recent list, its search, its labels and its pages match Haxy's own dis
   expect(detail.actions).toEqual({
     edit: { available: false, reason: { code: "unauthenticated", message: expect.any(String) } },
     remove: { available: false, reason: { code: "unauthenticated", message: expect.any(String) } },
+    attach: { available: false, reason: { code: "unauthenticated", message: expect.any(String) } },
   })
   expect((await request.get(`${hub.url}${base}/${"0".repeat(32)}`)).status()).toBe(404)
   expect((await (await request.get(`${hub.url}${base}/nonsense`)).json()).error).toEqual({ code: "not_found", message: "There is no discussion with this id." })
@@ -162,7 +163,7 @@ test("a contributor opens, edits and removes a discussion; Haxy's own pages show
   expect(created.status(), await created.text()).toBe(201)
   const opened: Detail = await created.json()
   expect(opened).toMatchObject({ id: chosen, title: "Plugin ideas", labels: [{ name: "ideas" }, { name: "plugins" }], author: { kind: "user", name: "bobby" }, description_text: "Share yours.\nAll welcome." })
-  expect(opened.actions).toEqual({ edit: { available: true }, remove: { available: true } })
+  expect(opened.actions).toEqual({ edit: { available: true }, remove: { available: true }, attach: { available: true } })
   expect((await tuiDiscussions(backend, "/alice:forum")).ids).toEqual([chosen])
   expect(await tuiDiscussionPage(backend, "/alice:forum", chosen)).toContain("Plugin ideas")
 

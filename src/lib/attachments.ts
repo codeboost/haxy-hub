@@ -12,7 +12,7 @@
  */
 import { ApiError, requestJson, type ActionAvailability, type EventId } from "@/lib/api"
 import type { RepoLocator } from "@/lib/repo"
-import { threadApiPath, type ThreadDetail, type ThreadKind, type WriteViewer } from "@/lib/threads"
+import { detailOf, threadApiPath, type ThreadDetail, type ThreadKind, type WriteViewer } from "@/lib/threads"
 
 /** One attachment, as a thread's answer lists it. */
 export type ThreadAttachment = {
@@ -27,6 +27,9 @@ export type ThreadAttachment = {
 
 /** What Haxy accepts in an upload. */
 export type AttachmentLimits = { max_bytes: number; max_name_bytes: number }
+
+/** What a thread's answer (any kind's) says of its attachments: the list, the limits, and whether the viewer may attach. */
+export type Attached = { attachments: ThreadAttachment[]; attachment_limits: AttachmentLimits; actions: { attach: ActionAvailability } }
 
 function attachmentsPath(repo: RepoLocator, kind: ThreadKind, thread: EventId): string {
   return `${threadApiPath(repo, kind, thread)}/attachments`
@@ -69,17 +72,17 @@ export function refusal(file: File, limits: AttachmentLimits): { field: "file" |
  */
 export function uploadAttachment<Status extends string>(repo: RepoLocator, kind: ThreadKind, thread: EventId, viewer: WriteViewer, file: File, id: EventId): Promise<ThreadDetail<Status>> {
   const query = `name=${encodeURIComponent(file.name)}&id=${encodeURIComponent(id)}`
-  return requestJson(`${attachmentsPath(repo, kind, thread)}?${query}`, {
+  return detailOf(kind, requestJson(`${attachmentsPath(repo, kind, thread)}?${query}`, {
     method: "POST",
     viewer,
     headers: { "Content-Type": "application/octet-stream" },
     body: file,
-  })
+  }))
 }
 
 /** Removes the attachment; `not_found` when it is gone already (or never was). Resolves to the thread without it. */
 export function removeAttachment<Status extends string>(repo: RepoLocator, kind: ThreadKind, thread: EventId, viewer: WriteViewer, id: EventId): Promise<ThreadDetail<Status>> {
-  return requestJson(attachmentUrl(repo, kind, thread, id), { method: "DELETE", viewer })
+  return detailOf(kind, requestJson(attachmentUrl(repo, kind, thread, id), { method: "DELETE", viewer }))
 }
 
 /** Whether Haxy refused an upload because an event already has its id: an earlier attempt landed. */

@@ -182,3 +182,12 @@ with their `Kind`; the Hub side needs nothing more as long as their pages use
 through `withNotification` and render `ThreadNotifications` the same way). `notificationRoute` already links
 `discussions`/`patches` items to `/repos/<owner>/<name>/<kind>/<id>`.
 
+**Wired after merge (batch 5).** `routeApiRequest` routes `…/discussions/{id}/notifications` and
+`…/patches/{id}/notifications` with each kind's comment `Kind` (now `pub`). Discussion pages get
+the panel and the acknowledgement through `ThreadDetailView`; the patch page
+(`PatchDetailView`) reads through `withNotification` and renders `ThreadNotifications`, with
+`useCommentsShown` (extracted from `ThreadDetail`, which uses it too) wiring its
+`ThreadComments` so it acknowledges only after showing comments read after the state. Comment
+permalink pages of both kinds acknowledge through the shared `CommentPermalinkView`.
+`NotifiedKind` is now `ThreadKind`. e2e: `e2e/thread-kinds-api.spec.ts` and
+`e2e/thread-kinds.spec.ts`.
