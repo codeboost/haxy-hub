@@ -26,7 +26,7 @@ export function NewRepoPage() {
   if (!viewer) {
     return (
       <section className="max-w-md">
-        <h1 className="text-3xl font-semibold tracking-tight">New repository</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">New repository</h1>
         <p className="mt-3 text-muted-foreground">
           <Link to={loginPath(location.pathname + location.search)} className="text-primary underline-offset-4 hover:underline">Log in</Link> to create a repository.
         </p>
@@ -170,7 +170,7 @@ function NewRepoForm({ viewer }: { viewer: string }) {
   const fields = failure?.fields ?? {}
   return (
     <section className="max-w-lg">
-      <h1 className="text-3xl font-semibold tracking-tight">New repository</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">New repository</h1>
       <p className="mt-3 text-sm text-muted-foreground">Owned by <strong className="text-foreground">{viewer}</strong>.</p>
       <form aria-label="New repository" className="mt-8 space-y-6" onSubmit={submit} noValidate>
         {failure && <FailureMessage failure={failure} />}

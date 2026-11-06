@@ -1,5 +1,5 @@
 import type { APIRequestContext, Page, PlaywrightWorkerArgs } from "@playwright/test"
-import { alice, registerUser, writeHeaders, type Account } from "./support/accounts"
+import { alice, registerUser, writeHeaders, type Account, logOutFromHeader } from "./support/accounts"
 import { expect, test, type Launch } from "./support/fixtures"
 import { createIssue } from "./support/issues"
 import { createRepo, signedIn } from "./support/repos"
@@ -217,7 +217,7 @@ test("an undo after signing out in another tab says so and offers a reload, rath
   await row(page, "2").getByRole("button", { name: "Undo this" }).click()
   const other = await context.newPage()
   await other.goto(`${hub.url}/repos/${alice.name}/history`)
-  await other.getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(other)
   await expect(other.getByRole("link", { name: "Log in" })).toBeVisible()
 
   const confirm = page.getByRole("group", { name: "Confirm: undo transaction 2" })

@@ -51,7 +51,7 @@ export function NotificationsPage() {
   if (!viewer) {
     return (
       <section className="max-w-md">
-        <h1 className="text-3xl font-semibold tracking-tight">Notifications</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Notifications</h1>
         <p className="mt-3 text-muted-foreground">Log in to see your notifications.</p>
         <Link to={loginPath(location.pathname + location.search)} className={`mt-6 inline-block text-sm ${linkClass}`}>Log in</Link>
       </section>
@@ -70,7 +70,7 @@ function Inbox() {
   const inbox = useResource(`notifications ${cursor}`, (signal) => listNotifications({ cursor }, { signal }), `${location.key} ${changes}`)
   return (
     <>
-      <h1 className="text-3xl font-semibold tracking-tight">
+      <h1 className="text-2xl font-semibold tracking-tight">
         Notifications
         {inbox.kind === "loaded" && inbox.data.page.count.kind !== "unknown" && <span className="ml-3 text-base font-normal text-muted-foreground">{countText(inbox.data.page.count)}</span>}
       </h1>

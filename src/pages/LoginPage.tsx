@@ -20,7 +20,7 @@ export function LoginPage() {
   if (check?.kind === "connected" && check.status.mode === "local") {
     return (
       <section className="max-w-md">
-        <h1 className="text-3xl font-semibold tracking-tight">No accounts in local mode</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">No accounts in local mode</h1>
         <p className="mt-3 text-muted-foreground">Haxy is serving a local repository. Local mode works without accounts, so there is nothing to log in to.</p>
         <Link to={next} className="mt-6 inline-block text-sm text-primary underline-offset-4 hover:underline">Continue</Link>
       </section>
@@ -30,7 +30,7 @@ export function LoginPage() {
   if (viewer) {
     return (
       <section className="max-w-md">
-        <h1 className="text-3xl font-semibold tracking-tight">Already logged in</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Already logged in</h1>
         <p className="mt-3 text-muted-foreground">You are logged in as <strong className="text-foreground">{viewer.name}</strong>.</p>
         <Link to={next} className="mt-6 inline-block text-sm text-primary underline-offset-4 hover:underline">Continue</Link>
       </section>
@@ -81,7 +81,7 @@ function LoginForm({ next }: { next: string }) {
 
   return (
     <section className="max-w-sm">
-      <h1 className="text-3xl font-semibold tracking-tight">Log in</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Log in</h1>
       <p className="mt-3 text-sm text-muted-foreground">Use your Haxy account. You'll return to where you were.</p>
       <form className="mt-8 space-y-5" onSubmit={submit} noValidate>
         {formError && <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p>}

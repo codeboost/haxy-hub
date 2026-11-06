@@ -1,5 +1,5 @@
 import type { APIRequestContext, Page, PlaywrightWorkerArgs } from "@playwright/test"
-import { alice, registerUser, writeHeaders, type Account } from "./support/accounts"
+import { alice, registerUser, writeHeaders, type Account, logOutFromHeader } from "./support/accounts"
 import type { Backend } from "./support/backend"
 import { expect, test, type Launch } from "./support/fixtures"
 import { createIssue } from "./support/issues"
@@ -459,7 +459,7 @@ test("a lost deletion answer probed after another tab signed out says so, rather
   // the deletion never lands; before its answer arrives, the other tab signs out
   await page.route(`**/api/v1/repos/${alice.name}/tools`, async (route) => {
     if (route.request().method() !== "DELETE") return route.continue()
-    await otherTab.getByRole("banner").getByRole("button", { name: "Log out" }).click()
+    await logOutFromHeader(otherTab)
     await expect(otherTab.getByRole("banner").getByRole("link", { name: "Log in" })).toBeVisible()
     await route.fulfill(internalError)
   })
@@ -484,7 +484,7 @@ test("a deletion that lands with its answer lost, probed after another tab signe
   await page.route(`**/api/v1/repos/${alice.name}/tools`, async (route) => {
     if (route.request().method() !== "DELETE") return route.continue()
     await route.fetch()
-    await otherTab.getByRole("banner").getByRole("button", { name: "Log out" }).click()
+    await logOutFromHeader(otherTab)
     await expect(otherTab.getByRole("banner").getByRole("link", { name: "Log in" })).toBeVisible()
     await route.abort("connectionreset")
   })

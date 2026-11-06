@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test"
-import { alice, registerUser, writeHeaders, type Account } from "./support/accounts"
+import { alice, registerUser, writeHeaders, type Account, logOutFromHeader } from "./support/accounts"
 import { expect, test } from "./support/fixtures"
 
 // Creating a repository in the browser — empty with a chosen hash format, or
@@ -115,7 +115,7 @@ test("anonymous visitors are sent to log in, and local mode offers no repository
   await page.getByRole("button", { name: "Log in" }).click()
   await expect(form(page).getByLabel(/Copy/)).toHaveValue("bobby:linux")
   expect(new URL(page.url()).pathname).toBe("/repos/new")
-  await header(page).getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(page)
   await expect(header(page).getByRole("link", { name: "Log in" })).toBeVisible()
 
   const local = await launch.local()
@@ -352,7 +352,7 @@ test("a form loaded for one user never creates a repository for another who sign
 
   const other = await context.newPage()
   await other.goto(hub.url)
-  await header(other).getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(other)
   await expect(header(other).getByRole("link", { name: "Log in" })).toBeVisible()
   await logIn(other, hub.url, bob.name, bob.password, "/")
 

@@ -8,7 +8,7 @@ export function ConnectionPage() {
   const { status } = check
   return (
     <section className="max-w-2xl">
-      <h1 className="text-3xl font-semibold tracking-tight">Connection</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Connection</h1>
       <p className="mt-3 text-muted-foreground">Haxy Hub reaches Haxy through its own server, which proxies <code>/api/</code> requests to the configured backend.</p>
       <dl className="mt-8 grid grid-cols-[max-content_1fr] gap-x-8 gap-y-3 rounded-xl border bg-card p-6 text-sm shadow-sm">
         <dt className="text-muted-foreground">Status</dt>

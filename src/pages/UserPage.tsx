@@ -58,7 +58,7 @@ export function UserPage() {
       if (user.error.code === "not_found") {
         return (
           <section>
-            <h1 className="text-3xl font-semibold tracking-tight">User not found</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">User not found</h1>
             <p className="mt-3 text-muted-foreground">There is no user named <strong>{name}</strong>.</p>
             <Link to="/users" className="mt-6 inline-block text-sm text-primary underline-offset-4 hover:underline">Browse users</Link>
           </section>
@@ -66,15 +66,14 @@ export function UserPage() {
       }
       return (
         <>
-          <h1 className="text-3xl font-semibold tracking-tight">{name}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{name}</h1>
           <FailureState title="Couldn't load this user" error={user.error} onRetry={user.reload} />
         </>
       )
     case "loaded":
       return (
         <>
-          <p className="text-sm text-muted-foreground"><Link to="/users" className="hover:underline">Users</Link> /</p>
-          <h1 className="text-3xl font-semibold tracking-tight">{user.data.name}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{user.data.name}</h1>
           <Repos name={user.data.name} />
         </>
       )

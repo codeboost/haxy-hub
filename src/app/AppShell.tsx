@@ -6,26 +6,8 @@ import { SessionProvider, useSession } from "@/app/session"
 import { ViewerControls } from "@/app/ViewerControls"
 import { NotificationsLink } from "@/app/NotificationsLink"
 import type { BackendCheck } from "@/lib/connection"
-
-function modeLabel(check: BackendCheck | null): string {
-  if (!check) return "Connecting…"
-  switch (check.kind) {
-    case "connected": return check.status.mode === "server" ? "Server mode" : "Local mode"
-    case "unreachable": return "Offline"
-    case "incompatible": return "Incompatible"
-  }
-}
-
-function ModeIndicator() {
-  const { check } = useConnection()
-  const tone = check?.kind === "connected" ? "bg-emerald-600" : check ? "bg-destructive" : "animate-pulse bg-amber-500"
-  return (
-    <p aria-label="Backend" className="flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-muted-foreground">
-      <span aria-hidden className={`size-2 rounded-full ${tone}`} />
-      {modeLabel(check)}
-    </p>
-  )
-}
+import { RepoHeaderProvider, useRepoHeader } from "@/app/repoHeader"
+import { RepoBreadcrumb, RepoTabs } from "@/app/RepoBar"
 
 function ConnectionProblem({ check }: { check: Exclude<BackendCheck, { kind: "connected" }> }) {
   const { checking, retry } = useConnection()
@@ -58,6 +40,9 @@ const navItems = [
   { to: "/connection", label: "Connection", end: false, only: null },
 ] as const
 
+const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+  `rounded-md px-2.5 py-1 text-sm transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${isActive ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:text-foreground"}`
+
 function MainNav() {
   const { check } = useConnection()
   // Local mode has no forge-wide pages, and a server has no single repository;
@@ -66,21 +51,48 @@ function MainNav() {
   return (
     <nav aria-label="Main" className="flex flex-wrap items-center gap-1">
       {navItems.filter((item) => item.only === null || item.only === mode).map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.end}
-          className={({ isActive }) =>
-            `rounded-md px-2.5 py-1.5 text-sm sm:px-3 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${isActive ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          {item.label}
-        </NavLink>
+        <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass}>{item.label}</NavLink>
       ))}
     </nav>
   )
 }
 
-/** The layout route: header with navigation, mode and viewer, and the routed page once connected. */
+/** Inside a repository the header names it instead of listing the main pages; Users stays one click away on a server. */
+function RepoNav() {
+  const { check } = useConnection()
+  if (check?.kind !== "connected" || check.status.mode !== "server") return null
+  return (
+    <nav aria-label="Main" className="flex items-center">
+      <NavLink to="/users" className={navLinkClass}>Users</NavLink>
+    </nav>
+  )
+}
+
+function Header() {
+  const repo = useRepoHeader()
+  return (
+    <header className="border-b bg-card">
+      <div className="mx-auto max-w-5xl px-4 sm:px-10">
+        {/* Wraps onto more rows on narrow screens instead of overflowing. */}
+        <div className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 py-2">
+          <Link to="/" aria-label="Haxy Hub home" className="flex shrink-0 items-center gap-2">
+            <span className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground"><GitBranch size={16} /></span>
+            <span className="hidden text-lg font-bold tracking-tight sm:inline">haxy<span className="text-primary">.</span></span>
+          </Link>
+          {repo ? <RepoBreadcrumb info={repo} /> : <div className="sm:ml-3"><MainNav /></div>}
+          <div className="ml-auto flex items-center gap-1">
+            {repo && <RepoNav />}
+            <NotificationsLink />
+            <ViewerControls />
+          </div>
+        </div>
+        {repo && <RepoTabs info={repo} />}
+      </div>
+    </header>
+  )
+}
+
+/** The layout route: header with navigation (or the open repository) and viewer, and the routed page once connected. */
 export function AppShell() {
   return <SessionProvider><Shell /></SessionProvider>
 }
@@ -89,35 +101,21 @@ function Shell() {
   const { check } = useConnection()
   const { ready, viewerKey } = useSession()
   return (
-    <div className="min-h-screen">
-      <header className="border-b bg-card">
-        {/* Wraps onto more rows on narrow screens instead of overflowing. */}
-        <div className="mx-auto flex min-h-16 max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:px-10">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:gap-x-8">
-            <Link to="/" aria-label="Haxy Hub home" className="flex items-center gap-3">
-              <span className="grid size-9 place-items-center rounded-lg bg-primary text-primary-foreground"><GitBranch size={21} /></span>
-              <span className="hidden text-xl font-bold tracking-tight sm:inline">haxy<span className="text-primary">.</span></span>
-            </Link>
-            <MainNav />
-          </div>
-          <div className="flex items-center gap-3">
-            <NotificationsLink />
-            <ViewerControls />
-            <ModeIndicator />
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto max-w-5xl px-4 py-10 sm:px-10 sm:py-16">
-        {check === null ? (
-          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="animate-spin" size={16} /> Connecting to Haxy…</p>
-        ) : check.kind !== "connected" ? <ConnectionProblem check={check} /> : !ready ? (
-          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="animate-spin" size={16} /> Loading…</p>
-        ) : (
-          // Keyed by viewer: logging out or switching accounts discards every
-          // page's viewer-specific state.
-          <Outlet key={viewerKey} />
-        )}
-      </main>
-    </div>
+    <RepoHeaderProvider>
+      <div className="min-h-screen">
+        <Header />
+        <main className="mx-auto max-w-5xl px-4 py-8 sm:px-10">
+          {check === null ? (
+            <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="animate-spin" size={16} /> Connecting to Haxy…</p>
+          ) : check.kind !== "connected" ? <ConnectionProblem check={check} /> : !ready ? (
+            <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="animate-spin" size={16} /> Loading…</p>
+          ) : (
+            // Keyed by viewer: logging out or switching accounts discards every
+            // page's viewer-specific state.
+            <Outlet key={viewerKey} />
+          )}
+        </main>
+      </div>
+    </RepoHeaderProvider>
   )
 }

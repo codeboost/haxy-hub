@@ -14,14 +14,14 @@ export function AboutPage() {
       }
       return (
         <>
-          <h1 className="text-3xl font-semibold tracking-tight">About</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">About</h1>
           <FailureState title="Couldn't load the about page" error={about.error} onRetry={about.reload} />
         </>
       )
     case "loaded":
       return (
         <article className="max-w-3xl">
-          <h1 className="mb-6 text-3xl font-semibold tracking-tight">{about.data.title ?? "About"}</h1>
+          <h1 className="mb-6 text-2xl font-semibold tracking-tight">{about.data.title ?? "About"}</h1>
           <Markdown blocks={about.data.blocks} />
         </article>
       )

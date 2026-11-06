@@ -472,7 +472,7 @@ test("a mute still on its way when the page is left updates the header's count o
   await settings(page).getByRole("button", { name: "Mute" }).click()
   // the next page counts before the mute lands
   const counted = page.waitForResponse((response) => response.url().endsWith("/api/v1/notifications/count"))
-  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Home", exact: true }).click()
+  await page.getByRole("link", { name: "Haxy Hub home" }).click()
   await counted
   await expect(bell(page)).toHaveAccessibleName("Notifications, 1 unread")
 

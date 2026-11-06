@@ -1,5 +1,5 @@
 import type { Page, Route } from "@playwright/test"
-import { alice, registerUser, type Account } from "./support/accounts"
+import { alice, registerUser, type Account, logOutFromHeader } from "./support/accounts"
 import { expect, test } from "./support/fixtures"
 import { assignIssue, createIssue, tuiIssuePage } from "./support/issues"
 import { createRepo } from "./support/repos"
@@ -98,7 +98,7 @@ test("someone who may not change the issue sees its assignees, but no way to cha
   await createRepo(page.context().request, backend, { name: "tracker", access: "public" })
   const id = await createIssue(page.context().request, backend, "/alice:tracker", { title: "Alice's" })
   await assignIssue(page.context().request, backend, "/alice:tracker", id, "alice")
-  await page.getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(page)
   await expect(header(page)).not.toContainText("Signed in as")
 
   await logIn(page, hub.url, bob, `/repos/alice/tracker/issues/${id}`)
