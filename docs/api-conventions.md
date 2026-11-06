@@ -1815,6 +1815,104 @@ Implemented in `haxy/src/api/patches.zig` (`handleWrite`, `branchName`, `branche
 `src/components/thread/BranchFields.tsx` and `src/pages/patches/`; e2e in
 `e2e/patches-write-api.spec.ts` and `e2e/patches-write.spec.ts`.
 
+### Fork-backed drafts
+
+From issue [#20](issues/20-fork-drafts-and-publish.md). On a server, a contributor may start a
+patch with a **new fork** instead of a branch: Haxy copies the repository into a fork of their
+own (`<forker>:<repo name>+<id>`, reached over SSH), where they push their commits to its
+`patch` branch, and the patch stays their **draft** until they publish it. The routes hang off a
+repository's patches:
+
+| Route | Method | Body | Answer |
+| --- | --- | --- | --- |
+| `…/patches/drafts?cursor=&page_size=` | `GET`/`HEAD` | — | The viewer's drafts of this repository, newest first: `{"actions": {"create"}, "items": DraftSummary[], "page"}` |
+| `…/patches/drafts` | `POST` | `{id?, title, labels, description, target}` | 201, the new draft as `…/drafts/{id}` reads it |
+| `…/patches/drafts/{id}` | `GET`/`HEAD` | — | One draft (below) |
+| `…/patches/drafts/{id}` | `PATCH` | `{revision, title, labels, description, target}` | The draft, its fields and target replaced |
+| `…/patches/drafts/{id}` | `DELETE` | — | `{"id"}`; the draft and its fork are gone |
+| `…/patches/drafts/{id}/publish` | `POST` | — | The published patch, as `…/patches/{id}` reads it |
+
+Wrong methods are `unsupported` with `Allow` (`GET, HEAD, POST`; `GET, HEAD, PATCH, DELETE`;
+`POST`). Local mode has no drafts: every draft route answers `unsupported` (405, "Local mode has
+no drafts…"). A repository whose patches are off answers `not_found`, as for patches.
+
+- **A draft is its author's alone.** Every route on a draft first finds it as the viewer's own
+  draft of this repository; anyone else, signed in or not, and by any route (reads, edits,
+  removal, publication, and `…/patches/{id}`), gets `not_found` ("There is no draft with this
+  id."). The list needs a signed-in viewer (`unauthenticated`, "Log in to see your drafts.") and
+  holds their drafts only. `page_size` defaults to the TUI's drafts window (20), at most 100; a
+  `cursor` naming none of the viewer's drafts of this repository is `validation` on `cursor`. A
+  draft whose fork can't be read is left out of the list (as in the TUI) and never named as
+  `next_cursor`, so the pages go on past it.
+- **One set of rules** (`haxy/src/draft.zig`, which the TUI's patches tab and Haxy's HTML
+  patch forms now use too): starting, editing, removing and publishing a draft each need the
+  author's right to write patches (`ui.authorizeUser` with the patches tab's role, checked when
+  the write runs: `unauthenticated`, or `forbidden` "Your role in this repository doesn't allow
+  writing patches."). A draft's `target` is a branch ref id as for patches; one naming no branch
+  is `validation` on `target`. The fields follow the shared rules (`title`, `labels`).
+- **Starting one copies the repository**, so it can take as long as the repository is large:
+  `POST …/patches/drafts` has no Vite proxy timeout (`vite.config.ts`), like repository creation.
+  **Starting is idempotent by `id`**: an id any event of the viewer's own (their forks, their
+  repositories, …) or of the repository already has is `conflict` keyed by `id`, and nothing is
+  copied (the author's is checked again in the write that records the fork), so a client whose answer was lost
+  looks the draft up by its id before offering a retry.
+- **Edits name the revision they replace** (`edit_revision`, `evt.Patch.contentRevision` of the
+  draft); a stale one is `conflict` keyed by `revision`. The edit is written to the fork only
+  while the draft is still as read (a push landing in between is read again, never
+  overwritten). A new target drops what was pushed so far, as Haxy always has; the next push
+  records a revision against it. The TUI and HTML forms still overwrite.
+- **Publishing** is Haxy's own (`pch.publish`): the draft becomes the repository's patch under
+  the same id, with what was last pushed to the fork (or nothing yet), and leaves the viewer's
+  drafts. Publishing a draft that was published already changes nothing and answers the patch
+  again, so a lost answer can be retried. Its refusals carry Haxy's reason: the role refusal
+  above; `conflict` when the repository already has another patch under the draft's id, or the
+  fork no longer holds the revision the draft names, or Haxy can't read the fork.
+
+**A draft** is `{"id", "title", "labels": string[], "author", "created_at", "description",
+"description_text", "target": {"name", "id"}, "fork": {"owner", "name"}, "revision", "no_changes",
+"commands", "edit_revision", "actions": {"edit", "remove", "publish"}}`, read by the patches tab's
+own draft reader (`Patches.loadDraftEntry`, from one snapshot of the fork): `revision` is null
+before anything is pushed, else `{"id", "source_commit", "squash_commit", "commit_count"}` (its
+commits stay in the fork; browsing a fork is #21); `no_changes` says the target branch is
+already at the fork's `patch` branch (as a new draft's is). A listed draft (`DraftSummary`) has
+`id`, `title`, `labels`, `created_at`, `target`, `revision` and `no_changes`.
+
+**Git commands.** `commands` lists the fork's commands exactly as the TUI shows them
+(`ui.widget.forkCommands`, which the TUI's patch detail now uses too), built from the server's
+SSH URL and SSH prefix: `[{"action": "push" | "clone" | "merge", "protocol": "ssh", "url",
+"command"}]`, where `url` is `<ssh url>/<forker>:<repo name>+<id>` and `command` is the whole
+command to copy (`<prefix>git push <url> HEAD:patch`, `<prefix>git clone <url>`,
+`<prefix>git fetch '<url>' refs/heads/patch && git merge FETCH_HEAD`). A fork whose target is
+gone isn't pushed to (no `push`); a server without SSH offers none. A **published** fork-backed
+patch's answer (`…/patches/{id}`) carries the same `commands` while its fork exists and it isn't
+merged (empty for branch-backed patches), as the TUI's patch detail shows them to its readers.
+
+**Haxy Hub.** `<hub repo>/patches/drafts` lists the viewer's drafts ("Your drafts" beside the
+patches lists, on a server, when signed in), `<hub repo>/patches/drafts/new` starts one (the new
+patch page offers "Start with a new fork" beside its branch pickers, through
+`ThreadConfig.newAlternative`; the form is the shared `ThreadForm` with the target picker only),
+`<hub repo>/patches/drafts/<id>` is one draft (its proposal, the fork's commands to copy, its
+description, and Edit, Publish and Remove with an inline confirmation; a publication Haxy
+refuses shows Haxy's reason, and an unavailable one says why), and `…/<id>/edit` edits it.
+Unknown outcomes are settled by reading again: a start by looking up the patch and then the
+draft by its form's id (a draft published from another tab meanwhile leads to its patch), a
+publication by looking for the patch and then the draft (and, if the draft is gone, for the patch
+again, since a publication may land between the two reads; `draftState`, which a start uses too), an edit by comparing the draft's fields
+(`draftHolds`), a removal by looking the draft up. When those reads fail too, the draft page
+holds every write and offers only "Check again" until a read settles it. An edit refused as stale
+shows the current version in place, keeping the form's input, and the next save replaces it. A published fork-backed patch's page
+shows its fork's commands too. Haxy's `<repo>/patches/drafts` links open the drafts page
+(`hubPathForPatchPath`).
+
+Implemented in `haxy/src/draft.zig` (`start`, `edit`, `remove`, `publish`, `read`, `ownsFork`),
+`haxy/src/api/patch_drafts.zig` (routes, shapes, `commandsOf`), `haxy/src/ui/widget.zig`
+(`forkCommands`), `haxy/src/patch.zig` (`editDraft` with a revision, written while the draft is
+as read), `haxy/src/ui/Repo/Patches.zig` (`loadDraftWindow` sized by its caller,
+`loadDraftEntry` from one fork snapshot) and `haxy/src/fork.zig` (a taken id is `IdTaken`);
+unit tests in `haxy/src/test/api_patch_drafts.zig`. Haxy Hub: `src/lib/drafts.ts` and
+`src/pages/patches/drafts/`; e2e in `e2e/patch-drafts-api.spec.ts` and
+`e2e/patch-drafts.spec.ts`.
+
 ## Threads: discussions
 
 From issue [#16](issues/16-discussions.md). A repository's discussions are the second thread

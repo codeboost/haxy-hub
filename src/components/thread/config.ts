@@ -1,3 +1,4 @@
+import type { ComponentType } from "react"
 import type { Count, RequestOptions } from "@/lib/api"
 import type { BranchChoices } from "@/lib/patches"
 import type { RepoLocator } from "@/lib/repo"
@@ -25,6 +26,8 @@ export type ThreadConfig<Status extends string> = {
    * new thread proposes from and its target, among those this reads.
    */
   branches?: { load(repo: RepoLocator, options: Pick<RequestOptions, "signal">): Promise<BranchChoices> }
+  /** Another way to open a thread, offered beside the new thread's form (a patch with a new fork). */
+  newAlternative?: ComponentType<{ repo: RepoLocator }>
 }
 
 /** A count as a tab shows it: "22", "1000+" when counting stopped there, nothing when unknown. */

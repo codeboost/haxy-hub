@@ -41,6 +41,7 @@ export function ThreadNewView<Status extends string>({ repo, config, unavailable
         <section className="mt-6">
           {back}
           <h2 className="mt-3 text-2xl font-semibold tracking-tight">New {noun}</h2>
+          {create.available && config.newAlternative && <config.newAlternative repo={repo} />}
           {create.available ? (
             branches?.kind === "loading" ? <LoadingState>Loading the branches…</LoadingState>
               : branches?.kind === "failed" ? <FailureState title="Couldn't load the branches" error={branches.error} onRetry={branches.reload} />
