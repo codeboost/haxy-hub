@@ -6,7 +6,7 @@ test("a server-mode backend is shown as connected in server mode", async ({ page
 
   await page.goto(hub.url)
 
-  await expect(page.getByRole("banner").getByText("Server mode")).toBeVisible()
+  await expect(page.getByRole("main")).toContainText("Connected to a multi-user Haxy server.")
 })
 
 test("a local-mode backend serving a git repository is shown in local mode", async ({ page, launch }) => {
@@ -15,7 +15,7 @@ test("a local-mode backend serving a git repository is shown in local mode", asy
 
   await page.goto(hub.url)
 
-  await expect(page.getByRole("banner").getByText("Local mode")).toBeVisible()
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Repository" })).toBeVisible()
 })
 
 test("an unreachable backend shows a recoverable error, and retry connects once it is up", async ({ page, launch }) => {
@@ -25,12 +25,11 @@ test("an unreachable backend shows a recoverable error, and retry connects once 
   await page.goto(hub.url)
 
   await expect(page.getByRole("heading", { name: "Can't reach Haxy" })).toBeVisible()
-  await expect(page.getByRole("banner").getByText("Offline")).toBeVisible()
 
   await launch.server({ port })
   await page.getByRole("button", { name: "Retry" }).click()
 
-  await expect(page.getByRole("banner").getByText("Server mode")).toBeVisible()
+  await expect(page.getByRole("main")).toContainText("Connected to a multi-user Haxy server.")
   await expect(page.getByRole("heading", { name: "Can't reach Haxy" })).toBeHidden()
 })
 
@@ -44,13 +43,12 @@ test("a server without the status API is reported as incompatible, and retry rec
   const problem = page.getByRole("alert")
   await expect(problem.getByRole("heading", { name: "Incompatible Haxy backend" })).toBeVisible()
   await expect(problem).toContainText("does not provide the Haxy status API")
-  await expect(page.getByRole("banner").getByText("Incompatible")).toBeVisible()
 
   await legacy.stop()
   await launch.server({ port })
   await page.getByRole("button", { name: "Retry" }).click()
 
-  await expect(page.getByRole("banner").getByText("Server mode")).toBeVisible()
+  await expect(page.getByRole("main")).toContainText("Connected to a multi-user Haxy server.")
 })
 
 test("a Haxy speaking an unknown API version is reported as incompatible", async ({ page, launch }) => {

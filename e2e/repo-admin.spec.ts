@@ -67,8 +67,11 @@ test("an owner changes the settings in the browser; other users' next reads foll
   await expect(form.getByRole("status")).toHaveText("Settings saved.")
   // the header follows: private, and issues are gone
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Private")
-  await expect(page.getByText("Kept to ourselves").first()).toBeVisible()
   await expect(sections(page).getByText("Issues")).toHaveCount(0)
+  // the description leads the repository's files
+  await sections(page).getByRole("link", { name: "Files" }).click()
+  await expect(page.getByRole("main").getByText("Kept to ourselves")).toBeVisible()
+  await sections(page).getByRole("link", { name: "Settings" }).click()
 
   // the very next reads by anyone else find nothing
   expect(await overviewStatus(other, api)).toBe(404)

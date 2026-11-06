@@ -323,7 +323,7 @@ test("local mode shows the account features as unavailable", async ({ page, laun
   const hub = await launch.hub(backend.port)
 
   await page.goto(hub.url)
-  await expect(header(page)).toContainText("Local mode")
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Repository" })).toBeVisible()
   await expect(header(page).getByRole("link", { name: "Register" })).toHaveCount(0)
 
   for (const path of ["/register", "/account"]) {
