@@ -1562,3 +1562,119 @@ Implemented in `haxy/src/api/sync.zig` and `haxy/src/ui/Repo/Events.zig` (`runSy
 with `evt.mergeAndConsumeEvents` and `evt.restoreFetchedRef` in `haxy/src/event.zig` (#32);
 unit tests in `haxy/src/test/sync.zig`. Haxy Hub: `src/lib/sync.ts` and
 `src/pages/sync/SyncPanel.tsx`, shown above the events list in local mode.
+
+## Threads: patches
+
+From issue [#17](issues/17-patches-read.md). A repository's patches use the thread routes of
+"Threads: issues" with the kind `patches` (`…/patches`, `…/patches/labels`,
+`…/patches/{id}`, and the comment routes under `…/patches/{id}/comments`), plus a patch
+revision's diff, `…/revisions/{id}/diff`. All are `GET`/`HEAD` (the comment routes also take
+their writes): writing patches comes with #18–#20, so every other method on the patch routes
+is `unsupported` (`Allow: GET, HEAD`), and `…/patches/{id}/status` names no route yet
+(`not_found`). They resolve the repository as the issue routes do; a repository whose patches
+are turned off (`patch_role` "nobody") answers `not_found` ("This repository doesn't use
+patches."), comments included. A revision's diff is read by anyone who may read the
+repository, like the `revision:` refs of the files and commits routes.
+
+| Route | Answer |
+| --- | --- |
+| `…/patches?status=open\|closed\|merged&search=&cursor=&page_size=` | One status's window, as for issues: `{"status", "actions", "filters", "counts": {"open", "closed", "merged"}, "items": ThreadSummary[], "page"}`. `status` defaults to `open`. |
+| `…/patches/labels?search=&cursor=&page_size=` | Every label the patches use, as for issues. |
+| `…/patches/{id}` | One patch: a `ThreadSummary` plus the fields below. `not_found` ("There is no patch with this id.") for an unknown or removed patch, and for a draft. |
+| `…/revisions/{id}/diff?path=&cursor=&page_size=` | A window of patch revision `{id}`'s diff (below). |
+
+**Read by the TUI's patches tab.** Every list and patch is read by `ui.Repo.Patches.init`,
+so lists, their order (newest first), counts (`exact`, or `at_least` past the search cap),
+windows (20 by default, at most 100), cursors (the next window's first patch; one naming a
+patch of another status, or none the filters list, is `validation` on `cursor`), Haxy's
+search and its `filters`, and the labels are the TUI's, as for issues. Patches have no
+assignees in Haxy: `assignees` is always empty, and an `assignee:` term lists nothing
+(`assignee_not_found` stays false). Drafts are their author's and come with #20; they are in
+no list and their ids are `not_found`. The list's `actions.create` is unavailable
+(`unsupported`) until patches can be opened through the API.
+
+Each request reads one snapshot of the repository (`repo.core.latestMoment()`, passed to
+`Patches.init` as its `snapshot`): the patch records, their revisions, the target branches'
+tips (for `no_changes`) and the cached mergeability all come from it, so a push landing
+meanwhile can't mix two states into one answer. In local mode a read first brings the
+events and the branch patches up to date with their branches (`evt.consume` and
+`pch.refreshBranches`, under the git events lock), as each TUI page build does, so a source
+branch committed to from git shows its new revision.
+
+**A patch's own fields**, beside the summary (whose `status` is `open`, `closed` or
+`merged`) and `description`/`description_text` as for issues:
+
+- `source`: `{"kind": "branch", "name", "id"}` (the branch, its `name` for display and its
+  ref `id`, see Refs) or `{"kind": "fork", "fork": {"owner", "name"} | null}` (null once the
+  fork is gone).
+- `target`: `{"name", "id"}`, the target branch.
+- `revision`: null before anything is pushed, else the revision the patch proposes:
+  `{"id", "source_commit", "squash_commit", "base_commit", "commit_count"}`. `id` is the
+  revision's event id (`revision:<id>` is a ref id); `base_commit` is the commit it was based
+  on (its merge base with the target), null where this repository doesn't hold the revision
+  (an open fork-backed patch's) or the target had no commits; `commit_count` counts its
+  commits from the base, first parents only, as Haxy records it (null in a git repository or
+  past Haxy's count limit, as the TUI shows no count then).
+- `merged`: null, or `{"method": "source" | "squash", "revision"}` for a merged patch, where
+  `revision` records what landed (the target before and after the merge).
+- `no_changes`: the target branch is already at the revision's source commit (the TUI's
+  "(no changes)").
+- `mergeability`: whether Haxy offers merging the patch, exactly when the TUI shows its merge
+  button (`Patches.mergeBlock`): `{"available": true, "source", "squash"}`, each `clean`,
+  `conflict` or `unknown` (not checked against the target's current tip; Haxy checks on push
+  and on target moves, and a read never runs a merge), or `{"available": false, "reason"}`
+  with `unsupported` (local mode; not open; a draft; its fork gone; nothing pushed) or
+  `conflict` (its fields have a metadata conflict to resolve). Who may merge is #19's.
+- `review`: where to review the patch's code (`Patches.review`, which the TUI's "view diff"
+  and "view commits" links follow too): `{"available": true, "revision", "diff"}`, where
+  `revision` is the revision whose files (`…/files?ref=revision:<id>`) and commits
+  (`…/commits?ref=revision:<id>`, its source commit back to its base) to read, and `diff` the
+  revision whose diff to read (`…/revisions/<id>/diff`): the same revision, except for a
+  merged patch, whose diff is what landed (`merged.revision`), conflict resolutions
+  included. Otherwise `{"available": false, "reason"}` (`unsupported`): an open or closed
+  fork-backed patch's commits are in its fork (fork browsing is #21), and a patch with
+  nothing pushed, or whose fork is gone, has nothing to review here.
+
+**A revision's diff** is the TUI's patch diff (`Diff.renderRevisionAt`, which the TUI's
+`diff/patchrev:<id>` page now reads too): the tree of the commit the revision was based on
+against its source commit's tree, as the revision recorded them, so what the target already
+had, and anything it gained since, is left out. Its windows, path filter, placeholders and
+`truncated` are those of "Commit diffs"; the answer is `{"revision", "base", "head", "path",
+"items", "truncated", "page"}`, where `base` is the base commit (null for a revision into a
+branch without commits) and `head` the source commit. The revision and every file come from
+one snapshot. An `{id}` that names no revision of this repository is `not_found` ("This
+repository has no patch revision with this id.").
+
+**Haxy Hub.** The patches section is `<hub repo>/patches[/closed|/merged|/labels]`
+(`?search=&cursor=`), `<hub repo>/patches/<id>` and `<hub repo>/patches/<id>/comments/<c>`,
+through the shared thread components (`ThreadSection`, with `config.kind` "patches"); a
+patch's own page (`src/pages/patches/PatchDetail.tsx`) is built from the shared parts with
+its proposal (source, target, revision, commit count, no-change state, mergeability), links
+to review its revision (Files, Commits, Diff or "What landed"), its description and
+`ThreadComments`. A revision's diff is `<hub repo>/patches/revisions/<id>/diff[?patch=<id>]
+[&path=<encoded path>][&cursor=…]` (`revisionDiffRoute`), where `patch` is the patch it was
+opened from (its way back); the path is read from the raw query string as for commit diffs,
+and each file's "View file" opens the files view at `revision:<id>` (a removed file at
+`commit:<base>`). The revision's files and commits are the existing views at
+`?ref=revision:<id>`, so every review link is a plain URL that survives refresh and sharing.
+Haxy's own patch URLs in Markdown are translated by `hubPathForPatchPath`
+(`src/lib/patches.ts`, hooked into `hubPathForHaxyPath`):
+
+| Haxy | Haxy Hub |
+| --- | --- |
+| `<repo>/patches`, `<repo>/patches/open\|closed\|merged[/search:<s>]` | `<hub repo>/patches[/closed\|/merged][?search=<s>]` |
+| `<repo>/patches/labels[/search:<s>]` | `<hub repo>/patches/labels[?search=<s>]` |
+| `<repo>/patch:<id>[/search:<s>][/start:<n>]`, `…/description` | `<hub repo>/patches/<id>` |
+| `<repo>/patch:<id>/comment:<c>[/start:<n>]` | `<hub repo>/patches/<id>/comments/<c>` |
+| `<repo>/diff/patchrev:<id>[/start:<n>][/path:<path>]` | `<hub repo>/patches/revisions/<id>/diff[?path=<path>]` |
+
+Drafts, conflicts and the patch forms (`new`, `edit`, `merge`, `publish`, `remove`,
+`resolve`) have no Hub page yet and stay as written.
+
+Implemented in `haxy/src/api/patches.zig` (routes, shapes, the revision diff's dispatch),
+`haxy/src/api/diff.zig` (`writeRevisionDiff`) and `haxy/src/ui/Repo/Patches.zig`
+(`ReadOptions` with window sizes, drafts and the snapshot; `review`; `mergeBlock`, which
+`canMerge` now is), `haxy/src/ui/Repo/Diff.zig` (`renderRevisionAt`) and
+`haxy/src/ui/Repo/Files.zig` (`readPatchRevAt`, moved from `api/refs.zig`); unit tests in
+`haxy/src/test/api_patches.zig`. Haxy Hub: `src/lib/patches.ts` and `src/pages/patches/`;
+`DiffFiles` in `src/pages/commits/CommitDiff.tsx` renders both diffs' files.

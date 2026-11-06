@@ -69,11 +69,7 @@ function DiffWindow({ repo, refId, diff, cursor, allFiles }: { repo: RepoLocator
           : filter !== null ? <EmptyState title="No changes to this file">This commit doesn't change it. <Link to={allFiles} className={linkClass}>Show all files</Link></EmptyState>
           : <EmptyState title="No changes">This commit changes no files.</EmptyState>
       ) : (
-        <section aria-label="Changes" className="mt-4 flex min-w-0 flex-col gap-4">
-          {groups(diff.items).map((group, index) => (
-            <FileChanges key={`${index} ${group[0].path}`} repo={repo} refId={refId} diff={diff} entries={group} filtered={filter !== null} />
-          ))}
-        </section>
+        <DiffFiles items={diff.items} filtered={filter !== null} fileRoute={(entry) => entryFileRoute(repo, diff, entry)} onlyRoute={(path) => commitDiffRoute(repo, diff.commit, refId, { path })} />
       )}
       {diff.truncated && (
         <p role="status" aria-label="Truncated diff" className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-2 text-sm">
@@ -82,6 +78,21 @@ function DiffWindow({ repo, refId, diff, cursor, allFiles }: { repo: RepoLocator
       )}
       <Pager page={diff.page} search="" cursor={cursor} noun="Diff" base={commitDiffRoute(repo, diff.commit, refId, { path: filter ?? "" })} />
     </>
+  )
+}
+
+/**
+ * A diff window's entries, each file's under its path, with where to read
+ * the file (`fileRoute`) and, unless the window is `filtered` already, the
+ * diff narrowed to it (`onlyRoute`). Commit and revision diffs share it.
+ */
+export function DiffFiles({ items, filtered, fileRoute, onlyRoute }: { items: DiffEntry[]; filtered: boolean; fileRoute(entry: DiffEntry): string | null; onlyRoute(path: EncodedPath): string }) {
+  return (
+    <section aria-label="Changes" className="mt-4 flex min-w-0 flex-col gap-4">
+      {groups(items).map((group, index) => (
+        <FileChanges key={`${index} ${group[0].path}`} entries={group} filtered={filtered} file={fileRoute(group[0])} only={onlyRoute(group[0].path)} />
+      ))}
+    </section>
   )
 }
 
@@ -104,10 +115,9 @@ const statusClasses: Record<DiffEntry["status"], string> = {
 }
 
 /** One file's entries in a window, under its path. */
-function FileChanges({ repo, refId, diff, entries, filtered }: { repo: RepoLocator; refId: RefId | null; diff: CommitDiff; entries: DiffEntry[]; filtered: boolean }) {
+function FileChanges({ entries, filtered, file, only }: { entries: DiffEntry[]; filtered: boolean; file: string | null; only: string }) {
   const first = entries[0]
   const shown = displayPath(first.path)
-  const file = entryFileRoute(repo, diff, first)
   return (
     <section aria-label={shown} className="min-w-0 rounded-xl border bg-card">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 text-sm">
@@ -115,7 +125,7 @@ function FileChanges({ repo, refId, diff, entries, filtered }: { repo: RepoLocat
         <span className={`rounded-full border px-2 py-0.5 text-xs ${statusClasses[first.status]}`}>{statusLabels[first.status]}</span>
         <span className="ml-auto flex flex-wrap gap-x-3">
           {file && <Link to={file} className={linkClass}>View file</Link>}
-          {!filtered && <Link to={commitDiffRoute(repo, diff.commit, refId, { path: first.path })} className={linkClass}>Only this file</Link>}
+          {!filtered && <Link to={only} className={linkClass}>Only this file</Link>}
         </span>
       </header>
       {entries.map((entry, index) => <EntryBody key={index} entry={entry} shown={shown} />)}

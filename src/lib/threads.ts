@@ -9,7 +9,7 @@ import type { MarkdownBlock } from "@/lib/markdown"
 import { repoRoute, type RepoLocator } from "@/lib/repo"
 
 /** The kinds of thread, as they appear in API and Hub paths. */
-export type ThreadKind = "issues"
+export type ThreadKind = "issues" | "patches"
 
 export type IssueStatus = "open" | "closed"
 

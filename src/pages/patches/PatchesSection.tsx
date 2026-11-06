@@ -1,0 +1,38 @@
+import { Link } from "react-router"
+import { linkClass } from "@/components/thread/config"
+import { ThreadSection } from "@/components/thread/ThreadSection"
+import { patchStatuses, revisionView } from "@/lib/patches"
+import type { RepoLocator, RepoSection } from "@/lib/repo"
+import { threadView, threadsRoute } from "@/lib/threads"
+import { patchThreads } from "./config"
+import { PatchDetailView } from "./PatchDetail"
+import { RevisionDiffView } from "./RevisionDiff"
+
+/**
+ * A repository's patches: `<repo>/patches[/closed|/merged|/labels]` lists
+ * them as the TUI's tabs do, `<repo>/patches/<id>` is one patch (its
+ * comments under `…/<id>/comments/<comment>`), and
+ * `<repo>/patches/revisions/<id>/diff` is a revision's diff. The patches are
+ * always requested, since another client may have turned them on or off
+ * since `sections` was read; when Haxy answers not found and the
+ * repository's sections lack patches, they are turned off.
+ */
+export function PatchesSection({ repo, sections, tail }: { repo: RepoLocator; sections: RepoSection[]; tail: string }) {
+  const unavailable = sections.includes("patches") ? null : "Patches are turned off for this repository."
+  const revision = revisionView(tail)
+  if (revision !== null) return <RevisionDiffView key={revision.revision} repo={repo} revision={revision.revision} />
+  const view = threadView(patchStatuses, tail)
+  // opening and editing patches isn't in Haxy Hub yet, and revisions have no page of their own
+  if (view.kind === "new" || view.kind === "edit" || tail.startsWith("revisions")) return <NoSuchPage repo={repo} />
+  if (view.kind === "thread") return <PatchDetailView key={view.id} repo={repo} id={view.id} unavailable={unavailable} />
+  return <ThreadSection repo={repo} config={patchThreads} tail={tail} unavailable={unavailable} />
+}
+
+function NoSuchPage({ repo }: { repo: RepoLocator }) {
+  return (
+    <section className="mt-6">
+      <h2 className="text-2xl font-semibold tracking-tight">Page not found</h2>
+      <Link to={threadsRoute(repo, "patches", patchStatuses, "open")} className={`mt-4 inline-block text-sm ${linkClass}`}>All patches</Link>
+    </section>
+  )
+}
