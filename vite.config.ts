@@ -55,6 +55,8 @@ export default defineConfig(({ mode }) => {
     // arrives, and a download streams it back; neither is bounded by 10s on
     // a slow link. Any thread kind's attachments, on a server or locally.
     "^/api/v1/(?:repos/[^/?]+/[^/?]+|repo)/(?:issues|discussions|patches)/[^/?]+/attachments(?:/[^/?]+)?(?:\\?|$)": backend,
+    // Starting a draft copies the repository into a new fork.
+    "^/api/v1/repos/[^/?]+/[^/?]+/patches/drafts(?:\\?|$)": backend,
     "^/api(?:/|$)": { ...backend, proxyTimeout: 10_000 },
   }
   return {

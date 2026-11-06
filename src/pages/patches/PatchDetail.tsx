@@ -21,6 +21,7 @@ import { useResource } from "@/lib/resource"
 import { threadsRoute, type WriteViewer } from "@/lib/threads"
 import { patchThreads } from "./config"
 import { ConflictBanner } from "@/pages/conflicts/ConflictBanner"
+import { ForkCommands } from "./drafts/ForkCommands"
 
 const config = patchThreads
 
@@ -111,6 +112,7 @@ function Body({ repo, loaded, readStartedAt, clock, viewer, revalidate, notifica
       {patch.labels.length > 0 && <Field title="Labels"><div className="flex flex-wrap gap-1"><LabelLinks labels={patch.labels} to={listOf} /></div></Field>}
       <Proposal repo={repo} patch={patch} />
       <Review repo={repo} patch={patch} />
+      <ForkCommands commands={patch.commands} noun="patch" />
       {/* patches have no assignees, so nothing else on the page changes whether the viewer is notified */}
       <ThreadNotifications repo={repo} config={config} thread={patch.id} viewer={viewer} read={notification} readStartedAt={readStartedAt} clock={clock} onRetry={reload} refresh={0} comments={shown.comments} />
       <Field title="Description">

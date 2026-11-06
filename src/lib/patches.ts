@@ -9,6 +9,7 @@
 import { getJson, type ActionAvailability, type EventId, type ObjectId, type Page, type RequestOptions, type UnavailableCode } from "@/lib/api"
 import type { Attached } from "@/lib/attachments"
 import { commitsRoute } from "@/lib/commits"
+import { draftsRoute, type ForkCommand } from "@/lib/drafts"
 import type { CommitDiff, DiffQuery } from "@/lib/diff"
 import type { MarkdownBlock } from "@/lib/markdown"
 import { apiBase, canonicalPath, getRepo, listRefs, pathSegments, repoRoute, type EncodedPath, type RefId, type RefItem, type RepoLocator, type RepoOverview } from "@/lib/repo"
@@ -77,6 +78,8 @@ export type PatchDetail = ThreadSummary<PatchStatus> & Attached & {
   /** The opaque revision of what an edit replaces (title, labels, description, target), which an edit sends back. */
   edit_revision: string
   actions: Record<"edit" | "set_status" | "remove" | "attach", ActionAvailability>
+  /** The Git commands for a fork-backed patch's fork, as the TUI offers them; none for a branch-backed or merged patch. */
+  commands: ForkCommand[]
 }
 
 /** A window of a patch revision's diff: its base commit's tree against its source commit's. */
@@ -220,10 +223,11 @@ function routeParams(segments: string[], allowed: string[]): Map<string, string>
  * | `<repo>/diff/patchrev:<id>[/start:<n>][/path:<path>]`     | `<hub repo>/patches/revisions/<id>/diff[?path=<path>]` |
  * | `<repo>/patches/new`                                      | `<hub repo>/patches/new` (#18, branch-backed patches) |
  * | `<repo>/patch:<id>/edit`                                  | `<hub repo>/patches/<id>/edit` (#18)      |
+ * | `<repo>/patches/drafts`                                   | `<hub repo>/patches/drafts`               |
  *
  * Parameter segments may come in any order before or after the view word, as
- * Haxy reads them; `start:` windows are dropped. Drafts, conflicts and the
- * other forms (`merge`, `publish`, `remove`, …) have no Hub page yet.
+ * Haxy reads them; `start:` windows are dropped. Conflicts and the other
+ * forms (`merge`, `publish`, `remove`, …) have no Hub page yet.
  */
 export function hubPathForPatchPath(path: string, local = false): string | null {
   const segments = path.split("/").slice(1)
@@ -276,6 +280,7 @@ export function hubPathForPatchPath(path: string, local = false): string | null 
   const [word] = words
   if (word === "labels") return threadLabelsRoute(repo, "patches", { search })
   if (word === "new") return rest.length === 1 ? newThreadRoute(repo, "patches") : null
+  if (word === "drafts") return rest.length === 1 ? draftsRoute(repo) : null
   const status = patchStatuses.find((value) => value === word)
   return status === undefined ? null : threadsRoute(repo, "patches", patchStatuses, status, { search })
 }
