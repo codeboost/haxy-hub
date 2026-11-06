@@ -33,7 +33,7 @@ test("a repository owner creates an issue that Haxy's own pages show, after a re
   expect(response.status(), await response.text()).toBe(201)
   const created: Detail = await response.json()
   expect(created).toMatchObject({ id, title: "Crash on save", status: "open", labels: [{ name: "bug" }, { name: "ui" }], author: { kind: "user", name: "alice" }, description_text: "Steps:\n\n1. Save", revision: expect.any(String) })
-  expect(created.actions).toEqual({ edit: { available: true }, set_status: { available: true }, remove: { available: true }, assign: { available: true } })
+  expect(created.actions).toEqual({ edit: { available: true }, set_status: { available: true }, remove: { available: true }, assign: { available: true }, attach: { available: true } })
 
   expect(await tuiIssueIds(backend, "/alice:tracker", "open")).toEqual([created.id])
   expect(await tuiIssuePage(backend, "/alice:tracker", created.id)).toContain("Crash on save")
@@ -167,6 +167,7 @@ test("who may write follows Haxy's rules: anonymous viewers and readers below th
     set_status: { available: false, reason: { code: "forbidden", message: "Only the issue's author and the repository's writers can change it." } },
     remove: { available: false, reason: { code: "forbidden", message: "Only the issue's author and the repository's writers can change it." } },
     assign: { available: false, reason: { code: "forbidden", message: "Only the issue's author and the repository's writers can assign people to it." } },
+    attach: { available: false, reason: { code: "forbidden", message: "Only the issue's author and the repository's writers can attach files to it." } },
   })
   for (const [method, path, body] of [
     ["PATCH", `${base}/${ownersIssue}`, { revision: others.revision, title: "Taken over", labels: "", description: "" }],
@@ -291,7 +292,7 @@ test("local mode writes issues without logging in, as its repository's author", 
   expect(created.status(), await created.text()).toBe(201)
   const issue: Detail = await created.json()
   expect(issue).toMatchObject({ title: "Offline bug", author: { kind: "email", email: "e2e@example.test" } })
-  expect(issue.actions).toEqual({ edit: { available: true }, set_status: { available: true }, remove: { available: true }, assign: { available: true } })
+  expect(issue.actions).toEqual({ edit: { available: true }, set_status: { available: true }, remove: { available: true }, assign: { available: true }, attach: { available: true } })
 
   const edited = await send(request, hub.url, "PATCH", `${base}/${issue.id}`, { revision: issue.revision, title: "Offline crash", labels: "local", description: "Seen offline." })
   expect(edited.status(), await edited.text()).toBe(200)

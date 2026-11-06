@@ -224,8 +224,9 @@ Resources that offer actions include what the current viewer may do:
   unknown — reload", never as failure or success.
 - The Vite proxy's 10s `proxyTimeout` is scoped per route (`vite.config.ts`; Vite uses
   the first matching entry). Every `/api/` route keeps it except those listed before the
-  catch-all, which have no proxy timeout: `/api/v1/repos` (repository creation, #10) and
-  `/api/v1/repo/sync` (local-mode sync, #27). A slow write route lands in that list along
+  catch-all, which have no proxy timeout: `/api/v1/repos` (repository creation, #10),
+  `/api/v1/repo/sync` (local-mode sync, #27) and a thread's attachments (uploads and
+  downloads, #14; see Attachments). A slow write route lands in that list along
   with its endpoint.
 
 ## Session
@@ -940,8 +941,8 @@ with no host.
 ## Known follow-up
 
 - Vite's 10s `proxyTimeout` is now scoped per route (see Timeouts); repository creation and
-  local-mode sync are exempt. Long-running endpoints still to come (merge, uploads) must be
-  added to the exempt list as they land.
+  local-mode sync are exempt. Long-running endpoints still to come (merge) must be added to the
+  exempt list as they land; attachment uploads and downloads are on it (#14).
 - A sync that fetches events Haxy can't read reports a `merge` failure, but leaves the local
   events branch at the unreadable commit, so later local reads fail; the TUI does the same.
   Tracked as [#32](issues/32-sync-unreadable-remote-events.md).
@@ -1539,3 +1540,129 @@ Implemented in `haxy/src/api/sync.zig` and `haxy/src/ui/Repo/Events.zig` (`runSy
 `syncStatus`, `lastSync`, `syncRunning`; the TUI's `sync` and `Header.local` now use them);
 unit tests in `haxy/src/test/sync.zig`. Haxy Hub: `src/lib/sync.ts` and
 `src/pages/sync/SyncPanel.tsx`, shown above the events list in local mode.
+
+## Attachments
+
+From issue [#14](issues/14-attachments.md). A thread's attachments live under the thread's own
+route, so every kind shares them (issues now; discussions in #16 and patches in #17 hook the same
+module in with their own `Kind`, as for comments). `<thread>` is `…/issues/{id}`. The routes
+resolve the repository as the viewer (one they can't read is `not_found` with the repository
+message, whatever else the request names), answer as the issue routes do when the kind is off,
+and answer `not_found` ("There is no issue with this id.") for a thread the id doesn't name or a
+removed one.
+
+| Route | Method | Body | Answer |
+| --- | --- | --- | --- |
+| `<thread>/attachments?name=&id=` | `POST` | the file's bytes | 201, the thread as `<thread>` reads it, the attachment listed |
+| `<thread>/attachments/{attachment}` | `GET`/`HEAD` | — | the file's bytes (see Downloads) |
+| `<thread>/attachments/{attachment}` | `DELETE` | — | the thread, without it |
+
+Wrong methods are `unsupported` with `Allow` (`POST` on the list, `GET, HEAD, DELETE` on one).
+Like every `/api/` write they pass the shared write guard first, and Haxy Hub binds each to the
+viewer its page was loaded for.
+
+**What a thread lists.** A thread's answer (`<thread>`, and every write's answer) carries
+`"attachments": Attachment[]`, every live attachment oldest first (the TUI's list, which reads
+the same records, `ui.Repo.Attachment.load`), and `"attachment_limits": {"max_bytes":
+10485760, "max_name_bytes": 255}`. An `Attachment` is `{"id", "name", "content_type", "inline",
+"actions": {"remove": Availability}}`: `name` is for display (bytes that aren't UTF-8 become
+U+FFFD, as for paths; the stored name may come from a pushed event), `content_type` and `inline`
+say how its download is served. `actions.attach` on the thread says whether the viewer may
+upload. Removed attachments aren't listed, as in the TUI.
+
+**Which threads take attachments.** Threads only, as in the TUI and Haxy's own upload route:
+`evt.Attachment` hangs off a thread event and `evt.threadHolds` refuses anything else, so comments
+have none (decision, #14; the spec's "threads and comments" reads as "supported threads and
+comments", and Haxy supports none on comments). Haxy's TUI offers "add attachment" on a thread's
+own page, not on drafts (patches, #17).
+
+**One set of rules** (`haxy/src/attachment.zig`, used by the TUI's pages, Haxy's HTML upload and
+download routes and these routes alike):
+
+- *Uploads* (`attachment.checkUpload`): one file, the whole request body, with a declared
+  `Content-Length` of 1 to 10 MiB (`evt.Attachment.max_size`) and a `name` that
+  `evt.Attachment.nameValid` accepts (1–255 bytes, no `/`, `\` or control characters, not `.` or
+  `..`). `name` is a query parameter, percent-encoded and decoded once (so any bytes travel),
+  because the body is the file itself. The checks run before the body is read and before the
+  repository is opened; refusals are `validation` beside `name` or `file` ("Name the file.", "The
+  file is empty.", "Files can be up to 10 MB." with HTTP 413, a name refused, or no
+  `Content-Length`).
+- *Who may attach* is the thread's: `ui.authorizeUser` with the kind's tab role (`unauthenticated`,
+  or `forbidden` for the role), then `ui.RepoSource.canModify` on the thread, its author or anyone
+  with the write role (`forbidden`, "Only the issue's author and the repository's writers can
+  attach files to it."), as Haxy's upload form has always required. `actions.attach` is the same
+  decision.
+- *Who may remove one* is the attachment's: the tab role, then `canModify` on the attachment, so
+  its author or a writer (`forbidden`, "Only the attachment's author and the repository's writers
+  can remove it."); each attachment's `actions.remove` says so. The TUI asks before removing, and
+  so does Hub. Removing a removed (or unknown, or another thread's) attachment is `not_found`
+  ("There is no attachment with this id on this issue."), whoever asks: that is checked before
+  the viewer's rights to it, and nothing is written.
+- Both writes go through `thread_write.attach` and `thread_write.remove`, which Haxy's HTML routes
+  (`…/issue:<id>/attach`, `…/attachment:<id>/remove`) and the TUI's removal now use too. The
+  thread being live and the id being free are checked where the write lands: inside a xit
+  repository's write transaction (`evt.consumeGuarded`), under #12's events lock for a Git
+  repository (local mode, which also catches up with its events branch first).
+
+**Uploads are streamed and idempotent by id.** The body streams from the socket into the object
+store as the event commit is written (`evt.Blob`); nothing buffers the file. `id`, when sent, is
+the new attachment's event id (32 lowercase hex digits, `validation` on `id` otherwise); one any
+event already has is `conflict` keyed by `id`, and nothing is attached. Haxy Hub chooses one per
+chosen file and keeps it across retries, so after an unknown outcome it reads the thread: the
+attachment listed means uploaded; otherwise the same upload can be sent again, and a `conflict` on
+its own id means an earlier attempt landed. (A removal after an unknown outcome is settled by the
+same read: gone means removed.) Removed attachments keep their ids, so a repeat refused on its id
+may name one removed since: Hub reads the thread before saying it is attached, and otherwise says
+it was removed and gives the file a new id. When an upload is refused before it is stored, Haxy
+reads and drops a body whose declared length is at most 40 MiB so the client gets the answer
+rather than a connection reset, and closes the connection for anything larger, for any chunked
+body (whatever `Content-Length` it also claims, since the body reader follows the chunks), or for a
+client waiting on `Expect: 100-continue`. A chunked upload is refused as having no length
+(`attachment.declaredLength`), so the size an upload is stored with is always the one it declared. Neither the
+client nor the Vite proxy puts a timeout on uploads or downloads (see Timeouts): the proxy lists
+`^/api/v1/(repos/<owner>/<name>|repo)/(issues|discussions|patches)/<id>/attachments[/<id>]`
+before its catch-all.
+
+**Downloads** (`attachment.send`, which Haxy's own `/<owner>:<name>/attachment:<id>` URLs use
+too):
+
+- *Read check* (`attachment.readServable`): the viewer may read the repository (else
+  `not_found` with the repository message, so a private repository's attachment answers a direct
+  URL exactly as a missing repository does), the attachment exists, isn't removed, and hangs off a
+  live thread (the route's own thread for the API; any live thread for Haxy's URL). Anything else
+  is `not_found`, the same for an unknown id, a removed attachment and one whose thread was
+  removed. Haxy's own URL now applies the thread check too, so a removed issue's files are no
+  longer served there.
+- The bytes stream from the object store with `Content-Length`; `HEAD` sends the headers only.
+- `Content-Disposition` names the file (RFC 6266): `filename*=UTF-8''<percent-encoded bytes>`,
+  with a `filename="…"` fallback in which every byte that isn't printable ASCII, and `"`, `\` and
+  `;`, becomes `_`.
+- *Content handling* (`attachment.handling`, by extension, case-insensitive): only the images on a
+  safe list open in place (`inline`): PNG, JPEG, GIF and WebP, with their own types. A few other
+  known types download (`attachment`) with their own type: PDF, plain text and logs, Markdown,
+  CSV, JSON, ZIP, gzip, tar, MP4, WebM, MP3. Everything else, and on purpose anything a browser
+  could run as script on this origin (HTML, SVG, JS, XML, …), downloads as
+  `application/octet-stream`.
+- Every download carries `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src
+  'none'; style-src 'unsafe-inline'; sandbox` (even a document rendered from the bytes runs and
+  loads nothing), and `Cache-Control: private, no-store` (who may read it can change).
+
+**Haxy Hub.** A thread's page shows an Attachments section under the description when anything is
+attached or the viewer may attach: each attachment links to its download route (images open in a
+new tab, other files download under their own name; the bytes never pass through page state),
+with a remove button when its `actions` allow, which asks first. The upload form (shown when
+`actions.attach` allows) takes one file, checks it against `attachment_limits` before sending (an
+empty file, a file over the size, a name over the bytes) and shows those and Haxy's own refusals
+beside the file input; Haxy's check is the authority. An upload or removal answer updates only the
+attachments on the page (`useThreadAnswers`; where no attachment or assignee answer applies, those
+fields come from the latest read, never from a status answer that may predate them), and every
+answer to a change on the issue page then reads the issue again in the background (the spec's
+revalidation after successful mutations), so what another client changed meanwhile shows too;
+the answer clock orders that read after the answer, and an outcome Haxy couldn't confirm holds the
+controls until a read of the thread settles it ("Check again" when that read fails too).
+
+Implemented in `haxy/src/api/attachments.zig` (hooked in by `api/issues.zig`), the shared rules in
+`haxy/src/attachment.zig` and `haxy/src/thread_write.zig` (`attach`, `remove`); unit tests in
+`haxy/src/test/attachment.zig`, `haxy/src/test/api_attachments.zig` and
+`haxy/src/test/thread_write.zig`. Haxy Hub: `src/lib/attachments.ts` and
+`src/components/attachments/ThreadAttachments.tsx`.

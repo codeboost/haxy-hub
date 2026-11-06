@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { Link, useLocation } from "react-router"
 import { ArrowLeft, MessageSquare, TriangleAlert } from "lucide-react"
 import { FailureState, LoadingState } from "@/components/listing"
@@ -13,6 +13,7 @@ import { ThreadActions } from "./ThreadActions"
 import { AuthorName, Instant, LabelLinks, SectionUnavailable } from "./ThreadParts"
 import { RefreshFailed, ThreadComments, useKept } from "./ThreadComments"
 import { ThreadAssignees } from "@/components/assignees/ThreadAssignees"
+import { ThreadAttachments } from "@/components/attachments/ThreadAttachments"
 import { useAnswerClock, useThreadAnswers, type AnswerClock } from "@/components/assignees/useThreadAnswers"
 
 function Field({ title, children }: { title: string; children: ReactNode }) {
@@ -25,9 +26,16 @@ function Field({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-function Body<Status extends string>({ repo, config, loaded, readStartedAt, clock, viewer }: { repo: RepoLocator; config: ThreadConfig<Status>; loaded: ThreadDetail<Status>; readStartedAt: number; clock: AnswerClock; viewer: WriteViewer }) {
+function Body<Status extends string>({ repo, config, loaded, readStartedAt, clock, viewer, revalidate }: { repo: RepoLocator; config: ThreadConfig<Status>; loaded: ThreadDetail<Status>; readStartedAt: number; clock: AnswerClock; viewer: WriteViewer; revalidate(): void }) {
   // what the changes on this page answered with, over reads that started before them
-  const { thread, onChanged, onAssigneesChanged } = useThreadAnswers(loaded, readStartedAt, clock)
+  const answers = useThreadAnswers(loaded, readStartedAt, clock)
+  const { thread } = answers
+  // each answer also reads the thread again in the background: an answer
+  // sets only what its change owns, so what another client changed meanwhile
+  // shows once that read (which started after the answer) lands
+  const onChanged = (value: ThreadDetail<Status>) => { answers.onChanged(value); revalidate() }
+  const onAssigneesChanged = (value: ThreadDetail<Status>) => { answers.onAssigneesChanged(value); revalidate() }
+  const onAttachmentsChanged = (value: ThreadDetail<Status>) => { answers.onAttachmentsChanged(value); revalidate() }
   const listOf = (search: string) => threadsRoute(repo, config.kind, config.statuses, thread.status, { search })
   return (
     <article className="mt-6">
@@ -53,6 +61,7 @@ function Body<Status extends string>({ repo, config, loaded, readStartedAt, cloc
           {thread.description.length === 0 ? <p className="text-muted-foreground">No description.</p> : <Markdown blocks={thread.description} resolveLink={(destination) => linkTarget(destination, repo.kind === "local")} />}
         </div>
       </Field>
+      <ThreadAttachments repo={repo} config={config} thread={thread} viewer={viewer} onChanged={onAttachmentsChanged} />
       <ThreadComments repo={repo} config={config} thread={thread.id} />
     </article>
   )
@@ -67,12 +76,14 @@ export function ThreadDetailView<Status extends string>({ repo, config, id, unav
   // again; a navigation within the page (a comment posted, another comment
   // page) reads it again in the background, so its counts stay current
   const clock = useAnswerClock()
+  // bumped after each answer to a change on the page, to read the thread again
+  const [revalidations, setRevalidations] = useState(0)
   const resourceKey = `${config.kind} ${key} ${id} ${viewerKey}`
   const read = useResource(resourceKey, (signal) => {
     // when this read started, against the answers to this page's own changes
     const startedAt = clock.now
     return getThread<Status>(repo, config.kind, id, { signal }).then((data) => ({ data, startedAt }))
-  }, location.key)
+  }, `${location.key} ${revalidations}`)
   // once loaded, a background read that fails keeps the page (and every draft
   // in it) and says so; only the first load may replace it with a failure
   const thread = useKept(read, resourceKey)
@@ -95,7 +106,7 @@ export function ThreadDetailView<Status extends string>({ repo, config, id, unav
       return (
         <>
           {thread.refreshFailed && <div className="mt-6"><RefreshFailed title={`Couldn't refresh this ${config.noun.toLowerCase()}`} error={thread.refreshFailed} onRetry={read.reload} /></div>}
-          <Body repo={repo} config={config} loaded={thread.data.data} readStartedAt={thread.data.startedAt} clock={clock} viewer={viewer?.name ?? null} />
+          <Body repo={repo} config={config} loaded={thread.data.data} readStartedAt={thread.data.startedAt} clock={clock} viewer={viewer?.name ?? null} revalidate={() => setRevalidations((value) => value + 1)} />
         </>
       )
   }
