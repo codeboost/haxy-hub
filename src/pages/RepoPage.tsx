@@ -8,6 +8,7 @@ import { getRepo, refsRoute, repoRoute, routePath, routeRef, type RefId, type Re
 import { CommitsSection } from "@/pages/commits/CommitsSection"
 import { commitsRoute } from "@/lib/commits"
 import { IssuesSection } from "@/pages/issues/IssuesSection"
+import { DiscussionsSection } from "@/pages/discussions/DiscussionsSection"
 import { PatchesSection } from "@/pages/patches/PatchesSection"
 import { EventsSection } from "@/pages/events/EventsSection"
 import { UndoSection } from "@/pages/undo/UndoSection"
@@ -40,6 +41,7 @@ const sectionRoutes: Partial<Record<RepoSection, (repo: RepoLocator, ref: RefId 
   events: (repo) => `${repoRoute(repo)}/events`,
   undo: (repo) => undoRoute(repo),
   settings: (repo) => adminRoute(repo),
+  discussions: (repo) => `${repoRoute(repo)}/discussions`,
   patches: (repo) => `${repoRoute(repo)}/patches`,
 }
 
@@ -97,7 +99,7 @@ function NotFound({ repo }: { repo: RepoLocator }) {
  * its branches or tags (`…/branches`, `…/tags`); `section` picks another
  * section under the same header (`…/issues/…`, `…/commits/…`).
  */
-export function RepoPage({ local = false, section = "files", refs }: { local?: boolean; section?: "files" | "issues" | "events" | "find" | "commits" | "settings" | "undo" | "patches"; refs?: RefKind }) {
+export function RepoPage({ local = false, section = "files", refs }: { local?: boolean; section?: "files" | "issues" | "events" | "find" | "commits" | "settings" | "undo" | "discussions" | "patches"; refs?: RefKind }) {
   const params = useParams()
   const location = useLocation()
   const repo: RepoLocator = local ? { kind: "local" } : { kind: "server", owner: params.owner ?? "", name: params.name ?? "" }
@@ -141,6 +143,8 @@ export function RepoPage({ local = false, section = "files", refs }: { local?: b
             <UndoSection repo={repo} tail={params["*"] ?? ""} />
           ) : section === "issues" ? (
             <IssuesSection repo={repo} sections={data.sections} tail={params["*"] ?? ""} />
+          ) : section === "discussions" ? (
+            <DiscussionsSection repo={repo} sections={data.sections} tail={params["*"] ?? ""} />
           ) : section === "patches" ? (
             <PatchesSection repo={repo} sections={data.sections} tail={params["*"] ?? ""} />
           ) : section === "find" ? (
@@ -189,6 +193,8 @@ export const repoRoutes: RouteObject[] = [
   { path: "repos/:owner/:name/settings/*", element: <RepoPage section="settings" /> },
   { path: "repo/undo/*", element: <RepoPage local section="undo" /> },
   { path: "repos/:owner/:name/undo/*", element: <RepoPage section="undo" /> },
+  { path: "repo/discussions/*", element: <RepoPage local section="discussions" /> },
+  { path: "repos/:owner/:name/discussions/*", element: <RepoPage section="discussions" /> },
   { path: "repo/patches/*", element: <RepoPage local section="patches" /> },
   { path: "repos/:owner/:name/patches/*", element: <RepoPage section="patches" /> },
 ]

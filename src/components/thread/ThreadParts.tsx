@@ -37,7 +37,7 @@ export function ThreadTabs<Status extends string>({ repo, config, current, searc
 }
 
 /** Haxy's thread search: words, `label:<name>` and `assignee:<name or email>`, parsed by Haxy. */
-export function ThreadSearchForm({ label, search, target }: { label: string; search: string; target(search: string): string }) {
+export function ThreadSearchForm({ label, search, target, placeholder = "Words, label:name, assignee:name" }: { label: string; search: string; target(search: string): string; placeholder?: string }) {
   const navigate = useNavigate()
   const [value, setValue] = useState(search)
   return (
@@ -56,7 +56,7 @@ export function ThreadSearchForm({ label, search, target }: { label: string; sea
         type="search"
         value={value}
         onChange={(event) => setValue(event.target.value)}
-        placeholder="Words, label:name, assignee:name"
+        placeholder={placeholder}
         className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       />
       <Button type="submit" variant="outline"><Search />Search</Button>

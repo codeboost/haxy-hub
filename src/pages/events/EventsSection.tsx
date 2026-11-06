@@ -37,7 +37,7 @@ function repoKey(repo: RepoLocator): string {
 function TargetLink({ repo, target }: { repo: RepoLocator; target: EventTarget }) {
   const route = eventTargetRoute(repo, target)
   if (route === null) return <span>No Haxy Hub page for {threadPlurals[target.thread_kind]} yet</span>
-  return <Link to={route} className={linkClass}>{target.kind === "comment" ? "View comment" : "View issue"}</Link>
+  return <Link to={route} className={linkClass}>{target.kind === "comment" ? "View comment" : target.thread_kind === "discuss" ? "View discussion" : "View issue"}</Link>
 }
 
 function EventRow({ repo, event }: { repo: RepoLocator; event: RepoEvent }) {

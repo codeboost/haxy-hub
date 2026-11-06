@@ -1678,3 +1678,90 @@ Implemented in `haxy/src/api/patches.zig` (routes, shapes, the revision diff's d
 `haxy/src/ui/Repo/Files.zig` (`readPatchRevAt`, moved from `api/refs.zig`); unit tests in
 `haxy/src/test/api_patches.zig`. Haxy Hub: `src/lib/patches.ts` and `src/pages/patches/`;
 `DiffFiles` in `src/pages/commits/CommitDiff.tsx` renders both diffs' files.
+
+## Threads: discussions
+
+From issue [#16](issues/16-discussions.md). A repository's discussions are the second thread
+kind: they use the routes, rules and shapes of "Threads: issues" and "Threads: writing
+issues" under `…/discussions` (`/api/v1/repos/{owner}/{name}/discussions` on a server,
+`/api/v1/repo/discussions` in local mode), with their comments under the shared comment
+routes (`<thread>` is `…/discussions/{id}`, see "Comments"). What differs is what a
+discussion holds and how the TUI lists them.
+
+**What a discussion is.** The TUI and the event model give a discussion a title, labels, a
+description, its author and its comments, and nothing else: it has **no status, no
+assignees and no field conflicts** (a merge keeps the target's version, `merge_policy =
+.target_wins`). Its shapes leave those out:
+
+- `DiscussionSummary` is `{"id", "title", "labels": FilterLink[], "author", "created_at",
+  "comment_count"}`, with `ThreadSummary`'s meanings.
+- A discussion's own route adds `"description"`, `"description_text"`, `"revision"` (a digest
+  of title, labels and description, `evt.Discussion.contentRevision`) and `"actions": {"edit",
+  "remove"}`; there is no `set_status` or `assign`.
+
+| Route | Method | Answer |
+| --- | --- | --- |
+| `…/discussions?search=&cursor=&page_size=` | `GET`/`HEAD` | `{"actions": {"create"}, "filters", "items": DiscussionSummary[], "page"}` |
+| `…/discussions/labels?search=&cursor=&page_size=` | `GET`/`HEAD` | as for issues |
+| `…/discussions/{id}` | `GET`/`HEAD` | one discussion; `not_found` ("There is no discussion with this id.") for an unknown or removed one, or an id that names another kind of thread |
+| `…/discussions` | `POST` `{id?, title, labels, description}` | 201, the new discussion |
+| `…/discussions/{id}` | `PATCH` `{revision, title, labels, description}` | the discussion, its fields replaced |
+| `…/discussions/{id}` | `DELETE` | `{"id"}` |
+
+- **One list.** The TUI lists discussions in one tab, "recent", **most recently active
+  first** (a comment moves a discussion up; its search index stays keyed by creation), so the
+  list takes no `status` and answers no `counts`: `page.count` is the count (`exact`, or
+  `at_least` past the TUI's search cap of 1000). `page_size` defaults to the TUI's 20, capped
+  at 100; the cursor names the next window's first discussion, as for issues, and one naming
+  a discussion the listing no longer holds (removed, relabelled, or no longer matching the
+  search's words, e.g. retitled between pages, or sent with another search) is `validation`
+  on `cursor`, never a short or skipping page.
+- **Search** is Haxy's thread search, as for issues. Discussions have no assignees, so an
+  `assignee:` term lists nothing (as in the TUI); `filters.assignee_not_found` is always
+  false.
+- There is no `…/discussions/{id}/status` route (`not_found`) and no assignee route. Wrong
+  methods are `unsupported` with `Allow` as for issues.
+- **Turned off and thresholds.** `discuss_role` in the repository's settings (#23) is the
+  discussions tab's role: "nobody" turns discussions off, and then every discussion route,
+  comments included, answers `not_found` ("This repository doesn't use discussions."), as
+  the TUI has no discussions tab and the repository's `sections` lack `discussions`;
+  "members" (the write role) or "anybody who can read" is the threshold for opening,
+  commenting on and changing discussions (`ui.authorizeUser` with `.discuss`, checked when the
+  write runs). Below it a write is `forbidden` ("Your role in this repository doesn't allow
+  writing discussions."), and the list's `actions.create` says so.
+- **One set of rules.** Writes go through `thread_write`: `create` and `remove` by kind, and
+  `edit` (formerly `editIssue`), now generic over issues and discussions. The TUI's
+  discussions tab and Haxy's HTML edit form now edit through `thread_write.edit` too, so a
+  discussion edit takes the Git events lock, catches up with a local events branch and checks
+  `canModify` as an issue edit does; the TUI and the HTML form still send no revision. Who may
+  change a discussion is its author or a writer ("Only the discussion's author and the
+  repository's writers can change it."). Creation is idempotent by `id`; an edit must send
+  `revision` and a stale one is `conflict` keyed by `revision`, re-checked inside a xit
+  repository's write transaction (`evt.Discussion.updateAt`) or under the lock.
+
+**Haxy Hub.** `<hub repo>/discussions` (the recent list, `?search=&cursor=`), `…/labels`,
+`…/new`, `…/<id>`, `…/<id>/edit` and `…/<id>/comments/<comment>` are the shared thread pages
+(`ThreadSection` with the `discussionThreads` config): one "Recent" tab and the labels, no
+status badge or status button, no assignees, and a search hint without `assignee:`
+(`ThreadConfig.searchPlaceholder`). `src/lib/threads.ts` reads discussion answers
+through `asThreadList`/`asThreadDetail` (`src/lib/discussions.ts`), which give them the
+shared shape: the TUI's one list stands in for a status, and `set_status` and `assign` are
+unavailable (`unsupported`), so the shared pieces never offer them. Haxy's own discussion
+URLs in Markdown open the matching Hub pages (`hubPathForThreadPath` with `discussionPaths`):
+
+| Haxy | Haxy Hub |
+| --- | --- |
+| `<repo>/discussions`, `<repo>/discussions/recent[/search:<s>]` | `<hub repo>/discussions[?search=<s>]` |
+| `<repo>/discussions/labels[/search:<s>]` | `<hub repo>/discussions/labels[?search=<s>]` |
+| `<repo>/discussions/new` | `<hub repo>/discussions/new` |
+| `<repo>/discuss:<id>[/search:<s>][/start:<n>]`, `…/description` | `<hub repo>/discussions/<id>` |
+| `<repo>/discuss:<id>/edit` | `<hub repo>/discussions/<id>/edit` |
+| `<repo>/discuss:<id>/comment:<c>[/start:<n>]` | `<hub repo>/discussions/<id>/comments/<c>` |
+
+Implemented in `haxy/src/api/discussions.zig`, with what every kind shares in
+`haxy/src/api/thread.zig` (`authorize`, `bodyFields`, `searchParam`, `invalidField`,
+`unsupported`, `id_taken`, `stale_cursor`, now used by the issue routes too),
+`haxy/src/thread_write.zig` (`edit`) and `haxy/src/event/Discussion.zig` (`contentRevision`,
+`updateAt`); unit tests in `haxy/src/test/thread_write.zig`. Haxy Hub:
+`src/lib/discussions.ts`, `src/pages/discussions/DiscussionsSection.tsx`; e2e in
+`e2e/discussions-api.spec.ts` and `e2e/discussions.spec.ts`.

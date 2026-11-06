@@ -1,15 +1,16 @@
 /**
- * Threads: a repository's issues (and, in later slices, its discussions and
- * patches), read through the routes in haxy's src/api/thread.zig and
- * src/api/issues.zig. Lists, counts, windows and search filters are Haxy's
+ * Threads: a repository's issues and discussions (and, in a later slice, its
+ * patches), read through the routes in haxy's src/api/thread.zig,
+ * src/api/issues.zig and src/api/discussions.zig. Lists, counts, windows and search filters are Haxy's
  * own (the TUI's issues tab): Hub never parses a search or builds a filter.
  */
 import { ApiError, getJson, requestJson, type ActionAvailability, type Count, type EventId, type Page, type PageQuery, type RequestOptions, type Timestamp } from "@/lib/api"
 import type { MarkdownBlock } from "@/lib/markdown"
 import { repoRoute, type RepoLocator } from "@/lib/repo"
+import { asThreadDetail, asThreadList, type DiscussionDetail, type DiscussionPage } from "@/lib/discussions"
 
 /** The kinds of thread, as they appear in API and Hub paths. */
-export type ThreadKind = "issues" | "patches"
+export type ThreadKind = "issues" | "discussions" | "patches"
 
 export type IssueStatus = "open" | "closed"
 
@@ -99,12 +100,23 @@ function withParams(path: string, entries: Array<[string, string | number | unde
   return text ? `${path}?${text}` : path
 }
 
+// Discussions have one list and no status: their answers are read in the shape
+// every kind shares (see `@/lib/discussions`).
+function listOf<Status extends string>(kind: ThreadKind, answer: Promise<unknown>): Promise<ThreadList<Status>> {
+  return answer.then((value) => (kind === "discussions" ? asThreadList(value as DiscussionPage) : value) as ThreadList<Status>)
+}
+
+function detailOf<Status extends string>(kind: ThreadKind, answer: Promise<unknown>): Promise<ThreadDetail<Status>> {
+  return answer.then((value) => (kind === "discussions" ? asThreadDetail(value as DiscussionDetail) : value) as ThreadDetail<Status>)
+}
+
 export function listThreads<Status extends string>(repo: RepoLocator, kind: ThreadKind, query: ThreadListQuery<Status>, options: Options = {}): Promise<ThreadList<Status>> {
-  return getJson(withParams(apiBase(repo, kind), [["status", query.status], ["search", query.search], ["cursor", query.cursor], ["page_size", query.page_size]]), options)
+  const status = kind === "discussions" ? undefined : query.status
+  return listOf(kind, getJson(withParams(apiBase(repo, kind), [["status", status], ["search", query.search], ["cursor", query.cursor], ["page_size", query.page_size]]), options))
 }
 
 export function getThread<Status extends string>(repo: RepoLocator, kind: ThreadKind, id: EventId, options: Options = {}): Promise<ThreadDetail<Status>> {
-  return getJson(`${apiBase(repo, kind)}/${encodeURIComponent(id)}`, options)
+  return detailOf(kind, getJson(`${apiBase(repo, kind)}/${encodeURIComponent(id)}`, options))
 }
 
 /** Every label the repository's threads of `kind` use, by name; each links into the first status's list. */
@@ -146,12 +158,12 @@ function writeJson<T>(path: string, method: string, viewer: WriteViewer, body?: 
 
 /** Opens a thread under `id` (see `newThreadId`); resolves to it as its own route reads it. */
 export function createThread<Status extends string>(repo: RepoLocator, kind: ThreadKind, viewer: WriteViewer, id: EventId, fields: ThreadFields): Promise<ThreadDetail<Status>> {
-  return writeJson(apiBase(repo, kind), "POST", viewer, { id, ...fields })
+  return detailOf(kind, writeJson(apiBase(repo, kind), "POST", viewer, { id, ...fields }))
 }
 
 /** Replaces a thread's fields as of `revision`; `conflict` keyed by `revision` when it changed since. */
 export function editThread<Status extends string>(repo: RepoLocator, kind: ThreadKind, id: EventId, viewer: WriteViewer, revision: string, fields: ThreadFields): Promise<ThreadDetail<Status>> {
-  return writeJson(`${apiBase(repo, kind)}/${encodeURIComponent(id)}`, "PATCH", viewer, { revision, ...fields })
+  return detailOf(kind, writeJson(`${apiBase(repo, kind)}/${encodeURIComponent(id)}`, "PATCH", viewer, { revision, ...fields }))
 }
 
 /** Sets a thread's status; setting the one it has changes nothing, so a retry is safe. */
@@ -296,6 +308,20 @@ function routeParams(segments: string[], allowed: string[]): Map<string, string>
  * leave the repository out.
  */
 export function hubPathForIssuePath(path: string, local = false): string | null {
+  return hubPathForThreadPath(path, local, { kind: "issues", segment: "issue", statuses: issueStatuses })
+}
+
+/**
+ * What a kind's Haxy paths are named: its tab (`issues`), the segment that
+ * names one thread (`issue:<id>`), and its list views in tab order (the first
+ * is the tab's own).
+ */
+export type ThreadPaths = { kind: ThreadKind; segment: string; statuses: readonly string[] }
+
+/** `hubPathForIssuePath` for any kind of thread, its Haxy paths named by `paths`. */
+export function hubPathForThreadPath(path: string, local: boolean, paths: ThreadPaths): string | null {
+  const { kind, statuses } = paths
+  const thread = `${paths.segment}:`
   const segments = path.split("/").slice(1)
   let repo: RepoLocator
   if (local) {
@@ -312,8 +338,8 @@ export function hubPathForIssuePath(path: string, local = false): string | null 
   }
   const [tab = "", ...rest] = segments
   if (rest.some((segment) => segment.length === 0)) return null
-  if (tab.startsWith("issue:")) {
-    const id = tab.slice("issue:".length)
+  if (tab.startsWith(thread)) {
+    const id = tab.slice(thread.length)
     if (!id) return null
     // a comment permalink opens the comment's own page (its reply window dropped)
     const comment = rest[0]?.startsWith("comment:") ? rest[0].slice("comment:".length) : null
@@ -322,18 +348,18 @@ export function hubPathForIssuePath(path: string, local = false): string | null 
     const words = tail.filter((segment) => !segment.includes(":"))
     if (words.length > 1 || (words.length === 1 && (!["description", "edit"].includes(words[0]) || tail !== rest))) return null
     if (routeParams(tail.filter((segment) => segment.includes(":")), ["search", "start"]) === null) return null
-    if (comment !== null) return commentRoute(repo, "issues", id, comment)
-    return words[0] === "edit" ? editThreadRoute(repo, "issues", id) : threadRoute(repo, "issues", id)
+    if (comment !== null) return commentRoute(repo, kind, id, comment)
+    return words[0] === "edit" ? editThreadRoute(repo, kind, id) : threadRoute(repo, kind, id)
   }
-  if (tab !== "issues") return null
+  if (tab !== kind) return null
   const words = rest.filter((segment) => !segment.includes(":"))
-  if (words.length === 0) return rest.length === 0 ? threadsRoute(repo, "issues", issueStatuses, "open") : null
+  if (words.length === 0) return rest.length === 0 ? threadsRoute(repo, kind, statuses, statuses[0]) : null
   const params = routeParams(rest.filter((segment) => segment.includes(":")), ["search"])
   if (words.length > 1 || params === null) return null
   const search = params.get("search")
   const [word] = words
-  if (word === "new") return rest.length === 1 ? newThreadRoute(repo, "issues") : null
-  if (word === "labels") return threadLabelsRoute(repo, "issues", { search })
-  const status = issueStatuses.find((value) => value === word)
-  return status === undefined ? null : threadsRoute(repo, "issues", issueStatuses, status, { search })
+  if (word === "new") return rest.length === 1 ? newThreadRoute(repo, kind) : null
+  if (word === "labels") return threadLabelsRoute(repo, kind, { search })
+  const status = statuses.find((value) => value === word)
+  return status === undefined ? null : threadsRoute(repo, kind, statuses, status, { search })
 }

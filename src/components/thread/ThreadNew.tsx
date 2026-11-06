@@ -43,7 +43,7 @@ export function ThreadNewView<Status extends string>({ repo, config, unavailable
           ) : (
             <p className="mt-3 text-muted-foreground">
               {create.reason.code === "unauthenticated"
-                ? <><Link to={loginPath(location.pathname + location.search)} className={linkClass}>Log in</Link> to open an {noun}.</>
+                ? <><Link to={loginPath(location.pathname + location.search)} className={linkClass}>Log in</Link> to open {/^[aeiou]/.test(noun) ? "an" : "a"} {noun}.</>
                 : create.reason.message}
             </p>
           )}

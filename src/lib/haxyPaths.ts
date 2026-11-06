@@ -2,7 +2,8 @@ import { canonicalPath, canonicalRef, refsRoute, repoRoute, type RepoLocator } f
 import { hubPathForEventsPath } from "@/lib/events"
 import { hubPathForUndoPath } from "@/lib/undo"
 import { hubPathForCommitPath } from "@/lib/commits"
-import { hubPathForIssuePath } from "@/lib/threads"
+import { hubPathForIssuePath, hubPathForThreadPath } from "@/lib/threads"
+import { discussionPaths } from "@/lib/discussions"
 import { hubPathForFindPath } from "@/lib/finder"
 import { hubPathForPatchPath } from "@/lib/patches"
 
@@ -22,6 +23,7 @@ import { hubPathForPatchPath } from "@/lib/patches"
  * | `/<repo>/refs[/branch:<from>][/search:<s>]`             | `<hub repo>/branches?search=<s>`         |
  * | `/<repo>/refs/tag:<from>[/search:<s>]`                  | `<hub repo>/tags?search=<s>`             |
  * | `/<repo>/issues…`, `/<repo>/issue:<id>…`              | see `hubPathForIssuePath` (`@/lib/threads`) |
+ * | `/<repo>/discussions…`, `/<repo>/discuss:<id>…`       | the same, by `discussionPaths` (`@/lib/discussions`) |
  * | `/<repo>/events…`, `/<repo>/event:<id>…`              | see `hubPathForEventsPath` (`@/lib/events`) |
  * | `/<repo>/files[/<ref>]/find:<s>…`                       | see `hubPathForFindPath` (`@/lib/finder`) |
  * | `/<repo>/commits…`                                      | see `hubPathForCommitPath` (`@/lib/commits`) |
@@ -38,7 +40,7 @@ import { hubPathForPatchPath } from "@/lib/patches"
  *
  * `start:` and `from` windows are dropped: Hub pages use opaque cursors, which
  * only the backend can issue. Paths with no Hub equivalent yet (commit-range
- * diffs, discussions, patch drafts, …) come back unchanged.
+ * diffs, patch drafts, …) come back unchanged.
  */
 
 // Haxy's user name rule (event/User.zig validateName)
@@ -122,6 +124,7 @@ export function hubPathForHaxyPath(haxyPath: string, local = false): string {
   // Like the TUI, match on the path alone.
   const path = haxyPath.split(/[?#]/, 1)[0]
   const issue = hubPathForIssuePath(path, local); if (issue !== null) return issue
+  const discussion = hubPathForThreadPath(path, local, discussionPaths); if (discussion !== null) return discussion
   const events = hubPathForEventsPath(path, local); if (events !== null) return events
   const undo = hubPathForUndoPath(path, local); if (undo !== null) return undo
   const find = hubPathForFindPath(path, local); if (find !== null) return find
