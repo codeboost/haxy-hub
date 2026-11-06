@@ -8,7 +8,7 @@
 
 ## What to build
 
-Contributors attach files to supported threads and comments, readers open or download them with correct filenames and content handling, and authorized users remove them with confirmation. Use bounded/streamed transfers (not page snapshots), expose backend size/type constraints, and authorize both reads and writes. Upload requests are exempt from the short status timeout.
+Contributors attach files to supported threads (not comments: Haxy's attachments hang off threads, user decision), readers open or download them with correct filenames and content handling, and authorized users remove them with confirmation. Use bounded/streamed transfers (not page snapshots), expose backend size/type constraints, and authorize both reads and writes. Upload requests are exempt from the short status timeout.
 
 ## Acceptance criteria
 

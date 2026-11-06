@@ -937,6 +937,26 @@ with no host.
   both sides wrote (user decisions, #27).
 - A member lookup for someone the member list doesn't hold answers 200 with `role: null`,
   not `not_found`, which the settings pages read as lost access (user decision, #31).
+- A local-mode sync validates what it fetched before the events branch moves: a merge that
+  can't be consumed is a `merge` failure that also puts the remote-tracking ref back, so
+  nothing changes locally and nothing is pushed; a xit repo's undo log shows one "merge
+  events" entry for the merge and its consume (user decisions, #32).
+- Discussions keep the TUI's model: one recent list ordered by latest activity, no status,
+  assignees or conflicts, and a discussion `status` route is `not_found` (user decisions, #16).
+- A squash-merged patch's commits are reviewed as its revision's own commits, with a note
+  that they landed as one squashed commit; its diff is what landed, as in the TUI. In local
+  mode a patch read may write the branch catch-up first, as the TUI's page builds do. The
+  revision diff is a repository-level route (user decisions, #17).
+- Attachments hang off threads only, never comments, as in Haxy's event model and the TUI
+  (the spec's "threads and comments" is amended). Uploads are idempotent by a client-chosen
+  id, must declare their length (chunked bodies are refused), and are accepted on conflicted
+  threads; only raster images open inline; uploads and downloads have no proxy timeout;
+  Haxy's own attachment URL now applies the same checks and headers (user decisions, #14).
+- Notifications for threads the viewer can't read any more (lost access, the kind turned
+  off, the thread removed, the repository being deleted) are hidden, not deleted, and come
+  back if access returns. A full subscriber tier is `conflict`; a stale read acknowledgement
+  is 200 and changes nothing; the thread page reads the notification state before the thread,
+  so it never acknowledges what it hasn't shown (user decisions, #22).
 
 ## Known follow-up
 

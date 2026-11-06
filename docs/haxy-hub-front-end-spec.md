@@ -101,7 +101,7 @@ This matrix describes the current capability split, not a grant of additional pe
 54. As a contributor, I want to comment on a thread or reply to a particular comment, so that my response has the right context.
 55. As a thread reader, I want comment permalinks that show the selected comment and its supported reply context, so that I can share a specific exchange.
 56. As an authorized contributor, I want to edit and confirm removal of comments, so that I can correct or moderate content within Haxy's rules.
-57. As an authorized contributor, I want to attach files to supported threads and comments, so that I can share relevant material.
+57. As an authorized contributor, I want to attach files to supported threads, so that I can share relevant material. (Haxy attaches files to threads only, not comments: user decision, #14.)
 58. As an authorized reader, I want to open or download attachments with their filenames and appropriate handling, so that I can use the shared material.
 59. As an authorized contributor, I want to remove attachments with confirmation and see upload validation failures, so that I can manage attachments reliably.
 60. As a thread reader, I want to see assignees by account name when resolved and otherwise by email, so that responsibility is understandable in both modes.
