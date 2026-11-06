@@ -8,6 +8,7 @@ import { useSession } from "@/app/session"
 import type { RepoLocator } from "@/lib/repo"
 import { useResource, type Resource } from "@/lib/resource"
 import { loginPath } from "@/lib/session"
+import { nextReadOrder } from "@/lib/notifications"
 import { commentAnchor, listComments, threadCommentsRoute, type CommentPermalink, type CommentWindow, type ThreadComment } from "@/lib/comments"
 import { linkClass, type ThreadConfig } from "./config"
 import { CommentCard } from "./CommentCard"
@@ -141,7 +142,15 @@ export function CommentItems<Status extends string>({ repo, config, thread, wind
  * context, and a composer for a new comment when Haxy says the viewer may
  * comment. A posted comment opens in the window that holds it.
  */
-export function ThreadComments<Status extends string>({ repo, config, thread }: { repo: RepoLocator; config: ThreadConfig<Status>; thread: string }) {
+export function ThreadComments<Status extends string>({ repo, config, thread, onLoaded, refresh = 0 }: {
+  repo: RepoLocator
+  config: ThreadConfig<Status>
+  thread: string
+  /** Called with when each read that succeeds went out (`nextReadOrder`). */
+  onLoaded?(startedAt: number): void
+  /** Reads the comments again whenever it changes. */
+  refresh?: number
+}) {
   const { viewer, viewerKey } = useSession()
   const location = useLocation()
   const navigate = useNavigate()
@@ -153,7 +162,14 @@ export function ThreadComments<Status extends string>({ repo, config, thread }: 
   // each navigation, and each write that completes here, reads the window again
   const readToken = written.token
   const resourceKey = `comments ${key} ${thread} ${cursor} ${viewerKey}`
-  const read = useResource(resourceKey, (signal) => listComments(repo, config.kind, thread, { cursor: cursor || undefined }, { signal }).then((data) => ({ ...data, readToken })), `${location.key} ${readToken}`)
+  const read = useResource(resourceKey, (signal) => {
+    const startedAt = nextReadOrder()
+    return listComments(repo, config.kind, thread, { cursor: cursor || undefined }, { signal }).then((data) => ({ ...data, readToken, startedAt }))
+  }, `${location.key} ${readToken} ${refresh}`)
+  const loadedFrom = read.kind === "loaded" ? read.data.startedAt : null
+  useEffect(() => {
+    if (loadedFrom !== null) onLoaded?.(loadedFrom)
+  }, [loadedFrom])
   // a refresh that fails keeps the cards and every open draft
   const comments = useKept(read, resourceKey)
   const focused = useFocusedComment(comments.kind === "loaded" ? comments.data.items : null)
