@@ -4,6 +4,7 @@ import { hubPathForUndoPath } from "@/lib/undo"
 import { hubPathForCommitPath } from "@/lib/commits"
 import { hubPathForIssuePath } from "@/lib/threads"
 import { hubPathForFindPath } from "@/lib/finder"
+import { hubPathForPatchPath } from "@/lib/patches"
 
 /**
  * Haxy's own page URLs (the TUI and its browser renderer, as written in
@@ -24,6 +25,7 @@ import { hubPathForFindPath } from "@/lib/finder"
  * | `/<repo>/events…`, `/<repo>/event:<id>…`              | see `hubPathForEventsPath` (`@/lib/events`) |
  * | `/<repo>/files[/<ref>]/find:<s>…`                       | see `hubPathForFindPath` (`@/lib/finder`) |
  * | `/<repo>/commits…`                                      | see `hubPathForCommitPath` (`@/lib/commits`) |
+ * | `/<repo>/patches…`, `/<repo>/patch:<id>…`, `/<repo>/diff/patchrev:<id>…` | see `hubPathForPatchPath` (`@/lib/patches`) |
  *
  * `<ref>` is `branch:<name>`, `tag:<name>` or `object:<oid>`, which become the
  * ref ids `branch:<name>`, `tag:<name>` and `commit:<oid>` with the name and
@@ -35,8 +37,8 @@ import { hubPathForFindPath } from "@/lib/finder"
  * written.
  *
  * `start:` and `from` windows are dropped: Hub pages use opaque cursors, which
- * only the backend can issue. Paths with no Hub equivalent yet (diffs,
- * discussions, patches, …) come back unchanged.
+ * only the backend can issue. Paths with no Hub equivalent yet (commit-range
+ * diffs, discussions, patch drafts, …) come back unchanged.
  */
 
 // Haxy's user name rule (event/User.zig validateName)
@@ -124,6 +126,7 @@ export function hubPathForHaxyPath(haxyPath: string, local = false): string {
   const undo = hubPathForUndoPath(path, local); if (undo !== null) return undo
   const find = hubPathForFindPath(path, local); if (find !== null) return find
   const commit = hubPathForCommitPath(path, local); if (commit !== null) return commit
+  const patch = hubPathForPatchPath(path, local); if (patch !== null) return patch
   // local Haxy's root is its repository; it has no home, about or user pages
   if (local) return path === "/" ? "/repo" : haxyPath
   if (path === "/" || path === "/home") return "/about"
