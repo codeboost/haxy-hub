@@ -1591,11 +1591,11 @@ From issue [#17](issues/17-patches-read.md). A repository's patches use the thre
 "Threads: issues" with the kind `patches` (`…/patches`, `…/patches/labels`,
 `…/patches/{id}`, and the shared thread routes under `…/patches/{id}`: its comments, its
 attachments and the viewer's notification state, see "Comments", "Attachments" and
-"Notifications"), plus a patch revision's diff, `…/revisions/{id}/diff`. All are `GET`/`HEAD`
-(the shared thread routes also take their writes, as the TUI allows commenting on, attaching to
-and subscribing to a patch): writing patches comes with #18–#20, so every other method on the
-patch routes is `unsupported` (`Allow: GET, HEAD`), and `…/patches/{id}/status` names no route
-yet (`not_found`). They resolve the repository as the issue routes do; a repository whose patches
+"Notifications"), plus a patch revision's diff, `…/revisions/{id}/diff`. The reads are
+`GET`/`HEAD` (the shared thread routes also take their writes, as the TUI allows commenting on,
+attaching to and subscribing to a patch); opening a branch-backed patch, editing, closing,
+reopening and removing one are under "Writing patches" below (#18), and merging (#19) and
+drafts (#20) come later. They resolve the repository as the issue routes do; a repository whose patches
 are turned off (`patch_role` "nobody") answers `not_found` ("This repository doesn't use
 patches."), comments included. A revision's diff is read by anyone who may read the
 repository, like the `revision:` refs of the files and commits routes.
@@ -1614,8 +1614,8 @@ patch of another status, or none the filters list, is `validation` on `cursor`),
 search and its `filters`, and the labels are the TUI's, as for issues. Patches have no
 assignees in Haxy: `assignees` is always empty, and an `assignee:` term lists nothing
 (`assignee_not_found` stays false). Drafts are their author's and come with #20; they are in
-no list and their ids are `not_found`. The list's `actions.create` is unavailable
-(`unsupported`) until patches can be opened through the API.
+no list and their ids are `not_found`. The list's `actions.create` says whether the viewer may
+open a branch-backed patch (see "Writing patches").
 
 Each request reads one snapshot of the repository (`repo.core.latestMoment()`, passed to
 `Patches.init` as its `snapshot`): the patch records, their revisions, the target branches'
@@ -1658,9 +1658,12 @@ branch committed to from git shows its new revision.
   included. Otherwise `{"available": false, "reason"}` (`unsupported`): an open or closed
   fork-backed patch's commits are in its fork (fork browsing is #21), and a patch with
   nothing pushed, or whose fork is gone, has nothing to review here.
-- `attachments`, `attachment_limits` and `actions: {"attach"}`, as for issues (see
-  "Attachments"): a patch's only write through the API itself so far, decided as for any thread
-  (its author or a writer, with the patches tab's role).
+- `attachments` and `attachment_limits`, as for issues (see "Attachments").
+- `edit_revision`: what an edit replaces, as issues' `revision` (see "Writing patches"); a
+  patch's `revision` is the patch revision above.
+- `actions: {"edit", "set_status", "remove", "attach"}`, decided as for any thread (its author or
+  a writer, with the patches tab's role); a merged patch's `set_status` is unavailable
+  (`unsupported`), as it stays merged. Merging is #19's.
 
 **A revision's diff** is the TUI's patch diff (`Diff.renderRevisionAt`, which the TUI's
 `diff/patchrev:<id>` page now reads too): the tree of the commit the revision was based on
@@ -1696,9 +1699,11 @@ Haxy's own patch URLs in Markdown are translated by `hubPathForPatchPath`
 | `<repo>/patch:<id>[/search:<s>][/start:<n>]`, `…/description` | `<hub repo>/patches/<id>` |
 | `<repo>/patch:<id>/comment:<c>[/start:<n>]` | `<hub repo>/patches/<id>/comments/<c>` |
 | `<repo>/diff/patchrev:<id>[/start:<n>][/path:<path>]` | `<hub repo>/patches/revisions/<id>/diff[?path=<path>]` |
+| `<repo>/patches/new` | `<hub repo>/patches/new` (#18; Hub opens branch-backed patches) |
+| `<repo>/patch:<id>/edit` | `<hub repo>/patches/<id>/edit` (#18) |
 
-Drafts, conflicts and the patch forms (`new`, `edit`, `merge`, `publish`, `remove`,
-`resolve`) have no Hub page yet and stay as written.
+Drafts, conflicts and the other patch forms (`merge`, `publish`, `remove`, `resolve`) have no
+Hub page yet and stay as written.
 
 Implemented in `haxy/src/api/patches.zig` (routes, shapes, the revision diff's dispatch),
 `haxy/src/api/diff.zig` (`writeRevisionDiff`) and `haxy/src/ui/Repo/Patches.zig`
@@ -1707,6 +1712,101 @@ Implemented in `haxy/src/api/patches.zig` (routes, shapes, the revision diff's d
 `haxy/src/ui/Repo/Files.zig` (`readPatchRevAt`, moved from `api/refs.zig`); unit tests in
 `haxy/src/test/api_patches.zig`. Haxy Hub: `src/lib/patches.ts` and `src/pages/patches/`;
 `DiffFiles` in `src/pages/commits/CommitDiff.tsx` renders both diffs' files.
+
+### Writing patches
+
+From issue [#18](issues/18-patches-branch-write.md). The patch routes take the writes the issue
+routes take ("Threads: writing issues"), with the same guard, viewer binding, JSON bodies of
+strings (a missing field reads as empty) and answers:
+
+| Route | Method | Body | Answer |
+| --- | --- | --- | --- |
+| `…/patches` | `POST` | `{id?, title, labels, description, source, target}` | 201, the new patch as `…/patches/{id}` reads it |
+| `…/patches/{id}` | `PATCH` | `{revision, title, labels, description, target}` | the patch, its fields and target replaced |
+| `…/patches/{id}/status` | `PUT` | `{status: "open" \| "closed"}` | the patch |
+| `…/patches/{id}` | `DELETE` | — | `{"id"}` |
+
+Wrong methods are `unsupported` with `Allow` (`GET, HEAD, POST` on the list,
+`GET, HEAD, PATCH, DELETE` on a patch, `PUT` on its status, `GET, HEAD` on the labels).
+
+- **Branches travel as ref ids.** `source` and `target` are branch ids exactly as answers' `id`s
+  give them (`branch:<name>`, the name percent-encoded byte for byte, see Refs), since a branch
+  name need not be UTF-8. Anything else (a bare name, `tag:`, an ill-formed encoding) is
+  `validation` on that field. The API opens **branch-backed** patches only: a patch from a new
+  fork, and drafts, are #20's.
+- **One set of rules.** Every write goes through `haxy/src/thread_write.zig`, which the TUI's
+  patches tab and Haxy's HTML patch forms now use too: `createBranchPatch` (new), `edit` (now
+  generic over issues, discussions and patches), `setStatus` and `remove`. Who may open a patch
+  is `ui.authorizeUser` with the patches tab's role (`patch_role`), checked when the write runs
+  (`unauthenticated`, or `forbidden` "Your role in this repository doesn't allow writing
+  patches."); who may change one is its author or a writer (`forbidden` "Only the patch's author
+  and the repository's writers can change it."). Local mode writes as the repository's owner,
+  without logging in; a Git repository's writes catch the events branch up and hold #12's events
+  lock across their read, check and write.
+- **What a patch proposes** is checked by Haxy's own branch-patch operation
+  (`pch.writeBranchPatch`), in this order, each refusal `validation` keyed by its field: a source
+  that is no branch (`source`, "There is no such branch…"), a target that is none (`target`), the
+  same branch twice (`target`, "Choose another branch than the source."), and branches with no
+  common ancestor (`target`, "…shares no history with the source…"). The fields follow the shared
+  rules (`title`, `labels`). A source with nothing the target lacks is **accepted**, as Haxy's own
+  form accepts it: the patch shows `no_changes` (decision, #18). Opening a patch captures the
+  source's revision as it is then; later pushes to the source move it, as before.
+- **Creation is idempotent by `id`**, as for issues: an id any event already has is `conflict`
+  keyed by `id`, and nothing is written. A xit repository checks inside the transaction that
+  writes the patch and its revision (`pch.writeBranchPatchInTransaction` now refuses a taken id
+  for every new patch, so the TUI and HTML forms can't reuse one either); a Git repository under
+  the lock.
+- **Edits name the revision they replace.** A patch's answer carries `edit_revision`
+  (`evt.Patch.contentRevision`: a digest of the title, labels, description **and target**). A
+  patch's own `revision` is the revision it proposes, so `PATCH` sends `edit_revision` back as
+  `revision`, and a stale one is `conflict` keyed by `revision`, as for issues. It doesn't move
+  when only the status, comments or the captured revision (a push to the source) change. The
+  target must be another existing branch sharing history with the source (the checks above, on
+  `target`). **A new target captures the source's revision afresh** against it, as the TUI's and
+  the HTML form's edits always have; that write lands only while the patch is still exactly as
+  read, else it is the same `conflict` on `revision`. Any other edit (and a close) is built again
+  inside a xit repository's write transaction from the patch as it is there
+  (`evt.Patch.updateAt`, the issues' `Rebase` scheme), so a status change and an edit landing
+  together both stand; a fork-backed patch's new target is applied there too, clearing its
+  revision as Haxy always has (its fork pushes the next). Retargeting a branch patch whose
+  source was deleted is `validation` on `source`. The TUI and HTML edit form still send no
+  revision.
+- **Status.** Closing sets `closed`; reopening a branch-backed patch captures its source's
+  revision again (a closed patch may have missed pushes), as the TUI does, so a source or target
+  deleted since is refused as on creation (`validation` on `source` or `target`); one that
+  changed between the reopen's read and its write is `conflict` with no field (a status change
+  sends no revision; `thread_write.setStatus` reports it as `error.Stale` to every client).
+  Setting the status a patch has changes nothing. A **merged** patch stays merged: changing its status is `conflict`
+  ("This patch has been merged…"), and so is a new target; its title, labels and description can
+  still be edited.
+- **Removal** is Haxy's (`thread_write.remove`): the patch leaves every list and its id answers
+  `not_found`; its branches, revisions, comments and attachments stay in the repository, as when
+  the TUI removes one. Removing a removed patch is `not_found`.
+
+**Haxy Hub.** The patches section gains `<hub repo>/patches/new` ("New patch" on the lists when
+`actions.create` is available) and `<hub repo>/patches/<id>/edit`: the shared `ThreadNew` and
+`ThreadEdit` forms, whose patch config's `branches` adds a **Source branch** (new only) and a
+**Target branch** picker (`BranchFields`) listing the repository's branches by ref id (every
+page of `…/branches`, at most 1000; a new patch's target starts at the default branch, by
+an exact name: a default whose name isn't UTF-8 shows ambiguously, so none is picked then). A
+refusal of a field the form or the action doesn't show (a patch's source when editing or
+reopening) is listed in its message, by the field's label (`FailureMessage`'s `shown`). The
+patch page shows the shared `ThreadActions` (Edit, Close patch / Reopen patch, Remove with an
+inline confirmation); each answer is ordered against the page's background reads
+(`useChangeAnswers`, the rule of `useThreadAnswers`) and followed by one.
+`src/lib/patchThread.ts` reads a patch answer in the shared thread shape (`revision` from
+`edit_revision`, no assignees, the whole answer kept as `patch`); `detailOf` applies it to every
+patch answer, `setThreadStatus`'s included. Unknown outcomes are settled as for issues: a new
+patch is looked up by its form's id, and an edit is compared, target included, by `holdsFields`.
+
+Implemented in `haxy/src/api/patches.zig` (`handleWrite`, `branchName`, `branchesError`,
+`actions`), `haxy/src/thread_write.zig` (`createBranchPatch`, `edit` for patches),
+`haxy/src/event/Patch.zig` (`contentRevision`, and `updateAt` with its `Rebase`; `update` is
+`updateAt` without a revision) and `haxy/src/patch.zig` (the id check); unit tests in
+`haxy/src/test/thread_write.zig` and `haxy/src/test/api_patches.zig`. Haxy Hub:
+`src/lib/patchThread.ts`, `src/lib/patches.ts` (`getBranchChoices`),
+`src/components/thread/BranchFields.tsx` and `src/pages/patches/`; e2e in
+`e2e/patches-write-api.spec.ts` and `e2e/patches-write.spec.ts`.
 
 ## Threads: discussions
 

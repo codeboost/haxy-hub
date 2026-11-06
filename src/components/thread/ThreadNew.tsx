@@ -13,6 +13,7 @@ import { createThread, findThread, listThreads, newThreadId, threadRoute, thread
 import { linkClass, type ThreadConfig } from "./config"
 import { SectionUnavailable } from "./ThreadParts"
 import { ThreadForm } from "./ThreadForm"
+import { useBranchChoices, type BranchOffer } from "./BranchFields"
 
 /**
  * `<repo>/<kind>/new`: opens a thread, for a viewer Haxy says may (the list's
@@ -24,6 +25,8 @@ export function ThreadNewView<Status extends string>({ repo, config, unavailable
   const key = repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
   // the first list's page tells what this viewer may do; one item is enough
   const list = useResource(`${config.kind} new ${key} ${viewerKey}`, (signal) => listThreads(repo, config.kind, { status: config.statuses[0], page_size: 1 }, { signal }))
+  // a patch's form chooses its branches among the repository's
+  const branches = useBranchChoices(repo, config, viewerKey)
   const noun = config.noun.toLowerCase()
   const back = <Link to={threadsRoute(repo, config.kind, config.statuses, config.statuses[0])} className={`inline-flex items-center gap-1 text-sm ${linkClass}`}><ArrowLeft size={14} aria-hidden />{config.plural}</Link>
   switch (list.kind) {
@@ -39,7 +42,9 @@ export function ThreadNewView<Status extends string>({ repo, config, unavailable
           {back}
           <h2 className="mt-3 text-2xl font-semibold tracking-tight">New {noun}</h2>
           {create.available ? (
-            <NewThreadForm key={viewerKey} repo={repo} config={config} viewer={viewer?.name ?? null} />
+            branches?.kind === "loading" ? <LoadingState>Loading the branches…</LoadingState>
+              : branches?.kind === "failed" ? <FailureState title="Couldn't load the branches" error={branches.error} onRetry={branches.reload} />
+              : <NewThreadForm key={viewerKey} repo={repo} config={config} viewer={viewer?.name ?? null} branches={branches?.kind === "loaded" ? { choices: branches.data, source: true } : undefined} />
           ) : (
             <p className="mt-3 text-muted-foreground">
               {create.reason.code === "unauthenticated"
@@ -66,7 +71,7 @@ export function ThreadNewView<Status extends string>({ repo, config, unavailable
  */
 type Uncertain = { cause: string; taken: boolean; check: "checking" | "created" | "missing" | "removed" | "unchecked" }
 
-function NewThreadForm<Status extends string>({ repo, config, viewer }: { repo: RepoLocator; config: ThreadConfig<Status>; viewer: WriteViewer }) {
+function NewThreadForm<Status extends string>({ repo, config, viewer, branches }: { repo: RepoLocator; config: ThreadConfig<Status>; viewer: WriteViewer; branches?: BranchOffer }) {
   const navigate = useNavigate()
   // one id for everything this form submits: every attempt is the same creation
   const [id, setId] = useState(newThreadId)
@@ -135,7 +140,8 @@ function NewThreadForm<Status extends string>({ repo, config, viewer }: { repo: 
 
   const notice = uncertain && <UnknownOutcome repo={repo} config={config} id={id} uncertain={uncertain} onCheck={() => void check(uncertain.cause, uncertain.taken)} onAfresh={startAfresh} />
   return (
-    <ThreadForm config={config} label={`New ${noun}`} initial={{ title: "", labels: "", description: "" }} submitLabel={`Open ${noun}`} icon={<Plus />}
+    <ThreadForm config={config} label={`New ${noun}`} initial={{ title: "", labels: "", description: "", ...(branches ? { source: "", target: branches.choices.defaultTarget ?? "" } : {}) }}
+      branches={branches} submitLabel={`Open ${noun}`} icon={<Plus />}
       pending={pending} blocked={uncertain !== null && uncertain.check !== "missing"} failure={failure} notice={notice} onSubmit={(fields) => void submit(fields)} />
   )
 }

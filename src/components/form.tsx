@@ -67,11 +67,22 @@ export function failureOf(error: unknown, fallback: string): Failure {
   return { message: error.message, cause: error.message, fields: error.fieldErrors, unknown: false, viewerChanged: false }
 }
 
-/** A failed submission's message, with a way to reload when someone else is signed in now. */
-export function FailureMessage({ failure, children }: { failure: Failure; children?: ReactNode }) {
+/**
+ * A failed submission's message, with a way to reload when someone else is
+ * signed in now. When `shown` names the fields shown beside their inputs, the
+ * errors of any other field are listed here (by `labels`, else their name),
+ * so no reason is lost for want of a field to show it.
+ */
+export function FailureMessage({ failure, children, shown, labels = {} }: { failure: Failure; children?: ReactNode; shown?: readonly string[]; labels?: Record<string, string> }) {
+  const elsewhere = shown ? Object.entries(failure.fields).filter(([field]) => !shown.includes(field)) : []
   return (
     <FormMessage kind="error">
       <p>{children ?? failure.message}</p>
+      {elsewhere.length > 0 && (
+        <ul className="mt-1 list-disc pl-5">
+          {elsewhere.map(([field, message]) => <li key={field}>{labels[field] ?? field}: {message}</li>)}
+        </ul>
+      )}
       {failure.viewerChanged && (
         <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => window.location.reload()}><RefreshCw />Reload</Button>
       )}

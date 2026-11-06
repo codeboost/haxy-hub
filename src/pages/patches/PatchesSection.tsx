@@ -12,7 +12,8 @@ import { RevisionDiffView } from "./RevisionDiff"
  * A repository's patches: `<repo>/patches[/closed|/merged|/labels]` lists
  * them as the TUI's tabs do, `<repo>/patches/<id>` is one patch (its
  * comments under `…/<id>/comments/<comment>`), and
- * `<repo>/patches/revisions/<id>/diff` is a revision's diff. The patches are
+ * `<repo>/patches/revisions/<id>/diff` is a revision's diff; `…/new` opens a
+ * branch-backed patch and `…/<id>/edit` edits one. The patches are
  * always requested, since another client may have turned them on or off
  * since `sections` was read; when Haxy answers not found and the
  * repository's sections lack patches, they are turned off.
@@ -22,8 +23,8 @@ export function PatchesSection({ repo, sections, tail }: { repo: RepoLocator; se
   const revision = revisionView(tail)
   if (revision !== null) return <RevisionDiffView key={revision.revision} repo={repo} revision={revision.revision} />
   const view = threadView(patchStatuses, tail)
-  // opening and editing patches isn't in Haxy Hub yet, and revisions have no page of their own
-  if (view.kind === "new" || view.kind === "edit" || tail.startsWith("revisions")) return <NoSuchPage repo={repo} />
+  // revisions have no page of their own
+  if (tail.startsWith("revisions")) return <NoSuchPage repo={repo} />
   if (view.kind === "thread") return <PatchDetailView key={view.id} repo={repo} id={view.id} unavailable={unavailable} />
   return <ThreadSection repo={repo} config={patchThreads} tail={tail} unavailable={unavailable} />
 }

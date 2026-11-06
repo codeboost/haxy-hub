@@ -1,9 +1,11 @@
-import type { Count } from "@/lib/api"
+import type { Count, RequestOptions } from "@/lib/api"
+import type { BranchChoices } from "@/lib/patches"
+import type { RepoLocator } from "@/lib/repo"
 import type { ThreadKind } from "@/lib/threads"
 
 /**
- * What distinguishes one kind of thread (issues, discussions; later
- * patches) for the shared thread components: its API/route segment, its
+ * What distinguishes one kind of thread (issues, discussions, patches)
+ * for the shared thread components: its API/route segment, its
  * names, and its statuses in tab order (the first is the kind's default list;
  * discussions have one list, "recent", and no status).
  */
@@ -18,6 +20,11 @@ export type ThreadConfig<Status extends string> = {
   statusChanges: Partial<Record<Status, { to: Status; label: string }>>
   /** The search box's hint, when the kind's threads can't be searched by every filter (discussions have no assignees). */
   searchPlaceholder?: string
+  /**
+   * When set, the kind's forms also choose branches (patches): the source a
+   * new thread proposes from and its target, among those this reads.
+   */
+  branches?: { load(repo: RepoLocator, options: Pick<RequestOptions, "signal">): Promise<BranchChoices> }
 }
 
 /** A count as a tab shows it: "22", "1000+" when counting stopped there, nothing when unknown. */

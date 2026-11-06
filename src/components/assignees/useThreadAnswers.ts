@@ -83,6 +83,25 @@ export function useThreadAnswers<Status extends string>(loaded: ThreadDetail<Sta
 }
 
 /**
+ * A page's thread as loaded, then as the latest answer to a change of the
+ * thread itself (its status, say) on the page, over reads that started before
+ * that answer arrived (the rule of `useThreadAnswers`). For a page whose
+ * thread isn't in the issue's shape (a patch's), with its attachments from
+ * `useAttachmentAnswers` over it.
+ */
+export function useChangeAnswers<T>(loaded: T, readStartedAt: number, clock: AnswerClock): { thread: T; onChanged(thread: T): void } {
+  const [answer, setAnswer] = useState<Stamped<T> | null>(null)
+  const changed = answer && answer.at > readStartedAt ? answer.value : null
+  return {
+    thread: changed ?? loaded,
+    onChanged: (value) => {
+      const at = ++clock.now
+      setAnswer({ at, value })
+    },
+  }
+}
+
+/**
  * A page's thread with its attachments as the latest upload or removal on the
  * page answered, over reads that started before that answer arrived (see
  * `useThreadAnswers`, which takes its attachments from here). For a page whose

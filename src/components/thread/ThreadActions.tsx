@@ -6,6 +6,7 @@ import { FailureMessage, FormMessage, failureOf, type Failure } from "@/componen
 import { ApiError } from "@/lib/api"
 import type { RepoLocator } from "@/lib/repo"
 import { editThreadRoute, findThread, removeThread, setThreadStatus, threadsRoute, type ThreadDetail, type WriteViewer } from "@/lib/threads"
+import { branchLabels } from "./BranchFields"
 import type { ThreadConfig } from "./config"
 
 /**
@@ -97,7 +98,8 @@ export function ThreadActions<Status extends string>({ repo, config, thread, vie
 
   return (
     <div className="mt-4 space-y-3">
-      {failure && <FailureMessage failure={failure} />}
+      {/* the actions have no fields, so a refusal's field errors (a patch's branch gone) are said here */}
+      {failure && <FailureMessage failure={failure} shown={[]} labels={branchLabels} />}
       {notice && <FormMessage kind="error">{notice}</FormMessage>}
       <div role="group" aria-label={`${config.noun} actions`} className="flex flex-wrap gap-2">
         {actions.edit.available && (

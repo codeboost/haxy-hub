@@ -7,8 +7,9 @@
 import { ApiError, getJson, requestJson, type ActionAvailability, type Count, type EventId, type Page, type PageQuery, type RequestOptions, type Timestamp } from "@/lib/api"
 import type { AttachmentLimits, ThreadAttachment } from "@/lib/attachments"
 import type { MarkdownBlock } from "@/lib/markdown"
-import { repoRoute, type RepoLocator } from "@/lib/repo"
+import { repoRoute, type RefId, type RepoLocator } from "@/lib/repo"
 import { asThreadDetail, asThreadList, type DiscussionDetail, type DiscussionPage } from "@/lib/discussions"
+import { asPatchThread, type PatchAnswer } from "@/lib/patchThread"
 
 /** The kinds of thread, as they appear in API and Hub paths. */
 export type ThreadKind = "issues" | "discussions" | "patches"
@@ -63,6 +64,8 @@ export type ThreadDetail<Status extends string> = ThreadSummary<Status> & {
   /** What Haxy accepts in an upload. */
   attachment_limits: AttachmentLimits
   actions: ThreadActions
+  /** A patch's target branch, which its edit form changes (patches only). */
+  target?: { name: string; id: RefId }
 }
 
 /** A search as Haxy's parser split it. */
@@ -111,9 +114,16 @@ function listOf<Status extends string>(kind: ThreadKind, answer: Promise<unknown
   return answer.then((value) => (kind === "discussions" ? asThreadList(value as DiscussionPage) : value) as ThreadList<Status>)
 }
 
-/** A thread's answer (its own route's, or a write's on it) in the shape every kind shares. */
+/**
+ * A thread's answer (its own route's, or a write's on it) in the shape every
+ * kind shares. A patch's keeps the whole answer as `patch` (see `@/lib/patchThread`).
+ */
 export function detailOf<Status extends string>(kind: ThreadKind, answer: Promise<unknown>): Promise<ThreadDetail<Status>> {
-  return answer.then((value) => (kind === "discussions" ? asThreadDetail(value as DiscussionDetail) : value) as ThreadDetail<Status>)
+  return answer.then((value) => {
+    if (kind === "discussions") return asThreadDetail(value as DiscussionDetail) as ThreadDetail<string> as ThreadDetail<Status>
+    if (kind === "patches") return asPatchThread(value as PatchAnswer) as ThreadDetail<string> as ThreadDetail<Status>
+    return value as ThreadDetail<Status>
+  })
 }
 
 export function listThreads<Status extends string>(repo: RepoLocator, kind: ThreadKind, query: ThreadListQuery<Status>, options: Options = {}): Promise<ThreadList<Status>> {
@@ -137,8 +147,12 @@ export function listThreadLabels(repo: RepoLocator, kind: ThreadKind, query: Pag
 // form was loaded for (`requestJson` sends X-Haxy-Viewer; null is nobody, as in
 // local mode), and none is retried automatically.
 
-/** A thread's editable fields. `labels` is space-separated, as Haxy stores it. */
-export type ThreadFields = { title: string; labels: string; description: string }
+/**
+ * A thread's editable fields. `labels` is space-separated, as Haxy stores it.
+ * A patch's also name branches by their ref ids: the `source` a new patch
+ * proposes from, and its `target`.
+ */
+export type ThreadFields = { title: string; labels: string; description: string; source?: RefId; target?: RefId }
 
 /** Who a write is for: the signed-in viewer's name, or null for nobody (local mode). */
 export type WriteViewer = string | null
@@ -174,7 +188,7 @@ export function editThread<Status extends string>(repo: RepoLocator, kind: Threa
 
 /** Sets a thread's status; setting the one it has changes nothing, so a retry is safe. */
 export function setThreadStatus<Status extends string>(repo: RepoLocator, kind: ThreadKind, id: EventId, viewer: WriteViewer, status: Status): Promise<ThreadDetail<Status>> {
-  return writeJson(`${apiBase(repo, kind)}/${encodeURIComponent(id)}/status`, "PUT", viewer, { status })
+  return detailOf(kind, writeJson(`${apiBase(repo, kind)}/${encodeURIComponent(id)}/status`, "PUT", viewer, { status }))
 }
 
 /** Removes a thread; `not_found` once it is gone. */
@@ -196,11 +210,12 @@ export async function findThread<Status extends string>(repo: RepoLocator, kind:
   }
 }
 
-/** Whether `thread` holds exactly `fields` (its labels compared as Haxy splits them). */
+/** Whether `thread` holds exactly `fields` (its labels compared as Haxy splits them; a patch's target too). */
 export function holdsFields(thread: ThreadDetail<string>, fields: ThreadFields): boolean {
   const labels = fields.labels.split(" ").filter((label) => label.length > 0)
   return thread.title === fields.title && thread.description_text === fields.description.replace(/\r\n/g, "\n")
     && thread.labels.length === labels.length && thread.labels.every((label, index) => label.name === labels[index])
+    && (fields.target === undefined || thread.target?.id === fields.target)
 }
 
 // --- Hub routes ----------------------------------------------------------------

@@ -6,13 +6,13 @@
  * the TUI's patches tab's (`ui.Repo.Patches`), so Hub never decides which
  * revision a patch is reviewed at, or what its diff leaves out.
  */
-import { getJson, type EventId, type ObjectId, type RequestOptions, type UnavailableCode } from "@/lib/api"
+import { getJson, type ActionAvailability, type EventId, type ObjectId, type RequestOptions, type UnavailableCode } from "@/lib/api"
 import type { Attached } from "@/lib/attachments"
 import { commitsRoute } from "@/lib/commits"
 import type { CommitDiff, DiffQuery } from "@/lib/diff"
 import type { MarkdownBlock } from "@/lib/markdown"
-import { apiBase, canonicalPath, pathSegments, repoRoute, type EncodedPath, type RefId, type RepoLocator } from "@/lib/repo"
-import { commentRoute, threadLabelsRoute, threadRoute, threadsRoute, type ThreadSummary } from "@/lib/threads"
+import { apiBase, canonicalPath, getRepo, listRefs, pathSegments, repoRoute, type EncodedPath, type RefId, type RefItem, type RepoLocator } from "@/lib/repo"
+import { commentRoute, editThreadRoute, newThreadRoute, threadLabelsRoute, threadRoute, threadsRoute, type ThreadSummary } from "@/lib/threads"
 
 export type PatchStatus = "open" | "closed" | "merged"
 
@@ -59,9 +59,8 @@ export type PatchReview =
   | { available: false; reason: { code: UnavailableCode; message: string } }
 
 /**
- * One patch: its summary, what it proposes and where to review it, and its
- * attachments (`actions.attach` is the one write the API offers on a patch
- * itself, beside its comments; the others come with #18–#20).
+ * One patch: its summary, what it proposes and where to review it, its
+ * attachments, and what the viewer may do to it (merging is #19's).
  */
 export type PatchDetail = ThreadSummary<PatchStatus> & Attached & {
   description: MarkdownBlock[]
@@ -75,6 +74,9 @@ export type PatchDetail = ThreadSummary<PatchStatus> & Attached & {
   no_changes: boolean
   mergeability: Mergeability
   review: PatchReview
+  /** The opaque revision of what an edit replaces (title, labels, description, target), which an edit sends back. */
+  edit_revision: string
+  actions: Record<"edit" | "set_status" | "remove" | "attach", ActionAvailability>
 }
 
 /** A window of a patch revision's diff: its base commit's tree against its source commit's. */
@@ -91,6 +93,46 @@ type Options = Pick<RequestOptions, "signal">
 /** One patch, with what it proposes. */
 export function getPatch(repo: RepoLocator, id: EventId, options: Options = {}): Promise<PatchDetail> {
   return getJson(`${apiBase(repo)}/patches/${encodeURIComponent(id)}`, options)
+}
+
+/** The branches a patch's form chooses among, and the target it starts at. */
+export type BranchChoices = {
+  /** Every branch, in name order, up to `maxBranchChoices`. */
+  branches: RefItem[]
+  /** There are more branches than are listed. */
+  truncated: boolean
+  /** The repository's default branch, a new patch's target unless chosen otherwise; null when it has none listed. */
+  defaultTarget: RefId | null
+}
+
+/** How many branches a patch's form lists at most. */
+export const maxBranchChoices = 1000
+
+/** The repository's branches (following the list's pages), and its default branch. */
+export async function getBranchChoices(repo: RepoLocator, options: Options = {}): Promise<BranchChoices> {
+  const [overview, branches] = await Promise.all([getRepo(repo, options), (async () => {
+    const items: RefItem[] = []
+    let cursor: string | undefined
+    do {
+      const page = await listRefs(repo, "branch", { cursor, page_size: 100 }, options)
+      items.push(...page.items)
+      cursor = page.page.next_cursor ?? undefined
+    } while (cursor && items.length < maxBranchChoices)
+    return { items: items.slice(0, maxBranchChoices), truncated: cursor !== undefined }
+  })()])
+  return { branches: branches.items, truncated: branches.truncated, defaultTarget: defaultTargetOf(branches.items, overview.default_branch) }
+}
+
+/**
+ * The listed branch whose name is the default branch's, the overview's name
+ * for display: only when that name is exact, since names that aren't UTF-8
+ * show alike ("caf\uFFFD" for several), and only when one branch has it.
+ * Otherwise none, so the form never picks a look-alike.
+ */
+function defaultTargetOf(branches: RefItem[], name: string | null): RefId | null {
+  if (name === null || name.includes("\uFFFD")) return null
+  const named = branches.filter((branch) => branch.name === name)
+  return named.length === 1 ? named[0].id : null
 }
 
 /** A window of revision `id`'s diff. */
@@ -187,10 +229,12 @@ function routeParams(segments: string[], allowed: string[]): Map<string, string>
  * | `<repo>/patch:<id>[/search:<s>][/start:<n>]`, `…/description` | `<hub repo>/patches/<id>`             |
  * | `<repo>/patch:<id>/comment:<c>[/start:<n>]`               | `<hub repo>/patches/<id>/comments/<c>`    |
  * | `<repo>/diff/patchrev:<id>[/start:<n>][/path:<path>]`     | `<hub repo>/patches/revisions/<id>/diff[?path=<path>]` |
+ * | `<repo>/patches/new`                                      | `<hub repo>/patches/new` (#18, branch-backed patches) |
+ * | `<repo>/patch:<id>/edit`                                  | `<hub repo>/patches/<id>/edit` (#18)      |
  *
  * Parameter segments may come in any order before or after the view word, as
  * Haxy reads them; `start:` windows are dropped. Drafts, conflicts and the
- * forms (`new`, `edit`, `merge`, `publish`, …) have no Hub page yet.
+ * other forms (`merge`, `publish`, `remove`, …) have no Hub page yet.
  */
 export function hubPathForPatchPath(path: string, local = false): string | null {
   const segments = path.split("/").slice(1)
@@ -229,9 +273,10 @@ export function hubPathForPatchPath(path: string, local = false): string | null 
     if (comment === "") return null
     const tail = comment !== null ? rest.slice(1) : rest
     const words = tail.filter((segment) => !segment.includes(":"))
-    if (words.length > 1 || (words.length === 1 && (words[0] !== "description" || comment !== null))) return null
+    if (words.length > 1 || (words.length === 1 && (!["description", "edit"].includes(words[0]) || comment !== null))) return null
     if (routeParams(tail.filter((segment) => segment.includes(":")), ["search", "start"]) === null) return null
-    return comment !== null ? commentRoute(repo, "patches", id, comment) : threadRoute(repo, "patches", id)
+    if (comment !== null) return commentRoute(repo, "patches", id, comment)
+    return words[0] === "edit" ? editThreadRoute(repo, "patches", id) : threadRoute(repo, "patches", id)
   }
   if (tab !== "patches") return null
   const words = rest.filter((segment) => !segment.includes(":"))
@@ -241,6 +286,7 @@ export function hubPathForPatchPath(path: string, local = false): string | null 
   const search = params.get("search")
   const [word] = words
   if (word === "labels") return threadLabelsRoute(repo, "patches", { search })
+  if (word === "new") return rest.length === 1 ? newThreadRoute(repo, "patches") : null
   const status = patchStatuses.find((value) => value === word)
   return status === undefined ? null : threadsRoute(repo, "patches", patchStatuses, status, { search })
 }

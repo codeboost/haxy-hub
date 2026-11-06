@@ -60,6 +60,16 @@ export async function setPatchRole(context: APIRequestContext, backend: Backend,
   })
 }
 
+/** Replaces the patch's fields and target through Haxy's own edit form, as another client would. */
+export async function editPatch(context: APIRequestContext, backend: Backend, repoBase: string, id: string, patch: Omit<NewBranchPatch, "source">): Promise<void> {
+  await post(context, backend, `${repoBase}/patch:${id}/edit`, { title: patch.title, labels: patch.labels ?? "", description: patch.description ?? "", target_branch: patch.target })
+}
+
+/** Removes the patch through Haxy's own remove form. */
+export async function removePatch(context: APIRequestContext, backend: Backend, repoBase: string, id: string): Promise<void> {
+  await post(context, backend, `${repoBase}/patch:${id}/remove`, {})
+}
+
 export async function closePatch(context: APIRequestContext, backend: Backend, repoBase: string, id: string): Promise<void> {
   await post(context, backend, `${repoBase}/patch:${id}/close`, {})
 }

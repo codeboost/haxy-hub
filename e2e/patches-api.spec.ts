@@ -145,8 +145,8 @@ test("open, closed and merged lists, their counts, search and labels match the T
     conflicted: false,
   })
   expect(open.page).toEqual({ has_more: false, next_cursor: null, count: { kind: "exact", value: 2 } })
-  // opening patches from Hub comes later
-  expect(open.actions).toEqual({ create: { available: false, reason: { code: "unsupported", message: expect.any(String) } } })
+  // local mode's owner may open patches (#18)
+  expect(open.actions).toEqual({ create: { available: true } })
 
   const closedList: List = await get(request, `${base}?status=closed`)
   expect(closedList.items.map((patch) => patch.id)).toEqual([closed])

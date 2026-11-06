@@ -12,12 +12,15 @@ import { editThread, findThread, getThread, holdsFields, threadRoute, type Threa
 import { linkClass, type ThreadConfig } from "./config"
 import { SectionUnavailable } from "./ThreadParts"
 import { ThreadForm } from "./ThreadForm"
+import { useBranchChoices, type BranchOffer } from "./BranchFields"
 
 /** `<repo>/<kind>/<id>/edit`: replaces a thread's title, labels and description. */
 export function ThreadEditView<Status extends string>({ repo, config, id, unavailable }: { repo: RepoLocator; config: ThreadConfig<Status>; id: string; unavailable: string | null }) {
   const { viewer, viewerKey } = useSession()
   const key = repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
   const thread = useResource(`${config.kind} edit ${key} ${id} ${viewerKey}`, (signal) => getThread<Status>(repo, config.kind, id, { signal }))
+  // a patch's form chooses its target among the repository's branches
+  const branches = useBranchChoices(repo, config, viewerKey)
   const noun = config.noun.toLowerCase()
   const back = <Link to={threadRoute(repo, config.kind, id)} className={`inline-flex items-center gap-1 text-sm ${linkClass}`}><ArrowLeft size={14} aria-hidden />Back to the {noun}</Link>
   switch (thread.kind) {
@@ -33,9 +36,11 @@ export function ThreadEditView<Status extends string>({ repo, config, id, unavai
         <section className="mt-6">
           {back}
           <h2 className="mt-3 text-2xl font-semibold tracking-tight">Edit {noun}</h2>
-          {edit.available
-            ? <EditThreadForm key={viewerKey} repo={repo} config={config} loaded={thread.data} viewer={viewer?.name ?? null} />
-            : <p className="mt-3 text-muted-foreground">{edit.reason.message}</p>}
+          {!edit.available ? <p className="mt-3 text-muted-foreground">{edit.reason.message}</p>
+            : branches?.kind === "loading" ? <LoadingState>Loading the branches…</LoadingState>
+            : branches?.kind === "failed" ? <FailureState title="Couldn't load the branches" error={branches.error} onRetry={branches.reload} />
+            : <EditThreadForm key={viewerKey} repo={repo} config={config} loaded={thread.data} viewer={viewer?.name ?? null}
+                branches={branches?.kind === "loaded" ? { choices: branches.data, source: false } : undefined} />}
         </section>
       )
     }
@@ -55,7 +60,7 @@ type Notice =
   | { kind: "stale" }
   | { kind: "reviewing"; current: ThreadDetail<string> }
 
-function EditThreadForm<Status extends string>({ repo, config, loaded, viewer }: { repo: RepoLocator; config: ThreadConfig<Status>; loaded: ThreadDetail<Status>; viewer: WriteViewer }) {
+function EditThreadForm<Status extends string>({ repo, config, loaded, viewer, branches }: { repo: RepoLocator; config: ThreadConfig<Status>; loaded: ThreadDetail<Status>; viewer: WriteViewer; branches?: BranchOffer }) {
   const navigate = useNavigate()
   // the revision the next save replaces; it moves only when the user has seen what it holds
   const [revision, setRevision] = useState(loaded.revision)
@@ -157,9 +162,9 @@ function EditThreadForm<Status extends string>({ repo, config, loaded, viewer }:
         break
     }
   }
-  const initial = { title: loaded.title, labels: loaded.labels.map((label) => label.name).join(" "), description: loaded.description_text }
+  const initial = { title: loaded.title, labels: loaded.labels.map((label) => label.name).join(" "), description: loaded.description_text, ...(branches && loaded.target ? { target: loaded.target.id } : {}) }
   return (
-    <ThreadForm config={config} label={`Edit ${noun}`} initial={initial} submitLabel="Save changes" icon={<Save />} pending={pending}
+    <ThreadForm config={config} label={`Edit ${noun}`} initial={initial} branches={branches} submitLabel="Save changes" icon={<Save />} pending={pending}
       blocked={notice !== null && notice.kind !== "unsaved" && notice.kind !== "reviewing"} failure={failure} notice={message} onSubmit={(fields) => void submit(fields)} />
   )
 }
@@ -172,6 +177,7 @@ function CurrentVersion({ thread, noun }: { thread: ThreadDetail<string>; noun: 
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
         <dt className="font-medium">Title</dt><dd>{thread.title}</dd>
         <dt className="font-medium">Labels</dt><dd>{thread.labels.map((label) => label.name).join(" ") || "None"}</dd>
+        {thread.target && <><dt className="font-medium">Target branch</dt><dd className="font-mono">{thread.target.name}</dd></>}
         <dt className="font-medium">Description</dt><dd><pre className="whitespace-pre-wrap font-mono text-xs">{thread.description_text || "None"}</pre></dd>
       </dl>
     </section>

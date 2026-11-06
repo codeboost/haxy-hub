@@ -7,7 +7,9 @@ import { linkClass } from "@/components/thread/config"
 import { RefreshFailed, ThreadComments, useKept } from "@/components/thread/ThreadComments"
 import { AuthorName, Instant, LabelLinks, SectionUnavailable } from "@/components/thread/ThreadParts"
 import { ThreadAttachments } from "@/components/attachments/ThreadAttachments"
-import { useAnswerClock, useAttachmentAnswers, type AnswerClock } from "@/components/assignees/useThreadAnswers"
+import { useAnswerClock, useAttachmentAnswers, useChangeAnswers, type AnswerClock } from "@/components/assignees/useThreadAnswers"
+import { ThreadActions } from "@/components/thread/ThreadActions"
+import { asPatchThread, patchOf } from "@/lib/patchThread"
 import { ThreadNotifications, useCommentsShown } from "@/components/notifications/ThreadNotifications"
 import { useSession } from "@/app/session"
 import { commitRoute } from "@/lib/commits"
@@ -26,8 +28,9 @@ const config = patchThreads
  * where its commits come from and go to, the revision it proposes with its
  * commit count, whether it changes anything, whether Haxy would merge it —
  * with links to review that revision's files, commits and diff, then the
- * viewer's notifications, its description, attachments and comments, as a
- * thread page shows them (`ThreadDetailView`). Every navigation reads it
+ * viewer's notifications, its description, attachments and comments, and
+ * the actions the viewer may take on it, as a thread page shows them
+ * (`ThreadDetailView`). Every navigation reads it
  * again, so a revision pushed from another client shows; a refresh that fails
  * keeps the page.
  */
@@ -74,9 +77,19 @@ export function PatchDetailView({ repo, id, unavailable }: { repo: RepoLocator; 
 }
 
 function Body({ repo, loaded, readStartedAt, clock, viewer, revalidate, notification, stateAt, reload }: { repo: RepoLocator; loaded: PatchDetail; readStartedAt: number; clock: AnswerClock; viewer: WriteViewer; revalidate(): void; notification: NotificationRead; stateAt: number; reload(): void }) {
-  // the attachments as the latest upload or removal here answered, over reads that started before it
+  // the patch as the latest change of it here (a status) answered, and its
+  // attachments as the latest upload or removal did, over reads that started
+  // before them; each kind of change owns its fields, the rest come from the
+  // read (as `useThreadAnswers` composes an issue)
+  const changes = useChangeAnswers(loaded, readStartedAt, clock)
   const answers = useAttachmentAnswers(loaded, readStartedAt, clock)
-  const patch = answers.thread
+  const attached = answers.thread
+  const patch: PatchDetail = {
+    ...changes.thread,
+    attachments: attached.attachments,
+    attachment_limits: attached.attachment_limits,
+    actions: { ...changes.thread.actions, attach: attached.actions.attach },
+  }
   // the comments the page has shown, so it acknowledges only after showing them
   const shown = useCommentsShown(stateAt)
   const listOf = (search: string) => threadsRoute(repo, "patches", config.statuses, patch.status, { search })
@@ -91,6 +104,8 @@ function Body({ repo, loaded, readStartedAt, clock, viewer, revalidate, notifica
         <span>Opened <Instant value={patch.created_at} /> by <AuthorName author={patch.author} /></span>
         <span className="inline-flex items-center gap-1"><MessageSquare size={14} aria-hidden />{patch.comment_count} {patch.comment_count === 1 ? "comment" : "comments"}</span>
       </div>
+      {/* edit, close or reopen, remove: each answer also reads the patch again in the background */}
+      <ThreadActions repo={repo} config={config} thread={asPatchThread(patch)} viewer={viewer} onChanged={(value) => { changes.onChanged(patchOf(value)); revalidate() }} />
       {patch.conflicted && (
         <p className="mt-4 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-2 text-sm">
           <TriangleAlert size={16} aria-hidden />Concurrent edits to this patch conflict; the values shown are this server's.

@@ -38,8 +38,8 @@ test("a reviewer opens a patch from its list and reviews its revision's diff, co
   await expect(tabs.getByRole("link", { name: "Open 1" })).toHaveAttribute("aria-current", "page")
   await expect(tabs.getByRole("link", { name: "Closed 0" })).toBeVisible()
   await expect(tabs.getByRole("link", { name: "Merged 0" })).toBeVisible()
-  // opening patches from Hub comes later
-  await expect(page.getByRole("link", { name: "New patch" })).toHaveCount(0)
+  // local mode's owner may open patches (#18)
+  await expect(page.getByRole("link", { name: "New patch" })).toBeVisible()
   await page.getByRole("list", { name: "Open patches" }).getByRole("link", { name: "Add a parser" }).click()
 
   await expect(page).toHaveURL(`${hub.url}/repo/patches/${patch}`)
