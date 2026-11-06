@@ -15,6 +15,8 @@ import { RefreshFailed, ThreadComments, useKept } from "./ThreadComments"
 import { ThreadAssignees } from "@/components/assignees/ThreadAssignees"
 import { ThreadAttachments } from "@/components/attachments/ThreadAttachments"
 import { useAnswerClock, useThreadAnswers, type AnswerClock } from "@/components/assignees/useThreadAnswers"
+import { ThreadNotifications } from "@/components/notifications/ThreadNotifications"
+import { withNotification, type NotificationRead } from "@/lib/notifications"
 
 function Field({ title, children }: { title: string; children: ReactNode }) {
   const id = `thread-${title.toLowerCase()}`
@@ -26,7 +28,7 @@ function Field({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-function Body<Status extends string>({ repo, config, loaded, readStartedAt, clock, viewer, revalidate }: { repo: RepoLocator; config: ThreadConfig<Status>; loaded: ThreadDetail<Status>; readStartedAt: number; clock: AnswerClock; viewer: WriteViewer; revalidate(): void }) {
+function Body<Status extends string>({ repo, config, loaded, readStartedAt, clock, viewer, revalidate, notification, stateAt, reload }: { repo: RepoLocator; config: ThreadConfig<Status>; loaded: ThreadDetail<Status>; readStartedAt: number; clock: AnswerClock; viewer: WriteViewer; revalidate(): void; notification: NotificationRead; stateAt: number; reload(): void }) {
   // what the changes on this page answered with, over reads that started before them
   const answers = useThreadAnswers(loaded, readStartedAt, clock)
   const { thread } = answers
@@ -36,6 +38,11 @@ function Body<Status extends string>({ repo, config, loaded, readStartedAt, cloc
   const onChanged = (value: ThreadDetail<Status>) => { answers.onChanged(value); revalidate() }
   const onAssigneesChanged = (value: ThreadDetail<Status>) => { answers.onAssigneesChanged(value); revalidate() }
   const onAttachmentsChanged = (value: ThreadDetail<Status>) => { answers.onAttachmentsChanged(value); revalidate() }
+  // assigning someone may notify them (yourself, say): the panel reads its state again after each assignee change
+  const [assigneeChanges, setAssigneeChanges] = useState(0)
+  // the comments the page has shown, so it acknowledges only after showing them
+  const [commentsFrom, setCommentsFrom] = useState(0)
+  const [commentReads, setCommentReads] = useState(0)
   const listOf = (search: string) => threadsRoute(repo, config.kind, config.statuses, thread.status, { search })
   return (
     <article className="mt-6">
@@ -56,14 +63,16 @@ function Body<Status extends string>({ repo, config, loaded, readStartedAt, cloc
         </p>
       )}
       {thread.labels.length > 0 && <Field title="Labels"><div className="flex flex-wrap gap-1"><LabelLinks labels={thread.labels} to={listOf} /></div></Field>}
-      <ThreadAssignees repo={repo} config={config} thread={thread} viewer={viewer} onChanged={onAssigneesChanged} />
+      <ThreadAssignees repo={repo} config={config} thread={thread} viewer={viewer} onChanged={(value) => { onAssigneesChanged(value); setAssigneeChanges((count) => count + 1) }} />
+      <ThreadNotifications repo={repo} config={config} thread={thread.id} viewer={viewer} read={notification} readStartedAt={readStartedAt} clock={clock} onRetry={reload} refresh={assigneeChanges}
+        comments={{ stateAt, commentsFrom, readComments: () => setCommentReads((count) => count + 1) }} />
       <Field title="Description">
         <div className="rounded-xl border bg-card p-4 sm:p-6">
           {thread.description.length === 0 ? <p className="text-muted-foreground">No description.</p> : <Markdown blocks={thread.description} resolveLink={(destination) => linkTarget(destination, repo.kind === "local")} />}
         </div>
       </Field>
       <ThreadAttachments repo={repo} config={config} thread={thread} viewer={viewer} onChanged={onAttachmentsChanged} />
-      <ThreadComments repo={repo} config={config} thread={thread.id} />
+      <ThreadComments repo={repo} config={config} thread={thread.id} refresh={commentReads} onLoaded={(at) => setCommentsFrom((latest) => Math.max(latest, at))} />
     </article>
   )
 }
@@ -83,7 +92,9 @@ export function ThreadDetailView<Status extends string>({ repo, config, id, unav
   const read = useResource(resourceKey, (signal) => {
     // when this read started, against the answers to this page's own changes
     const startedAt = clock.now
-    return getThread<Status>(repo, config.kind, id, { signal }).then((data) => ({ data, startedAt }))
+    // with the viewer's notification state, so the page shows (and acknowledges) the two together
+    return withNotification(repo, config.kind, id, viewer?.name ?? null, signal, () => getThread<Status>(repo, config.kind, id, { signal }))
+      .then(({ data, notification, stateAt }) => ({ data, notification, stateAt, startedAt }))
   }, `${location.key} ${revalidations}`)
   // once loaded, a background read that fails keeps the page (and every draft
   // in it) and says so; only the first load may replace it with a failure
@@ -107,7 +118,7 @@ export function ThreadDetailView<Status extends string>({ repo, config, id, unav
       return (
         <>
           {thread.refreshFailed && <div className="mt-6"><RefreshFailed title={`Couldn't refresh this ${config.noun.toLowerCase()}`} error={thread.refreshFailed} onRetry={read.reload} /></div>}
-          <Body repo={repo} config={config} loaded={thread.data.data} readStartedAt={thread.data.startedAt} clock={clock} viewer={viewer?.name ?? null} revalidate={() => setRevalidations((value) => value + 1)} />
+          <Body repo={repo} config={config} loaded={thread.data.data} readStartedAt={thread.data.startedAt} clock={clock} viewer={viewer?.name ?? null} revalidate={() => setRevalidations((value) => value + 1)} notification={thread.data.notification} stateAt={thread.data.stateAt} reload={read.reload} />
         </>
       )
   }

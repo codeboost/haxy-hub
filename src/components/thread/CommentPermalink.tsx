@@ -6,6 +6,8 @@ import type { RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 import { commentRoute, getComment, threadCommentsRoute, type CommentPermalink } from "@/lib/comments"
 import { getThread, threadRoute } from "@/lib/threads"
+import { withNotification } from "@/lib/notifications"
+import { ThreadAcknowledgement } from "@/components/notifications/ThreadNotifications"
 import { linkClass, type ThreadConfig } from "./config"
 import { CommentCard } from "./CommentCard"
 import { SectionUnavailable } from "./ThreadParts"
@@ -19,7 +21,7 @@ import { CommentItems, CommentPager, RefreshFailed, useKept, useWrittenComments,
  * thread's comments, at the page that holds it.
  */
 export function CommentPermalinkView<Status extends string>({ repo, config, thread, comment, unavailable }: { repo: RepoLocator; config: ThreadConfig<Status>; thread: string; comment: string; unavailable: string | null }) {
-  const { viewerKey } = useSession()
+  const { viewer, viewerKey } = useSession()
   const location = useLocation()
   const [params] = useSearchParams()
   const cursor = params.get("replies") ?? ""
@@ -32,7 +34,8 @@ export function CommentPermalinkView<Status extends string>({ repo, config, thre
   const resourceKey = `comment ${key} ${thread} ${comment} ${cursor} ${viewerKey}`
   const read = useResource(
     resourceKey,
-    (signal) => Promise.all([getThread<Status>(repo, config.kind, thread, { signal }), getComment(repo, config.kind, thread, comment, { cursor: cursor || undefined }, { signal }), readToken] as const),
+    // with the viewer's notification state on the thread, which this page acknowledges too
+    (signal) => withNotification(repo, config.kind, thread, viewer?.name ?? null, signal, () => Promise.all([getThread<Status>(repo, config.kind, thread, { signal }), getComment(repo, config.kind, thread, comment, { cursor: cursor || undefined }, { signal }), readToken] as const)),
     `${location.key} ${readToken}`,
   )
   // only the first load may replace the page; a refresh that fails keeps every open draft
@@ -53,9 +56,10 @@ export function CommentPermalinkView<Status extends string>({ repo, config, thre
       }
       return <FailureState title="Couldn't load this comment" error={loaded.error} onRetry={read.reload} />
     case "loaded": {
-      const [detail, permalink, readAt] = loaded.data
+      const [detail, permalink, readAt] = loaded.data.data
       return (
         <>
+          <ThreadAcknowledgement repo={repo} kind={config.kind} thread={thread} viewer={viewer?.name ?? null} read={loaded.data.notification} />
           {loaded.refreshFailed && <div className="mt-6"><RefreshFailed title="Couldn't refresh this comment" error={loaded.refreshFailed} onRetry={read.reload} /></div>}
           <Permalink key={viewerKey} repo={repo} config={config} title={detail.title} thread={thread} permalink={permalink} readToken={readAt} written={written} cursor={cursor} />
         </>

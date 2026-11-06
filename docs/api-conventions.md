@@ -1892,3 +1892,135 @@ Implemented in `haxy/src/api/attachments.zig` (hooked in by `api/issues.zig`), t
 `haxy/src/test/attachment.zig`, `haxy/src/test/api_attachments.zig` and
 `haxy/src/test/thread_write.zig`. Haxy Hub: `src/lib/attachments.ts` and
 `src/components/attachments/ThreadAttachments.tsx`.
+
+## Notifications
+
+From issue [#22](issues/22-notifications.md). **Server mode only.** Local mode has no
+accounts, so nobody is notified of anything: every route below answers `unsupported` (405,
+"Local mode has no accounts, so it has no notifications."), and Haxy Hub shows no inbox link,
+no count and no thread controls there; `/notifications` says why. Every route needs a
+signed-in viewer (`unauthenticated` otherwise, also for a deleted account's session) and acts
+on that viewer only; no route names another user.
+
+| Route | Method | Body | Answer |
+| --- | --- | --- | --- |
+| `/api/v1/notifications?cursor=&page_size=` | `GET`/`HEAD` | — | the inbox: a page of `NotificationItem` plus `unread_count` |
+| `/api/v1/notifications/count` | `GET`/`HEAD` | — | `{"unread_count": N}` |
+| `…/issues/{id}/notifications` | `GET`/`HEAD` | — | the viewer's `ThreadNotification` on the issue |
+| `…/issues/{id}/notifications` | `PUT` | `{mode}`: `"subscribed"` or `"muted"` | the `ThreadNotification` after it |
+| `…/issues/{id}/notifications/read` | `POST` | `{revision}` | the `ThreadNotification` after it |
+
+`…` is `/api/v1/repos/{owner}/{name}`. The thread routes take a kind (`api_comments.Kind`),
+so discussions and patches get them with one `threadRoute(path, "<kind>")` line each in
+`routeApiRequest` once their kinds land.
+
+- `NotificationItem` is `{"id", "unread", "title", "repo": {"owner", "name"}, "thread":
+  {"kind": "issues"|"discussions"|"patches", "id"}, "updated_at"}`: one per thread (Haxy keeps
+  one notification per user and thread, bumped by each new comment or assignment by someone
+  else). `title` is the thread's as of the latest bump; `repo.name` is the repository's name
+  now (a rename since doesn't break the link). Hub links each to its thread's page.
+- The inbox is newest first (by latest bump). `page_size` defaults to the TUI's inbox page
+  of 20 and is capped at 100. The cursor is opaque; it names the next page's first
+  notification's position, so a notification bumped or muted meanwhile doesn't shift later
+  pages. A cursor Haxy didn't give out is `validation` on `cursor`. The count is `exact`
+  (Haxy keeps at most 1000 notifications per user, the oldest dropped past that).
+- `ThreadNotification` is `{"notified": bool, "notification": null | {"id", "unread",
+  "revision"}}`. `notified` is whether Haxy notifies the viewer of the thread at all (as its
+  author, an assignee, a commenter or a subscriber): the TUI's own test for offering
+  "mute" or "subscribe to" notifications. `revision` names the notification's latest bump
+  (opaque).
+
+**One set of rules.** Everything goes through `src/notify.zig`, which the TUI uses too:
+
+- Who is notified, when, and of what is unchanged (`notify.deliverTransaction`,
+  `subscribeParticipants`): nobody hears of their own comment or assignment.
+- `PUT` with `subscribed` is `notify.subscribe`, `muted` is `notify.mute` (the TUI's buttons
+  and Haxy's `…/subscribe`, `…/mute` forms). Both are safe to repeat. Subscribing while
+  already notified changes nothing; muting drops the thread's notification and keeps the
+  viewer from being added again by commenting. A thread's subscribers are capped at 100
+  (`notify.max_subscribed`); one more is `conflict` (409) with Haxy's message, "This issue
+  already has 100 subscribers, the most Haxy allows.", and nothing changes. The cap is now
+  checked and the subscriber added in one transaction on the owner's index, so subscribers
+  racing for the last place can't pass it; `notify.subscribe` answers `.full` instead of
+  returning silently. If the subscriber's own record then can't be written, the place is
+  given back before the error escapes, so the index never holds a subscriber whose record
+  says otherwise (or nothing), and a retry subscribes afresh (#22 review). Every change of a
+  user's notify mode in the process (subscribing, muting, and the participants' tiers a
+  thread write sets) holds one lock from its check to its last write, so no change answers on
+  one still being made (#22 review, round 2). Haxy's HTML form and the TUI still leave the page as it was then.
+- Who may subscribe or mute is anyone who may read the thread (`ui.authorizeUser` with the
+  read role, as the HTML forms check it), on a live thread of a kind the repository uses.
+- **Read state changes only on an acknowledgement.** No `GET` or `HEAD` (the inbox, the
+  count, a thread, its comments, its state) changes it. A thread's page, once it has shown
+  the thread, `POST`s `…/notifications/read` with the `revision` it read beside the thread.
+  Haxy marks the notification read only if it is still at that revision and the bump is in
+  the repository (`notify.markViewed`, which the TUI's thread pages now call too, with the notification's
+  latest revision, as before). A comment that arrived meanwhile therefore stays unread: the answer
+  says so (`unread: true`, a new `revision`), and Hub acknowledges it only after a later read
+  beside the thread names it. Repeating an acknowledgement is harmless; one naming a stale
+  or unknown revision answers 200 and changes nothing. A `revision` that isn't 32 lowercase
+  hex digits is `validation` on `revision`.
+- **Hidden means not found.** A notification about a thread the viewer can no longer read
+  (their role revoked, the repository made private or removed, its owner gone, the
+  thread's kind turned off, or the thread itself removed) is left out of the inbox, its pages
+  and both counts, and every
+  thread route answers for it as for any repository the viewer can't see (`not_found`, "There
+  is no repository with this name."). The notification itself is kept: regaining access shows
+  it again, still unread. `notify.readWindow` decides this for the API and the TUI's inbox
+  alike (`notify.Readable`: the repository read again by its id from the notification's
+  owner, the viewer's role in it, and `notify.mayRead`, which delivery uses too; then each
+  repository holding a listed thread is opened once and `notify.threadLive`, the rule the
+  thread routes use, drops the threads that are gone; a repository deleted while the inbox
+  is read, with its database or its directory already gone, is hidden like any other gone
+  one rather than failing the read, and is opened only at its own directory, never as a
+  repository an ancestor directory holds). A thread route of a repository that
+  has no events yet is the missing thread (`not_found`), as for any unknown id.
+
+**Haxy Hub.** `/notifications` is the inbox (unread ones marked and announced "(unread)" to
+screen readers, with the `Pager`). The header's bell (`NotificationsLink`, one line in
+`AppShell`) shows the unread count for the shown viewer only; it reads
+`/api/v1/notifications/count` again on every navigation and right after this tab
+acknowledges, subscribes or mutes (`notificationsChanged`). A failed count read shows the
+bell without a number rather than a guess.
+
+On a thread page the state is part of the page's own read. `ThreadDetailView` and the comment
+permalink page (`CommentPermalinkView`) read it with the thread in one read
+(`withNotification`: the state is read first and the thread only once Haxy has answered it,
+at the cost of one small request's latency; a failure of the state read never fails the
+page), so the state shown always belongs to the thread shown with it: a refresh still running
+or one that failed keeps both, and a retry (the panel's Retry reads the page again) reads both.
+The model has two parts, each with one owner:
+
+- **Read state** is only ever acknowledged from that read: once per bump it names as unread,
+  once the page has also shown comments read after the state answered (any page of them, as
+  the TUI marks a thread read on viewing it; the thread page's comments load on their own,
+  so a failed comment read waits for its Retry, and a refresh whose comments were read before
+  the state answered reads them once more, once per state read; the permalink page's comment read is part of its
+  page read), while the browser tab is visible (a page opened in a background tab waits for
+  `visibilitychange`), bound to the viewer the page was loaded for, never retried
+  automatically (`useAcknowledgement`; the permalink page renders `ThreadAcknowledgement`).
+  The answer changes nothing on the page, which doesn't show read state; it, or its failure
+  (it may have landed), only makes the header and an open inbox count again. Hub never prefetches threads, so hovering or focusing a link sends
+  nothing. Since the thread is read after the state, the bump the state names is always in
+  the thread the page shows, so nothing is acknowledged unseen.
+- **Whether the viewer is notified** (`ThreadNotifications`, in the shared thread body keyed by
+  `config.kind`, with the TUI's one button, Mute or Subscribe, and Haxy's refusal beside it)
+  shows that read, or the latest answer to a subscribe or mute, to a read settling an unknown
+  outcome of one, or to a read after an assignee change (assigning someone may notify them),
+  whenever that answer arrived after the read started. All of these run one at a time
+  (`useWrite`), so they can't cross, and acknowledgements never touch this; a read after
+  assignee changes waits for whatever runs and then covers every change made meanwhile. An
+  unknown outcome whose read fails too holds the button until "Check again" answers. Each
+  subscribe or mute that lands, including one settled by a read, makes the header count again
+  (a mute drops the thread's notification), even when its page is gone by then; so does one
+  whose outcome is unknown, before anything else.
+
+`notificationsChanged` (an acknowledgement, a subscribe or a mute landing) also makes an open
+inbox read again, so a thread acknowledged after the inbox loaded shows as read.
+
+Implemented in `haxy/src/api/notifications.zig` (routes) and `haxy/src/notify.zig`
+(`readWindow`, `Readable`, `mayRead`, `markViewed`, `subscribe`); unit tests in
+`haxy/src/test/api_notifications.zig` and `haxy/src/test/event/notify.zig`. Haxy Hub:
+`src/lib/notifications.ts`, `src/pages/NotificationsPage.tsx`,
+`src/app/NotificationsLink.tsx` and `src/components/notifications/ThreadNotifications.tsx`;
+e2e in `e2e/notifications-api.spec.ts` and `e2e/notifications.spec.ts`.

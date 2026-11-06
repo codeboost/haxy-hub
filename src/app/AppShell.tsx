@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { useConnection } from "@/app/connection"
 import { SessionProvider, useSession } from "@/app/session"
 import { ViewerControls } from "@/app/ViewerControls"
+import { NotificationsLink } from "@/app/NotificationsLink"
 import type { BackendCheck } from "@/lib/connection"
 
 function modeLabel(check: BackendCheck | null): string {
@@ -100,6 +101,7 @@ function Shell() {
             <MainNav />
           </div>
           <div className="flex items-center gap-3">
+            <NotificationsLink />
             <ViewerControls />
             <ModeIndicator />
           </div>
