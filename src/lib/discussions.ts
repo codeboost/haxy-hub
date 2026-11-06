@@ -20,19 +20,13 @@ export const discussionLists = ["recent"] as const satisfies readonly Discussion
 
 export type DiscussionSummary = Omit<ThreadSummary<DiscussionList>, "status" | "assignees" | "conflicted">
 
-export type DiscussionDetail = DiscussionSummary & {
-  description: ThreadDetail<DiscussionList>["description"]
-  description_text: string
-  revision: string
-  actions: Record<"edit" | "remove", ActionAvailability>
+export type DiscussionDetail = DiscussionSummary & Pick<ThreadDetail<DiscussionList>, "description" | "description_text" | "revision" | "attachments" | "attachment_limits"> & {
+  actions: Record<"edit" | "remove" | "attach", ActionAvailability>
 }
 
 export type DiscussionPage = Page<DiscussionSummary> & { actions: ThreadListActions; filters: ThreadFilters }
 
 const noSuch: ActionAvailability = { available: false, reason: { code: "unsupported", message: "Discussions have no status or assignees." } }
-
-// wired once the discussion routes serve attachments
-const noAttachments: ActionAvailability = { available: false, reason: { code: "unsupported", message: "Discussions don't take attachments here yet." } }
 
 function asThread(discussion: DiscussionSummary): ThreadSummary<DiscussionList> {
   return { ...discussion, status: "recent", assignees: [], conflicted: false }
@@ -45,7 +39,7 @@ export function asThreadList(page: DiscussionPage): ThreadList<DiscussionList> {
 
 /** A discussion as the shared thread page reads one. */
 export function asThreadDetail(discussion: DiscussionDetail): ThreadDetail<DiscussionList> {
-  return { ...discussion, ...asThread(discussion), actions: { ...discussion.actions, set_status: noSuch, assign: noSuch, attach: noAttachments }, attachments: [], attachment_limits: { max_bytes: 0, max_name_bytes: 0 } }
+  return { ...discussion, ...asThread(discussion), actions: { ...discussion.actions, set_status: noSuch, assign: noSuch } }
 }
 
 /**

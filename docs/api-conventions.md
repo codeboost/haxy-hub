@@ -306,8 +306,8 @@ and `haxy-hub/src/lib/account.ts`.
 
 ## Threads: issues
 
-From issue [#11](issues/11-issues-read.md). A repository's threads of one kind (issues now;
-discussions and patches reuse the same routes and shapes in #16/#17) live under the
+From issue [#11](issues/11-issues-read.md). A repository's threads of one kind (issues;
+discussions and patches reuse the same routes and shapes, #16/#17) live under the
 repository's API path, `/api/v1/repos/{owner}/{name}/<kind>` on a server and
 `/api/v1/repo/<kind>` in local mode. The routes below are `GET`/`HEAD`; the writes are
 under "Threads: writing issues". They resolve the repository
@@ -1249,8 +1249,9 @@ tests in `haxy/src/test/api_assignees.zig`, `haxy/src/test/api_issues.zig` and
 ## Comments
 
 From issue [#13](issues/13-comments.md). A thread's comments live under the thread's own
-route, so every kind shares them (issues now; discussions in #16 and patches in #17 hook
-the same module in with their own `Kind`). `<thread>` is `…/issues/{id}`. Like the issue
+route, so every kind shares them (issues, discussions and patches each hook the same module
+in with their own `Kind`). `<thread>` is `…/issues/{id}`, `…/discussions/{id}` or
+`…/patches/{id}`. Like the issue
 routes, they resolve the repository as the viewer (one they can't read is `not_found`
 with the repository message), answer as the issue routes do when the kind is off, and
 answer `not_found` ("There is no issue with this id.") for a thread the id doesn't name or
@@ -1568,11 +1569,13 @@ unit tests in `haxy/src/test/sync.zig`. Haxy Hub: `src/lib/sync.ts` and
 
 From issue [#17](issues/17-patches-read.md). A repository's patches use the thread routes of
 "Threads: issues" with the kind `patches` (`…/patches`, `…/patches/labels`,
-`…/patches/{id}`, and the comment routes under `…/patches/{id}/comments`), plus a patch
-revision's diff, `…/revisions/{id}/diff`. All are `GET`/`HEAD` (the comment routes also take
-their writes): writing patches comes with #18–#20, so every other method on the patch routes
-is `unsupported` (`Allow: GET, HEAD`), and `…/patches/{id}/status` names no route yet
-(`not_found`). They resolve the repository as the issue routes do; a repository whose patches
+`…/patches/{id}`, and the shared thread routes under `…/patches/{id}`: its comments, its
+attachments and the viewer's notification state, see "Comments", "Attachments" and
+"Notifications"), plus a patch revision's diff, `…/revisions/{id}/diff`. All are `GET`/`HEAD`
+(the shared thread routes also take their writes, as the TUI allows commenting on, attaching to
+and subscribing to a patch): writing patches comes with #18–#20, so every other method on the
+patch routes is `unsupported` (`Allow: GET, HEAD`), and `…/patches/{id}/status` names no route
+yet (`not_found`). They resolve the repository as the issue routes do; a repository whose patches
 are turned off (`patch_role` "nobody") answers `not_found` ("This repository doesn't use
 patches."), comments included. A revision's diff is read by anyone who may read the
 repository, like the `revision:` refs of the files and commits routes.
@@ -1635,6 +1638,9 @@ branch committed to from git shows its new revision.
   included. Otherwise `{"available": false, "reason"}` (`unsupported`): an open or closed
   fork-backed patch's commits are in its fork (fork browsing is #21), and a patch with
   nothing pushed, or whose fork is gone, has nothing to review here.
+- `attachments`, `attachment_limits` and `actions: {"attach"}`, as for issues (see
+  "Attachments"): a patch's only write through the API itself so far, decided as for any thread
+  (its author or a writer, with the patches tab's role).
 
 **A revision's diff** is the TUI's patch diff (`Diff.renderRevisionAt`, which the TUI's
 `diff/patchrev:<id>` page now reads too): the tree of the commit the revision was based on
@@ -1651,8 +1657,10 @@ repository has no patch revision with this id.").
 through the shared thread components (`ThreadSection`, with `config.kind` "patches"); a
 patch's own page (`src/pages/patches/PatchDetail.tsx`) is built from the shared parts with
 its proposal (source, target, revision, commit count, no-change state, mergeability), links
-to review its revision (Files, Commits, Diff or "What landed"), its description and
-`ThreadComments`. A revision's diff is `<hub repo>/patches/revisions/<id>/diff[?patch=<id>]
+to review its revision (Files, Commits, Diff or "What landed"), the viewer's
+`ThreadNotifications`, its description, `ThreadAttachments` and `ThreadComments`, read and
+acknowledged as `ThreadDetailView` does it (`withNotification`, `useCommentsShown`; attachment
+answers ordered against background reads by `useAttachmentAnswers`). A revision's diff is `<hub repo>/patches/revisions/<id>/diff[?patch=<id>]
 [&path=<encoded path>][&cursor=…]` (`revisionDiffRoute`), where `patch` is the patch it was
 opened from (its way back); the path is read from the raw query string as for commit diffs,
 and each file's "View file" opens the files view at `revision:<id>` (a removed file at
@@ -1685,8 +1693,9 @@ Implemented in `haxy/src/api/patches.zig` (routes, shapes, the revision diff's d
 From issue [#16](issues/16-discussions.md). A repository's discussions are the second thread
 kind: they use the routes, rules and shapes of "Threads: issues" and "Threads: writing
 issues" under `…/discussions` (`/api/v1/repos/{owner}/{name}/discussions` on a server,
-`/api/v1/repo/discussions` in local mode), with their comments under the shared comment
-routes (`<thread>` is `…/discussions/{id}`, see "Comments"). What differs is what a
+`/api/v1/repo/discussions` in local mode), with their comments, attachments and the viewer's
+notification state under the shared thread routes (`<thread>` is `…/discussions/{id}`, see
+"Comments", "Attachments" and "Notifications"). What differs is what a
 discussion holds and how the TUI lists them.
 
 **What a discussion is.** The TUI and the event model give a discussion a title, labels, a
@@ -1697,8 +1706,9 @@ assignees and no field conflicts** (a merge keeps the target's version, `merge_p
 - `DiscussionSummary` is `{"id", "title", "labels": FilterLink[], "author", "created_at",
   "comment_count"}`, with `ThreadSummary`'s meanings.
 - A discussion's own route adds `"description"`, `"description_text"`, `"revision"` (a digest
-  of title, labels and description, `evt.Discussion.contentRevision`) and `"actions": {"edit",
-  "remove"}`; there is no `set_status` or `assign`.
+  of title, labels and description, `evt.Discussion.contentRevision`), `"attachments"` and
+  `"attachment_limits"` (as for issues) and `"actions": {"edit", "remove", "attach"}`; there is
+  no `set_status` or `assign`.
 
 | Route | Method | Answer |
 | --- | --- | --- |
@@ -1770,12 +1780,13 @@ Implemented in `haxy/src/api/discussions.zig`, with what every kind shares in
 ## Attachments
 
 From issue [#14](issues/14-attachments.md). A thread's attachments live under the thread's own
-route, so every kind shares them (issues now; discussions in #16 and patches in #17 hook the same
-module in with their own `Kind`, as for comments). `<thread>` is `…/issues/{id}`. The routes
-resolve the repository as the viewer (one they can't read is `not_found` with the repository
-message, whatever else the request names), answer as the issue routes do when the kind is off,
-and answer `not_found` ("There is no issue with this id.") for a thread the id doesn't name or a
-removed one.
+route, so every kind shares them: issues, discussions and patches each hook the same module in
+with their own `Kind`, as for comments (discussions and patches wired after the batch 5 merge).
+`<thread>` is `…/issues/{id}`, `…/discussions/{id}` or `…/patches/{id}`. The routes resolve the
+repository as the viewer (one they can't read is `not_found` with the repository message,
+whatever else the request names), answer as the kind's own routes do when the kind is off, and
+answer the kind's `not_found` ("There is no issue with this id.", "… discussion …", "… patch …")
+for a thread the id doesn't name, a removed one, or a patch draft.
 
 | Route | Method | Body | Answer |
 | --- | --- | --- | --- |
@@ -1813,11 +1824,12 @@ download routes and these routes alike):
   repository is opened; refusals are `validation` beside `name` or `file` ("Name the file.", "The
   file is empty.", "Files can be up to 10 MB." with HTTP 413, a name refused, or no
   `Content-Length`).
-- *Who may attach* is the thread's: `ui.authorizeUser` with the kind's tab role (`unauthenticated`,
-  or `forbidden` for the role), then `ui.RepoSource.canModify` on the thread, its author or anyone
-  with the write role (`forbidden`, "Only the issue's author and the repository's writers can
-  attach files to it."), as Haxy's upload form has always required. `actions.attach` is the same
-  decision.
+- *Who may attach* is the thread's, for every kind alike: `ui.authorizeUser` with the kind's tab
+  role (`api_thread.authorize`; `unauthenticated`, or `forbidden` for the role), then
+  `ui.RepoSource.canModify` on the thread, its author or anyone with the write role (`forbidden`,
+  "Only the issue's author and the repository's writers can attach files to it.", naming the
+  kind), as Haxy's upload form and the TUI's "add attachment" have always required on issues,
+  discussions and patches alike. `actions.attach` is the same decision.
 - *Who may remove one* is the attachment's: the tab role, then `canModify` on the attachment, so
   its author or a writer (`forbidden`, "Only the attachment's author and the repository's writers
   can remove it."); each attachment's `actions.remove` says so. The TUI asks before removing, and
@@ -1873,8 +1885,9 @@ too):
   'none'; style-src 'unsafe-inline'; sandbox` (even a document rendered from the bytes runs and
   loads nothing), and `Cache-Control: private, no-store` (who may read it can change).
 
-**Haxy Hub.** A thread's page shows an Attachments section under the description when anything is
-attached or the viewer may attach: each attachment links to its download route (images open in a
+**Haxy Hub.** A thread's page (an issue's or a discussion's, `ThreadDetailView`, and a patch's own
+page) shows an Attachments section under the description when anything is attached or the viewer
+may attach: each attachment links to its download route (images open in a
 new tab, other files download under their own name; the bytes never pass through page state),
 with a remove button when its `actions` allow, which asks first. The upload form (shown when
 `actions.attach` allows) takes one file, checks it against `attachment_limits` before sending (an
@@ -1887,11 +1900,16 @@ revalidation after successful mutations), so what another client changed meanwhi
 the answer clock orders that read after the answer, and an outcome Haxy couldn't confirm holds the
 controls until a read of the thread settles it ("Check again" when that read fails too).
 
-Implemented in `haxy/src/api/attachments.zig` (hooked in by `api/issues.zig`), the shared rules in
+Implemented in `haxy/src/api/attachments.zig` (hooked in by `api/issues.zig`,
+`api/discussions.zig` and `api/patches.zig`, each with its `Kind`: its comment `Kind` and how it
+reads one thread; who may write is `api_thread.authorize` with the kind), the shared rules in
 `haxy/src/attachment.zig` and `haxy/src/thread_write.zig` (`attach`, `remove`); unit tests in
 `haxy/src/test/attachment.zig`, `haxy/src/test/api_attachments.zig` and
 `haxy/src/test/thread_write.zig`. Haxy Hub: `src/lib/attachments.ts` and
-`src/components/attachments/ThreadAttachments.tsx`.
+`src/components/attachments/ThreadAttachments.tsx` (any kind's thread: it takes the attachment
+fields, `Attached`), with `useAttachmentAnswers` in `src/components/assignees/useThreadAnswers.ts`;
+upload and removal answers are read through the kind's adapter (`detailOf`). e2e for discussions
+and patches in `e2e/thread-kinds-api.spec.ts` and `e2e/thread-kinds.spec.ts`.
 
 ## Notifications
 
@@ -1906,13 +1924,13 @@ on that viewer only; no route names another user.
 | --- | --- | --- | --- |
 | `/api/v1/notifications?cursor=&page_size=` | `GET`/`HEAD` | — | the inbox: a page of `NotificationItem` plus `unread_count` |
 | `/api/v1/notifications/count` | `GET`/`HEAD` | — | `{"unread_count": N}` |
-| `…/issues/{id}/notifications` | `GET`/`HEAD` | — | the viewer's `ThreadNotification` on the issue |
-| `…/issues/{id}/notifications` | `PUT` | `{mode}`: `"subscribed"` or `"muted"` | the `ThreadNotification` after it |
-| `…/issues/{id}/notifications/read` | `POST` | `{revision}` | the `ThreadNotification` after it |
+| `…/<kind>/{id}/notifications` | `GET`/`HEAD` | — | the viewer's `ThreadNotification` on the thread |
+| `…/<kind>/{id}/notifications` | `PUT` | `{mode}`: `"subscribed"` or `"muted"` | the `ThreadNotification` after it |
+| `…/<kind>/{id}/notifications/read` | `POST` | `{revision}` | the `ThreadNotification` after it |
 
-`…` is `/api/v1/repos/{owner}/{name}`. The thread routes take a kind (`api_comments.Kind`),
-so discussions and patches get them with one `threadRoute(path, "<kind>")` line each in
-`routeApiRequest` once their kinds land.
+`…` is `/api/v1/repos/{owner}/{name}` and `<kind>` is `issues`, `discussions` or `patches`. The
+thread routes take a kind (`api_comments.Kind`), hooked in with one `threadRoute(path, "<kind>")`
+line each in `routeApiRequest` (discussions and patches wired after the batch 5 merge).
 
 - `NotificationItem` is `{"id", "unread", "title", "repo": {"owner", "name"}, "thread":
   {"kind": "issues"|"discussions"|"patches", "id"}, "updated_at"}`: one per thread (Haxy keeps
@@ -1983,8 +2001,9 @@ screen readers, with the `Pager`). The header's bell (`NotificationsLink`, one l
 acknowledges, subscribes or mutes (`notificationsChanged`). A failed count read shows the
 bell without a number rather than a guess.
 
-On a thread page the state is part of the page's own read. `ThreadDetailView` and the comment
-permalink page (`CommentPermalinkView`) read it with the thread in one read
+On a thread page the state is part of the page's own read. `ThreadDetailView` (issues and
+discussions), a patch's own page (`PatchDetailView`) and the comment permalink page of every kind
+(`CommentPermalinkView`) read it with the thread in one read
 (`withNotification`: the state is read first and the thread only once Haxy has answered it,
 at the cost of one small request's latency; a failure of the state read never fails the
 page), so the state shown always belongs to the thread shown with it: a refresh still running
@@ -2004,7 +2023,8 @@ The model has two parts, each with one owner:
   nothing. Since the thread is read after the state, the bump the state names is always in
   the thread the page shows, so nothing is acknowledged unseen.
 - **Whether the viewer is notified** (`ThreadNotifications`, in the shared thread body keyed by
-  `config.kind`, with the TUI's one button, Mute or Subscribe, and Haxy's refusal beside it)
+  `config.kind` and on the patch page, both passing it `useCommentsShown`'s record of the
+  comments shown, with the TUI's one button, Mute or Subscribe, and Haxy's refusal beside it)
   shows that read, or the latest answer to a subscribe or mute, to a read settling an unknown
   outcome of one, or to a read after an assignee change (assigning someone may notify them),
   whenever that answer arrived after the read started. All of these run one at a time
@@ -2023,4 +2043,5 @@ Implemented in `haxy/src/api/notifications.zig` (routes) and `haxy/src/notify.zi
 `haxy/src/test/api_notifications.zig` and `haxy/src/test/event/notify.zig`. Haxy Hub:
 `src/lib/notifications.ts`, `src/pages/NotificationsPage.tsx`,
 `src/app/NotificationsLink.tsx` and `src/components/notifications/ThreadNotifications.tsx`;
-e2e in `e2e/notifications-api.spec.ts` and `e2e/notifications.spec.ts`.
+e2e in `e2e/notifications-api.spec.ts` and `e2e/notifications.spec.ts`, and for discussions and
+patches in `e2e/thread-kinds-api.spec.ts` and `e2e/thread-kinds.spec.ts`.

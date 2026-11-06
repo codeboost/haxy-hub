@@ -15,8 +15,8 @@ import { threadApiPath, threadRoute, type ThreadKind, type WriteViewer } from "@
 
 type Options = Pick<RequestOptions, "signal">
 
-/** A thread kind as notifications name it: one of `ThreadKind`, or a kind this Hub doesn't show yet. */
-export type NotifiedKind = ThreadKind | "discussions" | "patches"
+/** A thread kind as notifications name it: every kind Hub shows. */
+export type NotifiedKind = ThreadKind
 
 /** One notification in the inbox: the thread it is about, as of its latest bump. */
 export type NotificationItem = {
@@ -132,8 +132,7 @@ export async function acknowledgeThread(repo: RepoLocator, kind: ThreadKind, id:
 /** The Hub route of the thread a notification is about. */
 export function notificationRoute(item: NotificationItem): string {
   const repo: RepoLocator = { kind: "server", owner: item.repo.owner, name: item.repo.name }
-  // kinds this Hub doesn't show yet keep the same shape, so their links work once it does
-  return threadRoute(repo, item.thread.kind as ThreadKind, item.thread.id)
+  return threadRoute(repo, item.thread.kind, item.thread.id)
 }
 
 /** The Hub route of the inbox, at a cursor's page. */

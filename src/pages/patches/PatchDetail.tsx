@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { Link, useLocation } from "react-router"
 import { ArrowLeft, FileCode2, GitCommitHorizontal, GitCompareArrows, MessageSquare, TriangleAlert } from "lucide-react"
 import { FailureState, LoadingState } from "@/components/listing"
@@ -6,13 +6,17 @@ import { Markdown } from "@/components/Markdown"
 import { linkClass } from "@/components/thread/config"
 import { RefreshFailed, ThreadComments, useKept } from "@/components/thread/ThreadComments"
 import { AuthorName, Instant, LabelLinks, SectionUnavailable } from "@/components/thread/ThreadParts"
+import { ThreadAttachments } from "@/components/attachments/ThreadAttachments"
+import { useAnswerClock, useAttachmentAnswers, type AnswerClock } from "@/components/assignees/useThreadAnswers"
+import { ThreadNotifications, useCommentsShown } from "@/components/notifications/ThreadNotifications"
 import { useSession } from "@/app/session"
 import { commitRoute } from "@/lib/commits"
 import { linkTarget } from "@/lib/markdown"
+import { withNotification, type NotificationRead } from "@/lib/notifications"
 import { getPatch, revisionCommitsRoute, revisionDiffRoute, revisionFilesRoute, revisionRef, type MergeResult, type PatchDetail } from "@/lib/patches"
 import { repoRoute, type RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
-import { threadsRoute } from "@/lib/threads"
+import { threadsRoute, type WriteViewer } from "@/lib/threads"
 import { patchThreads } from "./config"
 
 const config = patchThreads
@@ -21,16 +25,27 @@ const config = patchThreads
  * `<repo>/patches/<id>`: one patch, as the TUI's patch detail shows it —
  * where its commits come from and go to, the revision it proposes with its
  * commit count, whether it changes anything, whether Haxy would merge it —
- * with links to review that revision's files, commits and diff, then its
- * description and comments. Every navigation reads it again, so a revision
- * pushed from another client shows; a refresh that fails keeps the page.
+ * with links to review that revision's files, commits and diff, then the
+ * viewer's notifications, its description, attachments and comments, as a
+ * thread page shows them (`ThreadDetailView`). Every navigation reads it
+ * again, so a revision pushed from another client shows; a refresh that fails
+ * keeps the page.
  */
 export function PatchDetailView({ repo, id, unavailable }: { repo: RepoLocator; id: string; unavailable: string | null }) {
-  const { viewerKey } = useSession()
+  const { viewer, viewerKey } = useSession()
   const location = useLocation()
   const key = repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
+  // orders the background reads against the answers to attachment changes
+  const clock = useAnswerClock()
+  // bumped after each answer to a change on the page, to read the patch again
+  const [revalidations, setRevalidations] = useState(0)
   const resourceKey = `patch ${key} ${id} ${viewerKey}`
-  const read = useResource(resourceKey, (signal) => getPatch(repo, id, { signal }), location.key)
+  const read = useResource(resourceKey, (signal) => {
+    const startedAt = clock.now
+    // with the viewer's notification state, read first, so the page shows (and acknowledges) the two together
+    return withNotification(repo, config.kind, id, viewer?.name ?? null, signal, () => getPatch(repo, id, { signal }))
+      .then(({ data, notification, stateAt }) => ({ data, notification, stateAt, startedAt }))
+  }, `${location.key} ${revalidations}`)
   const patch = useKept(read, resourceKey)
   switch (patch.kind) {
     case "loading":
@@ -51,13 +66,19 @@ export function PatchDetailView({ repo, id, unavailable }: { repo: RepoLocator; 
       return (
         <>
           {patch.refreshFailed && <div className="mt-6"><RefreshFailed title="Couldn't refresh this patch" error={patch.refreshFailed} onRetry={read.reload} /></div>}
-          <Body repo={repo} patch={patch.data} />
+          <Body repo={repo} loaded={patch.data.data} readStartedAt={patch.data.startedAt} clock={clock} viewer={viewer?.name ?? null}
+            revalidate={() => setRevalidations((value) => value + 1)} notification={patch.data.notification} stateAt={patch.data.stateAt} reload={read.reload} />
         </>
       )
   }
 }
 
-function Body({ repo, patch }: { repo: RepoLocator; patch: PatchDetail }) {
+function Body({ repo, loaded, readStartedAt, clock, viewer, revalidate, notification, stateAt, reload }: { repo: RepoLocator; loaded: PatchDetail; readStartedAt: number; clock: AnswerClock; viewer: WriteViewer; revalidate(): void; notification: NotificationRead; stateAt: number; reload(): void }) {
+  // the attachments as the latest upload or removal here answered, over reads that started before it
+  const answers = useAttachmentAnswers(loaded, readStartedAt, clock)
+  const patch = answers.thread
+  // the comments the page has shown, so it acknowledges only after showing them
+  const shown = useCommentsShown(stateAt)
   const listOf = (search: string) => threadsRoute(repo, "patches", config.statuses, patch.status, { search })
   return (
     <article className="mt-6">
@@ -78,12 +99,16 @@ function Body({ repo, patch }: { repo: RepoLocator; patch: PatchDetail }) {
       {patch.labels.length > 0 && <Field title="Labels"><div className="flex flex-wrap gap-1"><LabelLinks labels={patch.labels} to={listOf} /></div></Field>}
       <Proposal repo={repo} patch={patch} />
       <Review repo={repo} patch={patch} />
+      {/* patches have no assignees, so nothing else on the page changes whether the viewer is notified */}
+      <ThreadNotifications repo={repo} config={config} thread={patch.id} viewer={viewer} read={notification} readStartedAt={readStartedAt} clock={clock} onRetry={reload} refresh={0} comments={shown.comments} />
       <Field title="Description">
         <div className="rounded-xl border bg-card p-4 sm:p-6">
           {patch.description.length === 0 ? <p className="text-muted-foreground">No description.</p> : <Markdown blocks={patch.description} resolveLink={(destination) => linkTarget(destination, repo.kind === "local")} />}
         </div>
       </Field>
-      <ThreadComments repo={repo} config={config} thread={patch.id} />
+      {/* each answer also reads the patch again in the background, so what another client changed shows */}
+      <ThreadAttachments repo={repo} config={config} thread={patch} viewer={viewer} onChanged={(value) => { answers.onAttachmentsChanged(value); revalidate() }} />
+      <ThreadComments repo={repo} config={config} thread={patch.id} {...shown.commentReads} />
     </article>
   )
 }

@@ -46,6 +46,20 @@ export type CommentsShown = {
 }
 
 /**
+ * The comments a thread page has shown, against the state it read (for
+ * `ThreadNotifications`), and what its `ThreadComments` takes to report them:
+ * when each read that succeeded went out, and a way to read them once more.
+ */
+export function useCommentsShown(stateAt: number): { comments: CommentsShown; commentReads: { refresh: number; onLoaded(startedAt: number): void } } {
+  const [commentsFrom, setCommentsFrom] = useState(0)
+  const [refresh, setRefresh] = useState(0)
+  return {
+    comments: { stateAt, commentsFrom, readComments: () => setRefresh((count) => count + 1) },
+    commentReads: { refresh, onLoaded: (startedAt) => setCommentsFrom((latest) => Math.max(latest, startedAt)) },
+  }
+}
+
+/**
  * Acknowledges a thread the page shows, from the notification state read with
  * it: once per bump it names as unread, once the page has shown comments read
  * after that state (any page of them: the TUI also marks a thread read on

@@ -7,6 +7,7 @@
  * revision a patch is reviewed at, or what its diff leaves out.
  */
 import { getJson, type EventId, type ObjectId, type RequestOptions, type UnavailableCode } from "@/lib/api"
+import type { Attached } from "@/lib/attachments"
 import { commitsRoute } from "@/lib/commits"
 import type { CommitDiff, DiffQuery } from "@/lib/diff"
 import type { MarkdownBlock } from "@/lib/markdown"
@@ -57,7 +58,12 @@ export type PatchReview =
   | { available: true; revision: EventId; diff: EventId }
   | { available: false; reason: { code: UnavailableCode; message: string } }
 
-export type PatchDetail = ThreadSummary<PatchStatus> & {
+/**
+ * One patch: its summary, what it proposes and where to review it, and its
+ * attachments (`actions.attach` is the one write the API offers on a patch
+ * itself, beside its comments; the others come with #18–#20).
+ */
+export type PatchDetail = ThreadSummary<PatchStatus> & Attached & {
   description: MarkdownBlock[]
   description_text: string
   source: PatchSource

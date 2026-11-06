@@ -1,4 +1,5 @@
 import { useRef, useState } from "react"
+import type { Attached } from "@/lib/attachments"
 import type { ThreadDetail } from "@/lib/threads"
 
 /**
@@ -19,8 +20,6 @@ type Answers<Status extends string> = {
   thread: Stamped<ThreadDetail<Status>> | null
   /** The latest answer to a change of who is assigned. */
   assigned: Stamped<Pick<ThreadDetail<Status>, "assignees" | "actions">> | null
-  /** The latest answer to an upload or a removal of an attachment. */
-  attached: Stamped<Pick<ThreadDetail<Status>, "attachments" | "attachment_limits" | "actions">> | null
 }
 
 /**
@@ -50,18 +49,18 @@ export function useThreadAnswers<Status extends string>(loaded: ThreadDetail<Sta
   /** For an answer to (or a read after) a change of who is assigned. */
   onAssigneesChanged(thread: ThreadDetail<Status>): void
   /** For an answer to (or a read after) an upload or a removal of an attachment. */
-  onAttachmentsChanged(thread: ThreadDetail<Status>): void
+  onAttachmentsChanged(thread: Attached): void
 } {
-  const [answers, setAnswers] = useState<Answers<Status>>({ thread: null, assigned: null, attached: null })
+  const [answers, setAnswers] = useState<Answers<Status>>({ thread: null, assigned: null })
   const changed = answers.thread && answers.thread.at > readStartedAt ? answers.thread.value : null
   const assigned = answers.assigned && answers.assigned.at > readStartedAt ? answers.assigned.value : null
-  const attached = answers.attached && answers.attached.at > readStartedAt ? answers.attached.value : null
+  const attached = useAttachmentAnswers(loaded, readStartedAt, clock)
   const base = changed ?? loaded
   // what one kind of change owns comes from its own answer, else from the
   // read: never from another kind's answer, which may have been read before
   // a change of this kind landed (and so lack it, or still hold what it removed)
   const assignees = assigned ?? loaded
-  const attachments = attached ?? loaded
+  const attachments = attached.thread
   const thread: ThreadDetail<Status> = {
     ...base,
     assignees: assignees.assignees,
@@ -79,9 +78,31 @@ export function useThreadAnswers<Status extends string>(loaded: ThreadDetail<Sta
       const at = ++clock.now
       setAnswers((previous) => ({ ...previous, assigned: { at, value: { assignees: value.assignees, actions: value.actions } } }))
     },
+    onAttachmentsChanged: attached.onAttachmentsChanged,
+  }
+}
+
+/**
+ * A page's thread with its attachments as the latest upload or removal on the
+ * page answered, over reads that started before that answer arrived (see
+ * `useThreadAnswers`, which takes its attachments from here). For a page whose
+ * only change of the thread is to its attachments (a patch's).
+ */
+export function useAttachmentAnswers<T extends Attached>(loaded: T, readStartedAt: number, clock: AnswerClock): {
+  thread: T
+  /** For an answer to (or a read after) an upload or a removal of an attachment. */
+  onAttachmentsChanged(thread: Attached): void
+} {
+  const [answer, setAnswer] = useState<Stamped<Attached> | null>(null)
+  const attached = answer && answer.at > readStartedAt ? answer.value : null
+  const thread: T = attached
+    ? { ...loaded, attachments: attached.attachments, attachment_limits: attached.attachment_limits, actions: { ...loaded.actions, attach: attached.actions.attach } }
+    : loaded
+  return {
+    thread,
     onAttachmentsChanged: (value) => {
       const at = ++clock.now
-      setAnswers((previous) => ({ ...previous, attached: { at, value: { attachments: value.attachments, attachment_limits: value.attachment_limits, actions: value.actions } } }))
+      setAnswer({ at, value: { attachments: value.attachments, attachment_limits: value.attachment_limits, actions: { attach: value.actions.attach } } })
     },
   }
 }
