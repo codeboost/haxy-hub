@@ -3,7 +3,7 @@ import type { APIRequestContext } from "@playwright/test"
 import { expect, test } from "./support/fixtures"
 import { writeHeaders } from "./support/accounts"
 import { createIssue, editIssue, tuiIssueIds, tuiIssuePage } from "./support/issues"
-import { localGit, serverBase, silentRemote, syncFixture } from "./support/sync"
+import { commitOnRemoteEvents, gitRemoteFixture, localGit, serverBase, silentRemote, syncFixture } from "./support/sync"
 
 // HTTP contract checks for local mode's offline edits and its event sync with
 // a remote, through the same Vite proxy the browser uses. Results are checked
@@ -255,4 +255,47 @@ test("a sync's id is never reused, even by a restarted Haxy", async ({ request, 
   expect((await status(request, hub.url)).last).toBeNull()
   const second = (await sync(request, hub.url)).last!
   expect(second.id).not.toBe(first.id)
+})
+
+test("a sync from a remote whose events Haxy can't read fails at the merge, moves nothing here and pushes nothing", async ({ request, launch }) => {
+  const fixture = await gitRemoteFixture(launch)
+  const { local, hub } = fixture
+  const synced: Detail = await (await send(request, hub.url, "POST", "/api/v1/repo/issues", { title: "Synced before" })).json()
+  expect((await sync(request, hub.url)).last).toMatchObject({ outcome: "synced", failure: null })
+
+  // something other than Haxy commits to the remote's events: not an event
+  const unreadable = await commitOnRemoteEvents(fixture, "{\"id\": \"not an event")
+  const mine: Detail = await (await send(request, hub.url, "POST", "/api/v1/repo/issues", { title: "Written since" })).json()
+  const branch = await localGit(local, "rev-parse", "refs/heads/haxy/events")
+  const events = await (await request.get(`${hub.url}/api/v1/repo/events`)).json()
+  const before = await status(request, hub.url)
+
+  const failed = await sync(request, hub.url)
+  expect(failed.last).toEqual({ id: expect.any(String), outcome: "failed", finished_at: instant, failure: { stage: "merge", message: expect.stringContaining("couldn't merge them"), remote_message: null } })
+  expect(failed.last!.failure!.message).toContain("Nothing changed here and nothing was pushed; your local changes are kept.")
+  expect(failed.last!.failure!.message).toContain("haxy/events branch")
+  // where the events stand is as before the sync: the remote's ref is back
+  // where the last good sync left it, and the conflicts still read
+  expect(failed).toMatchObject({ remote: "origin", state: before.state, running: false, conflicts: none })
+  expect(failed.state).toBe("sync_needed")
+  expect(await status(request, hub.url)).toEqual(failed)
+
+  // the events branch didn't move, and every read of it still works
+  expect(await localGit(local, "rev-parse", "refs/heads/haxy/events")).toBe(branch)
+  expect((await issueIds(request, `${hub.url}/api/v1/repo/issues`)).sort()).toEqual([synced.id, mine.id].sort())
+  const issue = await request.get(`${hub.url}/api/v1/repo/issues/${mine.id}`)
+  expect(issue.status(), await issue.text()).toBe(200)
+  expect(await (await request.get(`${hub.url}/api/v1/repo/events`)).json()).toEqual(events)
+  expect(await tuiIssueIds(local, "", "open")).toEqual(expect.arrayContaining([synced.id, mine.id]))
+  // nothing was pushed: the remote's events end at the unreadable commit
+  expect(await fixture.remoteGit("rev-parse", "refs/heads/haxy/events")).toBe(unreadable)
+
+  // a later sync fails the same way, and so does one after a restart
+  expect((await sync(request, hub.url)).last!.failure!.stage).toBe("merge")
+  const restarted = await local.restart!()
+  expect(await tuiIssueIds(restarted, "", "open")).toEqual(expect.arrayContaining([synced.id, mine.id]))
+  expect((await sync(request, hub.url)).last!.failure!.stage).toBe("merge")
+  expect(await localGit(local, "rev-parse", "refs/heads/haxy/events")).toBe(branch)
+  expect(await fixture.remoteGit("rev-parse", "refs/heads/haxy/events")).toBe(unreadable)
+  expect(local.output()).not.toContain("internal")
 })

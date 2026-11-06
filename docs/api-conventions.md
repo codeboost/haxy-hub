@@ -1478,7 +1478,8 @@ take pushes instead. Other methods are `unsupported` with `Allow: GET, HEAD, POS
   `failed`; a failure names the `stage` it stopped at, which says what it left behind, and
   `message` (Haxy's, user-facing, holding Haxy's error name but no paths) says so:
   `remote` (no remote or URL: nothing done), `fetch` (nothing changed here), `merge`
-  (fetched but not merged: nothing pushed), `push` (the remote's events are merged here,
+  (fetched but couldn't merge or read the result: nothing changed here and nothing pushed;
+  see "Events Haxy can't read" below), `push` (the remote's events are merged here,
   ours aren't sent), `confirm` (pushed, but the remote couldn't be read again, so `state`
   may be stale). `remote_message` is what the remote itself reported, when it said why
   (cut to 1024 bytes; dropped if it isn't UTF-8). **Local events are never discarded.**
@@ -1487,8 +1488,9 @@ take pushes instead. Other methods are `unsupported` with `Allow: GET, HEAD, POS
   any earlier ones, and names the first 20 conflicted issues (`ThreadSummary`, newest
   first). Hub links each to its issue page; patches have no Hub pages yet. #25 resolves
   them; until then a conflicted field keeps this repository's value. `conflicts` is null when
-  Haxy can't read them, e.g. after a sync fetched events that can't be consumed (that sync's
-  `last` is a `merge` failure); the rest of the answer still stands.
+  Haxy can't read them: an events branch that was already unreadable (one written by other
+  tools, or by a Haxy from before #32, whose syncs could merge events they couldn't read); the
+  rest of the answer still stands. A sync no longer leaves the branch unreadable (#32).
 - **A status read never waits on a sync.** It reads refs, which no sync step holds, and
   brings the event db up to date first only when nothing holds the repository's database: a
   xit repository's fetch keeps the database locked for its whole network exchange, so while
@@ -1496,9 +1498,9 @@ take pushes instead. Other methods are `unsupported` with `Allow: GET, HEAD, POS
 
 **Running a sync.** `POST /api/v1/repo/sync` (no body) runs `ui.Repo.Events.runSync`, the
 TUI's own sync: fetch `+refs/heads/haxy/events:refs/remotes/<remote>/haxy/events` (over the
-repository's `core.sshCommand` or `ssh`, in batch mode, as the TUI does), merge with
-`evt.mergeEvents` (the shared field-by-field merge rules), consume, push `haxy/events`, and
-fetch again. Only the events branch and its remote ref move, so the code HEAD, its branch
+repository's `core.sshCommand` or `ssh`, in batch mode, as the TUI does), merge with the
+shared field-by-field merge rules and consume the result as one step
+(`evt.mergeAndConsumeEvents`), push `haxy/events`, and fetch again. Only the events branch and its remote ref move, so the code HEAD, its branch
 and the work tree stay as they are. It answers **200 once the sync has finished**, with the
 body above and `last` being this sync, whether it synced or failed: a failed sync is a
 completed operation with an explicit failure, not an HTTP error. Errors keep their usual
@@ -1515,6 +1517,26 @@ consume now merges such parents with no baseline, the case `mergeFields` already
 a record only one side has arrives whole, and a field the two sides set differently is a
 conflict (this side's value stands). The fix is in `evt.consume`/`evt.merge`, so the TUI's
 sync and a server consuming the pushed merge get it too.
+
+**Events Haxy can't read.** From issue [#32](issues/32-sync-unreadable-remote-events.md).
+A remote's `haxy/events` can hold a commit Haxy can't read as an event: one written by other
+tools on a plain git host (for example invalid event JSON), or by a newer Haxy. (A Haxy server
+refuses such a push, since it consumes pushed events in the push's own transaction.) A sync
+merges what it fetched only if the merged history can be consumed:
+`evt.mergeAndConsumeEvents` merges and consumes in one transaction for a xit repository, and
+for a git repository holds its event db's exclusive lock (which every read of the db waits
+on) from before the branch moves until it is consumed or moved back. When this step fails,
+the events branch and event db stay as they were, and the remote's ref goes back to where it
+stood before the fetch (`evt.restoreFetchedRef`), so a repository with no events of its own
+doesn't read the fetched ones in their place and `state` is as before the sync. The sync then
+stops at `merge`, before any push, so nothing unreadable leaves this repository; local
+changes are kept, and every read (issues, an issue, the events view, the status with its
+conflicts) keeps working. The message names the error and the fix: the remote's
+`haxy/events` branch needs repairing there (or a newer Haxy), after which a sync goes through.
+Each sync until then fails the same way. This is `Events.runSync`, so the TUI's sync does the
+same. In a xit repository the merge's undo record (`haxy/merge-events`) now covers the events
+it consumed (the undo view links them), and putting the remote's ref back is an undo record of
+its own (`haxy/restore-fetched-events`).
 
 **Why one request, not start-and-poll.** A sync is one bounded operation that Haxy runs to
 completion whether or not anyone is waiting, so the request simply lasts as long as the sync,
@@ -1536,6 +1558,7 @@ running, and "Check again" shows the other sync's result once `last.id` changes 
 the events again.
 
 Implemented in `haxy/src/api/sync.zig` and `haxy/src/ui/Repo/Events.zig` (`runSync`,
-`syncStatus`, `lastSync`, `syncRunning`; the TUI's `sync` and `Header.local` now use them);
+`syncStatus`, `lastSync`, `syncRunning`; the TUI's `sync` and `Header.local` now use them),
+with `evt.mergeAndConsumeEvents` and `evt.restoreFetchedRef` in `haxy/src/event.zig` (#32);
 unit tests in `haxy/src/test/sync.zig`. Haxy Hub: `src/lib/sync.ts` and
 `src/pages/sync/SyncPanel.tsx`, shown above the events list in local mode.

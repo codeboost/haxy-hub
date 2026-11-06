@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process"
 import net from "node:net"
+import path from "node:path"
 import type { APIRequestContext, PlaywrightWorkerArgs } from "@playwright/test"
 import { alice, registerUser, type Account } from "./accounts"
 import type { Backend } from "./backend"
@@ -64,6 +65,59 @@ export function localGit(local: Backend, ...args: string[]): Promise<string> {
       else resolve(stdout.trim())
     })
   })
+}
+
+/** Runs git in `cwd` without anyone's git config, and returns its trimmed output. */
+function gitAt(cwd: string, home: string, args: string[], env: Record<string, string> = {}): Promise<string> {
+  const base = { PATH: process.env.PATH, HOME: home, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" }
+  return new Promise((resolve, reject) => {
+    execFile("git", args, { cwd, env: { ...base, ...env }, timeout: 30_000 }, (error, stdout, stderr) => {
+      if (error) reject(new Error(`git ${args.join(" ")} in ${cwd} failed:\n${stdout}${stderr}`))
+      else resolve(stdout.trim())
+    })
+  })
+}
+
+/**
+ * Local mode whose `origin` is a plain git repository beside it (reached by
+ * path), which a test changes with git itself. A Haxy server can't stand in:
+ * it consumes pushed events in the push's own transaction, so it refuses
+ * events it can't read. A remote holding such events is a plain git host, or
+ * one written to by other tools; this is that remote.
+ */
+export type GitRemoteFixture = {
+  local: Backend
+  /** A hub proxying to local mode. */
+  hub: Hub
+  /** The remote repository's path. */
+  remote: string
+  /** Runs git in the remote repository and returns its trimmed output. */
+  remoteGit(...args: string[]): Promise<string>
+}
+
+export async function gitRemoteFixture(launch: Launch): Promise<GitRemoteFixture> {
+  const local = await launch.local()
+  // inside local mode's sandbox, so it goes with it
+  const remote = path.join(path.dirname(local.dataDir), "remote")
+  const sandbox = path.dirname(local.dataDir)
+  await gitAt(sandbox, sandbox, ["init", "--quiet", "--initial-branch=main", remote])
+  // Haxy reads the remote from the config at each sync
+  await gitAt(local.dataDir, sandbox, ["config", "remote.origin.url", remote])
+  const hub = await launch.hub(local.port)
+  return { local, hub, remote, remoteGit: (...args) => gitAt(remote, sandbox, args) }
+}
+
+/**
+ * Commits `message` on top of the remote's `haxy/events` with git, as a tool
+ * other than Haxy might (the tree stays the same), and returns its id.
+ */
+export async function commitOnRemoteEvents(fixture: GitRemoteFixture, message: string): Promise<string> {
+  const at = "1700000000 +0000"
+  const env = { GIT_AUTHOR_NAME: "Someone", GIT_AUTHOR_EMAIL: "someone@example.test", GIT_AUTHOR_DATE: at, GIT_COMMITTER_NAME: "Someone", GIT_COMMITTER_EMAIL: "someone@example.test", GIT_COMMITTER_DATE: at }
+  const parent = await fixture.remoteGit("rev-parse", "refs/heads/haxy/events")
+  const commit = await gitAt(fixture.remote, path.dirname(fixture.remote), ["commit-tree", `${parent}^{tree}`, "-p", parent, "-m", message], env)
+  await fixture.remoteGit("update-ref", "refs/heads/haxy/events", commit, parent)
+  return commit
 }
 
 /**

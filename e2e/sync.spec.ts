@@ -2,7 +2,7 @@ import type { APIRequestContext, Page } from "@playwright/test"
 import { expect, test } from "./support/fixtures"
 import { writeHeaders } from "./support/accounts"
 import { createIssue, editIssue, tuiIssueIds } from "./support/issues"
-import { localGit, serverBase, silentRemote, syncFixture } from "./support/sync"
+import { commitOnRemoteEvents, gitRemoteFixture, localGit, serverBase, silentRemote, syncFixture } from "./support/sync"
 
 // Local mode's sync in the browser: the events page syncs with the remote
 // through Vite's proxy against real Haxy processes (local mode and a server
@@ -130,4 +130,37 @@ test("a sync refused because another is running waits for that one, then shows i
   } finally {
     await remote.close()
   }
+})
+
+test("a sync from a remote whose events Haxy can't read says what to fix, and the events and issues stay as they were", async ({ page, request, launch }) => {
+  const fixture = await gitRemoteFixture(launch)
+  const { hub } = fixture
+  await send(request, hub.url, "POST", "/api/v1/repo/issues", { title: "Synced before" })
+  await page.goto(`${hub.url}/repo/events`)
+  await panel(page).getByRole("button", { name: "Sync now" }).click()
+  await expect(panel(page).getByRole("status").filter({ hasText: "Synced with origin at" })).toBeVisible()
+
+  await commitOnRemoteEvents(fixture, "{\"id\": \"not an event")
+  await send(request, hub.url, "POST", "/api/v1/repo/issues", { title: "Written since" })
+  await page.reload()
+  const events = page.getByRole("list", { name: "Active events" }).getByRole("listitem")
+  await expect(events).toHaveCount(2)
+
+  await panel(page).getByRole("button", { name: "Sync now" }).click()
+  const alert = panel(page).getByRole("alert")
+  await expect(alert).toContainText("failed. Fetched the remote's events but couldn't merge them")
+  await expect(alert).toContainText("Nothing changed here and nothing was pushed; your local changes are kept.")
+  await expect(alert).toContainText("fix the branch there, then sync again")
+  await expect(panel(page)).toContainText("a sync is needed")
+  await expect(panel(page)).not.toContainText("Haxy couldn't read this repository's events")
+  await expect(panel(page).getByRole("button", { name: "Sync now" })).toBeEnabled()
+  // the events list was read again, and is as it was
+  await expect(events).toHaveCount(2)
+
+  await page.reload()
+  await expect(panel(page).getByRole("alert")).toContainText("couldn't merge them")
+  await expect(events).toHaveCount(2)
+  await page.goto(`${hub.url}/repo/issues`)
+  await expect(page.getByRole("link", { name: "Synced before" })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Written since" })).toBeVisible()
 })
