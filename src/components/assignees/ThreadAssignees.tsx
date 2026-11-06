@@ -7,6 +7,7 @@ import { ApiError } from "@/lib/api"
 import { alreadyAssigned, assignThread, assigneeName, assigneeNamed, unassignThread } from "@/lib/assignees"
 import type { RepoLocator } from "@/lib/repo"
 import { findThread, threadsRoute, type ThreadAssignee, type ThreadDetail, type WriteViewer } from "@/lib/threads"
+import { readStart, type ThreadReads } from "@/components/assignees/useThreadAnswers"
 import { useWrite } from "@/pages/settings/shared"
 import { Unresolved } from "@/pages/settings/Unresolved"
 import type { ThreadConfig } from "@/components/thread/config"
@@ -44,13 +45,15 @@ function unresolvedMessage(unknown: Unknown): string {
  * controls hold until "Check again" gets an answer. Answers update only the
  * assignees (see `useThreadAnswers`).
  */
-export function ThreadAssignees<Status extends string>({ repo, config, thread, viewer, onChanged }: {
+export function ThreadAssignees<Status extends string>({ repo, config, thread, viewer, onChanged, reads }: {
   repo: RepoLocator
   config: ThreadConfig<Status>
   thread: ThreadDetail<Status>
   viewer: WriteViewer
-  /** The thread as Haxy now has it, after a change (or a check). */
+  /** The thread as Haxy answered a change. */
   onChanged(thread: ThreadDetail<Status>): void
+  /** Where a read that settles an outcome goes, ordered by when it started. */
+  reads: ThreadReads<ThreadDetail<Status>>
 }) {
   const navigate = useNavigate()
   const write = useWrite<Unknown>()
@@ -72,6 +75,7 @@ export function ThreadAssignees<Status extends string>({ repo, config, thread, v
 
   /** Reads the thread again and shows it: "gone" when it no longer exists, null when Haxy couldn't say. */
   async function reread(current: () => boolean): Promise<ThreadDetail<Status> | "gone" | null> {
+    const startedAt = readStart(reads.clock)
     try {
       const now = await findThread<Status>(repo, config.kind, thread.id)
       if (!current()) return null
@@ -79,7 +83,7 @@ export function ThreadAssignees<Status extends string>({ repo, config, thread, v
         void navigate(listRoute)
         return "gone"
       }
-      onChanged(now)
+      reads.onRead(now, startedAt)
       return now
     } catch {
       return null

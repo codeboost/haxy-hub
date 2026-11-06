@@ -57,6 +57,8 @@ export default defineConfig(({ mode }) => {
     "^/api/v1/(?:repos/[^/?]+/[^/?]+|repo)/(?:issues|discussions|patches)/[^/?]+/attachments(?:/[^/?]+)?(?:\\?|$)": backend,
     // Starting a draft copies the repository into a new fork.
     "^/api/v1/repos/[^/?]+/[^/?]+/patches/drafts(?:\\?|$)": backend,
+    // A merge runs the merge and reindexes the target, and answers once it landed.
+    "^/api/v1/(?:repos/[^/?]+/[^/?]+|repo)/patches/[^/?]+/merge(?:\\?|$)": backend,
     "^/api(?:/|$)": { ...backend, proxyTimeout: 10_000 },
   }
   return {

@@ -15,6 +15,29 @@ export function useAnswerClock(): AnswerClock {
 
 type Stamped<T> = { at: number; value: T }
 
+/**
+ * The time a read of the thread made outside the page's loading (a recovery
+ * read after an unknown outcome) starts: it ticks the clock, so such a read
+ * stands over page reads that started before it, and gives way to every
+ * change answered while it is in flight.
+ */
+export function readStart(clock: AnswerClock): number {
+  return ++clock.now
+}
+
+/** How a shared write component applies its recovery reads: on the page's clock, by when they started. */
+export type ThreadReads<T> = { clock: AnswerClock; onRead(thread: T, startedAt: number): void }
+
+/** Reads applied by `apply`, each followed by `after` (the page's background read, say). */
+export function readsThen<T>(clock: AnswerClock, apply: (thread: T, startedAt: number) => void, after: () => void): ThreadReads<T> {
+  return { clock, onRead: (thread, startedAt) => { apply(thread, startedAt); after() } }
+}
+
+/** `value`, read from `startedAt`, unless what stands was answered after that read started. */
+function laterOf<T>(current: Stamped<T> | null, startedAt: number, value: T): Stamped<T> {
+  return current && current.at > startedAt ? current : { at: startedAt, value }
+}
+
 type Answers<Status extends string> = {
   /** The latest answer to a change of the thread itself (its status, say). */
   thread: Stamped<ThreadDetail<Status>> | null
@@ -50,6 +73,12 @@ export function useThreadAnswers<Status extends string>(loaded: ThreadDetail<Sta
   onAssigneesChanged(thread: ThreadDetail<Status>): void
   /** For an answer to (or a read after) an upload or a removal of an attachment. */
   onAttachmentsChanged(thread: Attached): void
+  /** For a read of the thread itself that started at `startedAt` (see `readStart`). */
+  onRead(thread: ThreadDetail<Status>, startedAt: number): void
+  /** For a read of its assignees that started at `startedAt`. */
+  onAssigneesRead(thread: ThreadDetail<Status>, startedAt: number): void
+  /** For a read of its attachments that started at `startedAt`. */
+  onAttachmentsRead(thread: Attached, startedAt: number): void
 } {
   const [answers, setAnswers] = useState<Answers<Status>>({ thread: null, assigned: null })
   const changed = answers.thread && answers.thread.at > readStartedAt ? answers.thread.value : null
@@ -79,6 +108,12 @@ export function useThreadAnswers<Status extends string>(loaded: ThreadDetail<Sta
       setAnswers((previous) => ({ ...previous, assigned: { at, value: { assignees: value.assignees, actions: value.actions } } }))
     },
     onAttachmentsChanged: attached.onAttachmentsChanged,
+    onRead: (value, startedAt) => setAnswers((previous) => ({ ...previous, thread: laterOf(previous.thread, startedAt, value) })),
+    onAssigneesRead: (value, startedAt) => setAnswers((previous) => ({
+      ...previous,
+      assigned: laterOf(previous.assigned, startedAt, { assignees: value.assignees, actions: value.actions }),
+    })),
+    onAttachmentsRead: attached.onAttachmentsRead,
   }
 }
 
@@ -87,9 +122,11 @@ export function useThreadAnswers<Status extends string>(loaded: ThreadDetail<Sta
  * thread itself (its status, say) on the page, over reads that started before
  * that answer arrived (the rule of `useThreadAnswers`). For a page whose
  * thread isn't in the issue's shape (a patch's), with its attachments from
- * `useAttachmentAnswers` over it.
+ * `useAttachmentAnswers` over it. `onRead` takes a read of the thread made
+ * on the page outside its loading, stamped with the clock when it started, so
+ * it never overrides a change answered after it started.
  */
-export function useChangeAnswers<T>(loaded: T, readStartedAt: number, clock: AnswerClock): { thread: T; onChanged(thread: T): void } {
+export function useChangeAnswers<T>(loaded: T, readStartedAt: number, clock: AnswerClock): { thread: T; onChanged(thread: T): void; onRead(thread: T, startedAt: number): void } {
   const [answer, setAnswer] = useState<Stamped<T> | null>(null)
   const changed = answer && answer.at > readStartedAt ? answer.value : null
   return {
@@ -98,6 +135,7 @@ export function useChangeAnswers<T>(loaded: T, readStartedAt: number, clock: Ans
       const at = ++clock.now
       setAnswer({ at, value })
     },
+    onRead: (value, startedAt) => setAnswer((current) => laterOf(current, startedAt, value)),
   }
 }
 
@@ -109,8 +147,10 @@ export function useChangeAnswers<T>(loaded: T, readStartedAt: number, clock: Ans
  */
 export function useAttachmentAnswers<T extends Attached>(loaded: T, readStartedAt: number, clock: AnswerClock): {
   thread: T
-  /** For an answer to (or a read after) an upload or a removal of an attachment. */
+  /** For an answer to an upload or a removal of an attachment. */
   onAttachmentsChanged(thread: Attached): void
+  /** For a read of the attachments that started at `startedAt` (see `readStart`). */
+  onAttachmentsRead(thread: Attached, startedAt: number): void
 } {
   const [answer, setAnswer] = useState<Stamped<Attached> | null>(null)
   const attached = answer && answer.at > readStartedAt ? answer.value : null
@@ -121,7 +161,12 @@ export function useAttachmentAnswers<T extends Attached>(loaded: T, readStartedA
     thread,
     onAttachmentsChanged: (value) => {
       const at = ++clock.now
-      setAnswer({ at, value: { attachments: value.attachments, attachment_limits: value.attachment_limits, actions: { attach: value.actions.attach } } })
+      setAnswer({ at, value: attachedOf(value) })
     },
+    onAttachmentsRead: (value, startedAt) => setAnswer((current) => laterOf(current, startedAt, attachedOf(value))),
   }
+}
+
+function attachedOf(thread: Attached): Attached {
+  return { attachments: thread.attachments, attachment_limits: thread.attachment_limits, actions: { attach: thread.actions.attach } }
 }

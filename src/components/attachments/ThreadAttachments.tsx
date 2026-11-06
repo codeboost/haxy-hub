@@ -7,6 +7,7 @@ import { ApiError } from "@/lib/api"
 import { alreadyAttached, attachmentUrl, formatBytes, refusal, removeAttachment, uploadAttachment, type Attached, type ThreadAttachment } from "@/lib/attachments"
 import type { RepoLocator } from "@/lib/repo"
 import { findThread, newThreadId, threadsRoute, type ThreadDetail, type WriteViewer } from "@/lib/threads"
+import { readStart, type ThreadReads } from "@/components/assignees/useThreadAnswers"
 import { useWrite } from "@/pages/settings/shared"
 import { Unresolved } from "@/pages/settings/Unresolved"
 import { linkClass, type ThreadConfig } from "@/components/thread/config"
@@ -46,14 +47,16 @@ type Chosen = { file: File; id: string }
  * controls hold until "Check again" gets an answer. Answers update only the
  * attachments (see `useThreadAnswers`).
  */
-export function ThreadAttachments<Status extends string>({ repo, config, thread, viewer, onChanged }: {
+export function ThreadAttachments<Status extends string>({ repo, config, thread, viewer, onChanged, reads }: {
   repo: RepoLocator
   config: ThreadConfig<Status>
   /** The thread (of any kind) as the page shows it. */
   thread: Pick<ThreadDetail<Status>, "id" | "status"> & Attached
   viewer: WriteViewer
-  /** The thread as Haxy now has it, after a change (or a check). */
+  /** The thread as Haxy answered a change. */
   onChanged(thread: Attached): void
+  /** Where a read that settles an outcome goes, ordered by when it started. */
+  reads: ThreadReads<Attached>
 }) {
   const navigate = useNavigate()
   const write = useWrite<Unknown>()
@@ -85,6 +88,7 @@ export function ThreadAttachments<Status extends string>({ repo, config, thread,
 
   /** Reads the thread again and shows it: "gone" when it no longer exists, null when Haxy couldn't say. */
   async function reread(current: () => boolean): Promise<ThreadDetail<Status> | "gone" | null> {
+    const startedAt = readStart(reads.clock)
     try {
       const now = await findThread<Status>(repo, config.kind, thread.id)
       if (!current()) return null
@@ -92,7 +96,7 @@ export function ThreadAttachments<Status extends string>({ repo, config, thread,
         void navigate(listRoute)
         return "gone"
       }
-      onChanged(now)
+      reads.onRead(now, startedAt)
       return now
     } catch {
       return null
