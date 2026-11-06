@@ -7,7 +7,7 @@ import { linkClass, type ThreadConfig } from "./config"
 import { AuthorName, Instant, authorText } from "./ThreadParts"
 
 /** A kind with one list (discussions) has no status to show. */
-export function hasStatus<Status extends string>(config: ThreadConfig<Status>): boolean {
+function hasStatus<Status extends string>(config: ThreadConfig<Status>): boolean {
   return config.statuses.length > 1
 }
 
