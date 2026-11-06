@@ -214,7 +214,7 @@ test.describe("with the demo data", () => {
     const hub = await launch.hub(backend.port)
     await page.goto(`${hub.url}/repos/bobby/linux`)
     await expect(page.getByRole("region", { name: "Ref" })).toContainText("Branch master")
-    await page.getByRole("region", { name: "Ref" }).getByRole("link", { name: "Branches and tags" }).click()
+    await page.getByRole("region", { name: "Ref" }).getByRole("link", { name: /Branches/ }).click()
     await expect(page).toHaveURL(`${hub.url}/repos/bobby/linux/branches`)
     await expect(page.getByRole("list", { name: "Branches" }).getByRole("link", { name: "feature", exact: true })).toBeVisible()
 

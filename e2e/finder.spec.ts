@@ -10,11 +10,11 @@ import { signedIn } from "./support/repos"
 // on push, through Vite's proxy. The ref, search and page live in the URL; a
 // result opens the file at the same ref.
 
-test("finding a file from the ref bar opens it at the same branch, and the search survives refresh and back", async ({ page, playwright, launch }) => {
+test("finding a file from the toolbar opens it at the same branch, and the search survives refresh and back", async ({ page, playwright, launch }) => {
   const { hub } = await indexedServer(playwright, launch)
   await page.goto(`${hub.url}/repos/alice/tricky?ref=branch:feature`)
 
-  await page.getByRole("region", { name: "Ref" }).getByRole("link", { name: "Find a file" }).click()
+  await page.getByRole("region", { name: "Ref" }).getByRole("textbox", { name: "Go to file" }).press("Enter")
   await expect(page).toHaveURL(`${hub.url}/repos/alice/tricky/find?ref=branch:feature`)
   await expect(page.getByText("Finding files at branch feature")).toBeVisible()
   await expect(page.getByText("Type the start of a file name.")).toBeVisible()
@@ -103,7 +103,7 @@ test("no index, an unsupported ref and no matches each say so, never as an empty
 
   // from a tag's files, as from any ref
   await page.goto(`${hub.url}/repos/alice/tricky?ref=tag:v1`)
-  await page.getByRole("region", { name: "Ref" }).getByRole("link", { name: "Find a file" }).click()
+  await page.getByRole("region", { name: "Ref" }).getByRole("textbox", { name: "Go to file" }).press("Enter")
   await expect(page).toHaveURL(`${hub.url}/repos/alice/tricky/find?ref=tag:v1`)
   const unsupported = page.getByRole("region", { name: "Files can't be found by name at a tag" })
   await expect(unsupported).toContainText("Haxy indexes branches only.")
@@ -135,7 +135,7 @@ test("local mode finds files in an indexed xit repository, and says a git reposi
   const git = await launch.local()
   const gitHub = await launch.hub(git.port)
   await page.goto(`${gitHub.url}/repo`)
-  await page.getByRole("region", { name: "Ref" }).getByRole("link", { name: "Find a file" }).click()
+  await page.getByRole("region", { name: "Ref" }).getByRole("textbox", { name: "Go to file" }).press("Enter")
   await expect(page).toHaveURL(`${gitHub.url}/repo/find`)
   await expect(page.getByRole("region", { name: "This repository can't be searched by file name" })).toContainText("this is a Git repository")
 

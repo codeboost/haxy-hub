@@ -115,8 +115,8 @@ for (const [label, search, name, id] of [
     await page.getByRole("list", { name: "Branches" }).getByRole("link", { name, exact: true }).click()
     await expect(page).toHaveURL(`${hub.url}/repo?ref=${id}`)
 
-    // the files view's ref bar leads to that ref's history
-    await page.getByRole("region", { name: "Ref" }).getByRole("link", { name: "History" }).click()
+    // the files view leads to that ref's history
+    await page.getByRole("link", { name: "History", exact: true }).click()
     await expect(page).toHaveURL(`${hub.url}/repo/commits?ref=${id}`)
     await expect(page.getByRole("region", { name: "Ref" })).toContainText(`Branch ${name}`)
     const commits = page.getByRole("list", { name: "Commits" })

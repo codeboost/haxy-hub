@@ -1,10 +1,8 @@
 import { Link } from "react-router"
-import { GitBranch, GitCommitHorizontal, GitPullRequest, Tag } from "lucide-react"
+import { GitBranch, Tag } from "lucide-react"
 import { EmptyState, FailureState, LoadingState, Pager, SearchForm, listQuery, useListParams } from "@/components/listing"
-import { commitsRoute } from "@/lib/commits"
-import { listRefs, refsRoute, repoRoute, type EncodedPath, type ReadRef, type RefId, type RefKind, type RepoLocator } from "@/lib/repo"
+import { listRefs, refsRoute, repoRoute, type RefKind, type RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
-import { findRoute } from "@/lib/finder"
 
 // Choosing a ref: the repository's branches and tags, searchable and paged
 // like the TUI's refs tab (whose search and window this reads), each leading
@@ -12,34 +10,6 @@ import { findRoute } from "@/lib/finder"
 // (`/branches` or `/tags`, `?search=…&cursor=…`).
 
 const linkClass = "text-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-
-const kindLabels: Record<ReadRef["kind"], string> = { branch: "Branch", tag: "Tag", commit: "Commit", revision: "Patch revision" }
-
-/** The id's value after its kind, for showing a commit or revision id. */
-function refValue(id: RefId): string {
-  return id.slice(id.indexOf(":") + 1)
-}
-
-/**
- * Which ref the files view shows, with the way to choose another and, away
- * from the default branch, back to it (at the same path).
- */
-export function RefBar({ repo, path, refId, read }: { repo: RepoLocator; path: EncodedPath; refId: RefId | null; read: ReadRef }) {
-  const Icon = read.kind === "branch" ? GitBranch : read.kind === "tag" ? Tag : read.kind === "commit" ? GitCommitHorizontal : GitPullRequest
-  return (
-    <section aria-label="Ref" className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-      <span className="flex min-w-0 items-center gap-2">
-        <Icon size={16} aria-hidden className="shrink-0 text-muted-foreground" />
-        <span>{kindLabels[read.kind]}{" "}<code className="font-mono font-semibold break-all">{read.name ?? refValue(read.id)}</code></span>
-      </span>
-      {read.kind !== "commit" && <span className="text-muted-foreground">at commit <code className="font-mono break-all">{read.commit}</code></span>}
-      <Link to={refsRoute(repo, read.kind === "tag" ? "tag" : "branch")} className={linkClass}>Branches and tags</Link>
-      <Link to={findRoute(repo, refId)} className={linkClass}>Find a file</Link>
-      <Link to={commitsRoute(repo, refId)} className={linkClass}>History</Link>
-      {refId !== null && <Link to={repoRoute(repo, path)} className={linkClass}>Default branch</Link>}
-    </section>
-  )
-}
 
 function repoKey(repo: RepoLocator): string {
   return repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`

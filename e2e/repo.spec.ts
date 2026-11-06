@@ -77,6 +77,7 @@ test.describe("with the demo data", () => {
     const hub = await launch.hub(backend.port)
     await page.goto(`${hub.url}/repos/bobby/linux`)
 
+    await page.getByRole("region", { name: "Ref" }).getByRole("button", { name: "Code" }).click()
     const clone = page.getByRole("region", { name: "Clone" })
     const http = `git clone http://localhost:${backend.port}/bobby:linux`
     await expect(clone.getByText(http)).toBeVisible()

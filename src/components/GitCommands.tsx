@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { Copy } from "lucide-react"
+import { ChevronDown, Code2, Copy } from "lucide-react"
+import { Popover } from "radix-ui"
 import { Button } from "@/components/ui/button"
 import type { GitCommand } from "@/lib/repo"
 
@@ -9,7 +10,7 @@ const protocolLabel = { http: "HTTP", ssh: "SSH" } as const
  * Git commands from the backend (built from its public transport settings),
  * each with a button that copies it to the clipboard.
  */
-export function CommandList({ title, commands, purpose }: { title: string; commands: GitCommand[]; purpose: string }) {
+export function CommandList({ title, commands, purpose, framed = true }: { title: string; commands: GitCommand[]; purpose: string; framed?: boolean }) {
   const [copied, setCopied] = useState<{ command: string; ok: boolean } | null>(null)
   const copy = (command: string) => {
     navigator.clipboard.writeText(command).then(
@@ -19,7 +20,7 @@ export function CommandList({ title, commands, purpose }: { title: string; comma
   }
   const headingId = `commands-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
   return (
-    <section aria-labelledby={headingId} className="mt-6 rounded-xl border bg-card p-4">
+    <section aria-labelledby={headingId} className={framed ? "mt-6 rounded-xl border bg-card p-4" : "p-3"}>
       <div className="flex items-baseline justify-between gap-3">
         <h2 id={headingId} className="text-sm font-semibold">{title}</h2>
         <p role="status" className="text-xs text-muted-foreground">{copied ? (copied.ok ? "Copied" : "Couldn't copy; select the command instead.") : ""}</p>
@@ -36,5 +37,21 @@ export function CommandList({ title, commands, purpose }: { title: string; comma
         ))}
       </ul>
     </section>
+  )
+}
+
+/** A Code button that opens the clone commands. */
+export function CloneButton({ commands }: { commands: GitCommand[] }) {
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <Button size="sm"><Code2 />Code<ChevronDown /></Button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content align="end" sideOffset={6} className="z-50 w-[36rem] max-w-[calc(100vw-2rem)] rounded-lg border bg-popover text-popover-foreground shadow-lg">
+          <CommandList title="Clone" commands={commands} purpose="clone" framed={false} />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   )
 }

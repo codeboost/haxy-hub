@@ -146,10 +146,7 @@ export function RepoPage({ local = false, section = "files", refs }: { local?: b
               {data.remote && <CommandList title="Push an existing repository" commands={[data.remote]} purpose="remote" />}
             </>
           ) : (
-            <>
-              {data.clone.length > 0 && <CommandList title="Clone" commands={data.clone} purpose="clone" />}
-              <RepoFiles repo={repo} refId={refId} name={data.name} path={path} />
-            </>
+            <RepoFiles repo={repo} refId={refId} name={data.name} path={path} clone={data.clone} />
           )}
         </>
       )
