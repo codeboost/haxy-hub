@@ -5,16 +5,17 @@ import { Button } from "@/components/ui/button"
 import type { Count } from "@/lib/api"
 import type { RepoLocator } from "@/lib/repo"
 import { threadLabelsRoute, threadsRoute, type FilterLink, type ThreadAssignee, type ThreadAuthor, type ThreadFilters } from "@/lib/threads"
+import { conflictsRoute, type ConflictKind } from "@/lib/conflicts"
 import { countText, linkClass, type ThreadConfig } from "./config"
 
 // Small building blocks of the thread pages. Every link is an absolute route
 // from lib/threads.ts, never relative to the current URL.
 
-/** The tabs of a thread section: one list per status (with its count when known), then the labels. */
+/** The tabs of a thread section: one list per status (with its count when known), the labels, then the metadata conflicts of a kind that has them. */
 export function ThreadTabs<Status extends string>({ repo, config, current, search, counts }: {
   repo: RepoLocator
   config: ThreadConfig<Status>
-  current: Status | "labels" | null
+  current: Status | "labels" | "conflicts" | null
   search: string
   counts?: Record<Status, Count>
 }) {
@@ -32,6 +33,7 @@ export function ThreadTabs<Status extends string>({ repo, config, current, searc
         )
       })}
       <Link to={threadLabelsRoute(repo, config.kind, { search })} aria-current={current === "labels" ? "page" : undefined} className={tab(current === "labels")}>Labels</Link>
+      {config.conflicts && <Link to={conflictsRoute(repo, config.kind as ConflictKind)} aria-current={current === "conflicts" ? "page" : undefined} className={tab(current === "conflicts")}>Conflicts</Link>}
     </nav>
   )
 }

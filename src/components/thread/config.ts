@@ -25,6 +25,8 @@ export type ThreadConfig<Status extends string> = {
    * new thread proposes from and its target, among those this reads.
    */
   branches?: { load(repo: RepoLocator, options: Pick<RequestOptions, "signal">): Promise<BranchChoices> }
+  /** Whether the kind's threads can have metadata conflicts (issues, patches), listed under a tab of their own. */
+  conflicts?: boolean
 }
 
 /** A count as a tab shows it: "22", "1000+" when counting stopped there, nothing when unknown. */

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react"
 import { Link, useLocation } from "react-router"
-import { ArrowLeft, MessageSquare, TriangleAlert } from "lucide-react"
+import { ArrowLeft, MessageSquare } from "lucide-react"
 import { FailureState, LoadingState } from "@/components/listing"
 import { Markdown } from "@/components/Markdown"
 import { linkTarget } from "@/lib/markdown"
@@ -17,6 +17,8 @@ import { ThreadAttachments } from "@/components/attachments/ThreadAttachments"
 import { useAnswerClock, useThreadAnswers, type AnswerClock } from "@/components/assignees/useThreadAnswers"
 import { ThreadNotifications, useCommentsShown } from "@/components/notifications/ThreadNotifications"
 import { withNotification, type NotificationRead } from "@/lib/notifications"
+import type { ConflictKind } from "@/lib/conflicts"
+import { ConflictBanner } from "@/pages/conflicts/ConflictBanner"
 
 function Field({ title, children }: { title: string; children: ReactNode }) {
   const id = `thread-${title.toLowerCase()}`
@@ -56,11 +58,7 @@ function Body<Status extends string>({ repo, config, loaded, readStartedAt, cloc
         <span className="inline-flex items-center gap-1"><MessageSquare size={14} aria-hidden />{thread.comment_count} {thread.comment_count === 1 ? "comment" : "comments"}</span>
       </div>
       <ThreadActions repo={repo} config={config} thread={thread} viewer={viewer} onChanged={onChanged} />
-      {thread.conflicted && (
-        <p className="mt-4 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-2 text-sm">
-          <TriangleAlert size={16} aria-hidden />Concurrent edits to this {config.noun.toLowerCase()} conflict; the values shown are this server's.
-        </p>
-      )}
+      {thread.conflicted && <ConflictBanner repo={repo} kind={config.kind as ConflictKind} id={thread.id} noun={config.noun.toLowerCase()} />}
       {thread.labels.length > 0 && <Field title="Labels"><div className="flex flex-wrap gap-1"><LabelLinks labels={thread.labels} to={listOf} /></div></Field>}
       <ThreadAssignees repo={repo} config={config} thread={thread} viewer={viewer} onChanged={(value) => { onAssigneesChanged(value); setAssigneeChanges((count) => count + 1) }} />
       <ThreadNotifications repo={repo} config={config} thread={thread.id} viewer={viewer} read={notification} readStartedAt={readStartedAt} clock={clock} onRetry={reload} refresh={assigneeChanges}
