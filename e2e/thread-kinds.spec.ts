@@ -23,13 +23,15 @@ const form = (page: Page) => page.getByRole("form", { name: "Attach a file" })
 /** One of alice's threads, which bob may comment on. */
 type Seeded = { route: string; comment(by: APIRequestContext, body: string): Promise<string>; tuiPage(): Promise<string> }
 
-type Kind = { plural: string; noun: string; ssh: boolean; seed(playwright: PlaywrightWorkerArgs["playwright"], backend: Backend, hubUrl: string, owner: APIRequestContext): Promise<Seeded> }
+/** `sidebar`: the page keeps the attachments' controls behind a toggle in its sidebar. */
+type Kind = { plural: string; noun: string; ssh: boolean; sidebar: boolean; seed(playwright: PlaywrightWorkerArgs["playwright"], backend: Backend, hubUrl: string, owner: APIRequestContext): Promise<Seeded> }
 
 const kinds: Kind[] = [
   {
     plural: "discussions",
     noun: "discussion",
     ssh: false,
+    sidebar: true,
     async seed(_playwright, backend, _hubUrl, owner) {
       await createRepo(owner, backend, { name: "forum", access: "public" })
       const id = await createDiscussion(owner, backend, "/alice:forum", { title: "Roadmap for 2027" })
@@ -44,6 +46,7 @@ const kinds: Kind[] = [
     plural: "patches",
     noun: "patch",
     ssh: true,
+    sidebar: false,
     async seed(playwright, backend, hubUrl, owner) {
       await createRepo(owner, backend, { name: "parser", access: "public" })
       const id = await pushedPatch(playwright, backend, hubUrl, alice, owner, "parser", "Roadmap for 2027")
@@ -55,6 +58,10 @@ const kinds: Kind[] = [
     },
   },
 ]
+
+async function editAttachments(page: Page, kind: Kind) {
+  if (kind.sidebar) await attachments(page).getByRole("button", { name: "Edit attachments" }).click()
+}
 
 async function logIn(page: Page, hubUrl: string, account: Account, next: string) {
   await page.goto(`${hubUrl}/login?next=${encodeURIComponent(next)}`)
@@ -85,12 +92,14 @@ for (const kind of kinds) {
 
     // a file attached here is listed, after a refresh and on Haxy's own page; removing it lasts too
     await expect(attachments(page).getByText(`Nothing is attached to this ${kind.noun}.`)).toBeVisible()
+    await editAttachments(page, kind)
     await form(page).getByLabel("Attach a file").setInputFiles({ name: "the plan.txt", mimeType: "text/plain", buffer: Buffer.from("the plan\n") })
     await form(page).getByRole("button", { name: "Attach file" }).click()
     await expect(listed(page)).toHaveText(["the plan.txt"])
     await page.reload()
     await expect(listed(page)).toHaveText(["the plan.txt"])
     expect(await seeded.tuiPage()).toContain("the plan.txt")
+    await editAttachments(page, kind)
     await attachments(page).getByRole("button", { name: "Remove the plan.txt" }).click()
     await attachments(page).getByRole("alertdialog").getByRole("button", { name: "Remove attachment" }).click()
     await expect(attachments(page).getByText(`Nothing is attached to this ${kind.noun}.`)).toBeVisible()

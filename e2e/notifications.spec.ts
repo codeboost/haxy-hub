@@ -297,6 +297,7 @@ test("assigning yourself turns notifications on, and the panel says so without a
   await logIn(page, hub.url, alice, `/repos/alice/tracker/issues/${issue}`)
 
   await expect(settings(page)).toContainText("You're not notified of activity on this issue.")
+  await page.getByRole("button", { name: "Edit assignees" }).click()
   const assign = page.getByRole("form", { name: "Assign someone" })
   await assign.getByLabel("Assign").fill("alice")
   await assign.getByRole("button", { name: "Assign" }).click()
@@ -414,6 +415,7 @@ test("assignee changes that land while the panel is reading its state are read a
     await held.opened
     await route.fulfill({ response })
   })
+  await page.getByRole("button", { name: "Edit assignees" }).click()
   const assign = page.getByRole("form", { name: "Assign someone" })
   const assigned = page.getByRole("list", { name: "Assigned" }).getByRole("link")
   await assign.getByLabel("Assign").fill("outside@example.test")

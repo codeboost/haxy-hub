@@ -168,7 +168,7 @@ export function CommentItems<Status extends string>({ repo, config, thread, wind
  * context, and a composer for a new comment when Haxy says the viewer may
  * comment. A posted comment opens in the window that holds it.
  */
-export function ThreadComments<Status extends string>({ repo, config, thread, onLoaded, refresh = 0 }: {
+export function ThreadComments<Status extends string>({ repo, config, thread, onLoaded, refresh = 0, title = "Comments" }: {
   repo: RepoLocator
   config: ThreadConfig<Status>
   thread: string
@@ -176,6 +176,8 @@ export function ThreadComments<Status extends string>({ repo, config, thread, on
   onLoaded?(startedAt: number): void
   /** Reads the comments again whenever it changes. */
   refresh?: number
+  /** The section's heading, followed by the count. */
+  title?: string
 }) {
   const { viewer, viewerKey } = useSession()
   const location = useLocation()
@@ -237,7 +239,7 @@ export function ThreadComments<Status extends string>({ repo, config, thread, on
   return (
     <section aria-labelledby="thread-comments" className="mt-8">
       <h3 id="thread-comments" className="mb-3 text-sm font-semibold">
-        Comments{count && count.kind !== "unknown" ? ` (${count.value}${count.kind === "at_least" ? "+" : ""})` : ""}
+        {title}{count && count.kind !== "unknown" ? ` (${count.value}${count.kind === "at_least" ? "+" : ""})` : ""}
       </h3>
       {body}
     </section>

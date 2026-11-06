@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { FailureMessage, FormMessage, failureOf, type Failure } from "@/components/form"
 import type { AnswerClock } from "@/components/assignees/useThreadAnswers"
 import type { ThreadConfig } from "@/components/thread/config"
+import { ThreadPanel, type PanelFrame } from "@/components/thread/ThreadPanel"
 import type { EventId } from "@/lib/api"
 import { acknowledgeThread, getThreadNotification, notificationsChanged, setThreadNotification, type NotificationRead, type NotifyMode } from "@/lib/notifications"
 import type { RepoLocator } from "@/lib/repo"
@@ -127,7 +128,7 @@ const verbs: Record<NotifyMode, { label: string; failed: string; done: string }>
  * acknowledges the thread (`useAcknowledgement`). Nothing is shown in local
  * mode or to nobody signed in.
  */
-export function ThreadNotifications<Status extends string>({ repo, config, thread, viewer, read, readStartedAt, clock, onRetry, refresh, comments }: {
+export function ThreadNotifications<Status extends string>({ repo, config, thread, viewer, read, readStartedAt, clock, onRetry, refresh, comments, frame = "section" }: {
   repo: RepoLocator
   config: ThreadConfig<Status>
   thread: EventId
@@ -143,6 +144,7 @@ export function ThreadNotifications<Status extends string>({ repo, config, threa
   refresh: number
   /** The comments the page has shown, against the state. */
   comments: CommentsShown
+  frame?: PanelFrame
 }) {
   useAcknowledgement(repo, config.kind, thread, viewer, read, comments)
   const write = useWrite<Unknown>()
@@ -228,8 +230,7 @@ export function ThreadNotifications<Status extends string>({ repo, config, threa
   })
 
   return (
-    <section aria-labelledby="thread-notifications" className="mt-6">
-      <h3 id="thread-notifications" className="mb-2 text-sm font-semibold">Notifications</h3>
+    <ThreadPanel id="thread-notifications" title="Notifications" frame={frame}>
       {notified === null && read.kind === "failed" && (
         <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-destructive">
           <span>Couldn't load your notification settings: {read.error.message}</span>
@@ -258,6 +259,6 @@ export function ThreadNotifications<Status extends string>({ repo, config, threa
           )}
         </div>
       )}
-    </section>
+    </ThreadPanel>
   )
 }

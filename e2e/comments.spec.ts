@@ -91,7 +91,7 @@ test("a reader comments and replies in the browser; both persist after a refresh
   await expect(card(page, "Seen it on Linux too.")).toBeFocused()
   await expect(card(page, "Seen it on Linux too.").locator("strong")).toHaveText("Linux")
   await expect(composer.getByLabel("New comment")).toHaveValue("")
-  await expect(page.getByRole("heading", { name: "Comments (1)" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Conversation (1)" })).toBeVisible()
   await expect(page.getByText("1 comment", { exact: true })).toBeVisible()
 
   // a reply to that comment, in that comment's card

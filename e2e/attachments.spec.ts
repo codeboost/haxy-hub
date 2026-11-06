@@ -28,6 +28,13 @@ async function logIn(page: Page, hubUrl: string, account: Account, next: string)
   await expect(header(page)).toContainText(`Signed in as ${account.name}`)
 }
 
+/** Shows the attachments' controls, which sit behind the section's toggle. */
+async function editAttachments(page: Page) {
+  const toggle = attachments(page).getByRole("button", { name: "Edit attachments" })
+  await expect(toggle).toHaveAttribute("aria-expanded", "false")
+  await toggle.click()
+}
+
 async function attach(page: Page, name: string, buffer: Buffer, mimeType = "application/octet-stream") {
   await form(page).getByLabel("Attach a file").setInputFiles({ name, mimeType, buffer })
   await form(page).getByRole("button", { name: "Attach file" }).click()
@@ -59,6 +66,8 @@ test("the author attaches files, downloads one under its name, opens an image in
 
   await page.goto(`${hub.url}/repos/alice/tracker/issues/${id}`)
   await expect(attachments(page).getByText("Nothing is attached to this issue.")).toBeVisible()
+  await expect(form(page)).toHaveCount(0)
+  await editAttachments(page)
   await expect(form(page).getByText("Up to 10 MB.")).toBeVisible()
   await attach(page, "crash log.txt", Buffer.from("it crashed\n"), "text/plain")
   await expect(listed(page)).toHaveText(["crash log.txt"])
@@ -90,6 +99,7 @@ test("the author attaches files, downloads one under its name, opens an image in
   await image.close()
 
   // removing asks first; cancelling keeps it
+  await editAttachments(page)
   await attachments(page).getByRole("button", { name: "Remove crash log.txt" }).click()
   const confirm = attachments(page).getByRole("alertdialog", { name: "Remove crash log.txt?" })
   await expect(confirm).toContainText("It disappears from this issue for everyone.")
@@ -115,6 +125,7 @@ test("files Haxy would refuse are refused before sending, and Haxy's own refusal
   await grantMember(owner, backend, { owner: "alice", name: "tracker" }, "bobby")
   const id = await createIssue(owner, backend, "/alice:tracker", { title: "Crash on save" })
   await logIn(page, hub.url, bob, `/repos/alice/tracker/issues/${id}`)
+  await editAttachments(page)
   await expect(form(page)).toBeVisible()
 
   let sent = 0
@@ -159,7 +170,7 @@ test("a reader sees and opens attachments but is offered no upload or removal", 
   await logIn(page, hub.url, bob, `/repos/alice/tracker/issues/${id}`)
   await expect(listed(page)).toHaveText(["notes.txt"])
   await expect(form(page)).toHaveCount(0)
-  await expect(attachments(page).getByRole("button", { name: /^Remove/ })).toHaveCount(0)
+  await expect(attachments(page).getByRole("button")).toHaveCount(0)
   await owner.dispose()
 })
 
@@ -171,6 +182,7 @@ test("an upload or a removal whose answer is lost is settled by reading the issu
   await createRepo(page.context().request, backend, { name: "tracker", access: "public" })
   const id = await createIssue(page.context().request, backend, "/alice:tracker", { title: "Crash on save" })
   await page.goto(`${hub.url}/repos/alice/tracker/issues/${id}`)
+  await editAttachments(page)
 
   // Haxy attaches it, but its answer never arrives: reading the issue finds it
   await onFirst(page, uploads, "POST", answerLost)
@@ -217,6 +229,8 @@ test("a status answer that Haxy read before an upload and an assignment, arrivin
   await page.goto(`${hub.url}/repos/alice/tracker/issues/${id}`)
   const actions = page.getByRole("group", { name: "Issue actions" })
   const assigned = page.getByRole("region", { name: "Assignees" }).getByRole("list", { name: "Assigned" }).getByRole("link")
+  await editAttachments(page)
+  await page.getByRole("region", { name: "Assignees" }).getByRole("button", { name: "Edit assignees" }).click()
 
   // Haxy closes the issue, but its answer (with nothing attached or assigned) is held back
   const closed = gate()
@@ -264,6 +278,7 @@ test("a repeated upload refused because its first attempt landed is reported as 
   await createRepo(request, backend, { name: "tracker", access: "public" })
   const id = await createIssue(request, backend, "/alice:tracker", { title: "Crash on save" })
   await page.goto(`${hub.url}/repos/alice/tracker/issues/${id}`)
+  await editAttachments(page)
   await expect(form(page)).toBeVisible()
 
   // the upload lands but its answer is lost; before the page reads the issue

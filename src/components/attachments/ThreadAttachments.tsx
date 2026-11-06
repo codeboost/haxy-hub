@@ -6,11 +6,12 @@ import { FailureMessage, FormMessage, failureOf, type Failure } from "@/componen
 import { ApiError } from "@/lib/api"
 import { alreadyAttached, attachmentUrl, formatBytes, refusal, removeAttachment, uploadAttachment, type Attached, type ThreadAttachment } from "@/lib/attachments"
 import type { RepoLocator } from "@/lib/repo"
-import { findThread, newThreadId, threadsRoute, type ThreadDetail, type WriteViewer } from "@/lib/threads"
+import { findThread, newThreadId, threadsRoute, type ThreadDetail, type ThreadKind, type WriteViewer } from "@/lib/threads"
 import { readStart, type ThreadReads } from "@/components/assignees/useThreadAnswers"
 import { useWrite } from "@/pages/settings/shared"
 import { Unresolved } from "@/pages/settings/Unresolved"
 import { linkClass, type ThreadConfig } from "@/components/thread/config"
+import { ThreadPanel, type PanelFrame } from "@/components/thread/ThreadPanel"
 
 /**
  * A write whose outcome Haxy couldn't confirm, and that reading the thread
@@ -30,6 +31,34 @@ function unresolvedMessage(unknown: Unknown): string {
   return `Haxy couldn't confirm what happened to this request (${unknown.cause}), and couldn't be reached to check. Check again before changing the attachments.`
 }
 
+/** A link that opens an attachment in place (a safe image) or downloads it under its name. */
+function AttachmentLink({ href, attachment, className = "" }: { href: string; attachment: ThreadAttachment; className?: string }) {
+  return (
+    <a href={href} className={`min-w-0 truncate ${linkClass} ${className}`} {...(attachment.inline ? { target: "_blank", rel: "noopener noreferrer" } : { download: attachment.name })}>
+      {attachment.name}
+    </a>
+  )
+}
+
+function AttachmentIcon({ attachment }: { attachment: ThreadAttachment }) {
+  const Icon = attachment.inline ? Image : FileText
+  return <Icon size={16} aria-hidden className="shrink-0 text-muted-foreground" />
+}
+
+/** The attachments as links alone, each beside its kind's icon. */
+function AttachmentList({ repo, kind, thread, attachments, noun }: { repo: RepoLocator; kind: ThreadKind; thread: string; attachments: ThreadAttachment[]; noun: string }) {
+  if (attachments.length === 0) return <p className="text-sm text-muted-foreground">Nothing is attached to this {noun}.</p>
+  return (
+    <ul aria-label="Attached files" className="space-y-1.5">
+      {attachments.map((attachment) => (
+        <li key={attachment.id} className="flex min-w-0 items-center gap-2 text-sm">
+          <AttachmentIcon attachment={attachment} /><AttachmentLink href={attachmentUrl(repo, kind, thread, attachment.id)} attachment={attachment} />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 /** The file chosen for upload, with the id its upload (and every retry of it) is sent under. */
 type Chosen = { file: File; id: string }
 
@@ -47,7 +76,7 @@ type Chosen = { file: File; id: string }
  * controls hold until "Check again" gets an answer. Answers update only the
  * attachments (see `useThreadAnswers`).
  */
-export function ThreadAttachments<Status extends string>({ repo, config, thread, viewer, onChanged, reads }: {
+export function ThreadAttachments<Status extends string>({ repo, config, thread, viewer, onChanged, reads, frame = "section" }: {
   repo: RepoLocator
   config: ThreadConfig<Status>
   /** The thread (of any kind) as the page shows it. */
@@ -57,6 +86,8 @@ export function ThreadAttachments<Status extends string>({ repo, config, thread,
   onChanged(thread: Attached): void
   /** Where a read that settles an outcome goes, ordered by when it started. */
   reads: ThreadReads<Attached>
+  /** In the sidebar, the files show as a list of links, with the controls behind a toggle. */
+  frame?: PanelFrame
 }) {
   const navigate = useNavigate()
   const write = useWrite<Unknown>()
@@ -198,10 +229,18 @@ export function ThreadAttachments<Status extends string>({ repo, config, thread,
   // a refusal of the file itself, beside the file input
   const fileError = failure?.fields.file ?? failure?.fields.name
   const message = failure && (fileError ? null : failure)
+  const editable = canAttach || thread.attachments.some((attachment) => attachment.actions.remove.available)
+  const messages = (message || notice || write.unresolved) && (
+    <div className="mt-3 max-w-md space-y-3">
+      {message && <FailureMessage failure={message} />}
+      {notice && <FormMessage kind={notice.kind}>{notice.text}</FormMessage>}
+      {write.unresolved && <Unresolved pending={write.busy} onCheck={() => void check()} message={unresolvedMessage(write.unresolved)} />}
+    </div>
+  )
 
   return (
-    <section aria-labelledby="thread-attachments" className="mt-6">
-      <h3 id="thread-attachments" className="mb-2 text-sm font-semibold">Attachments</h3>
+    <ThreadPanel id="thread-attachments" title="Attachments" frame={frame} edit={editable ? "Edit attachments" : undefined}
+      compact={<><AttachmentList repo={repo} kind={config.kind} thread={thread.id} attachments={thread.attachments} noun={noun} />{messages}</>}>
       {thread.attachments.length === 0
         ? <p className="text-sm text-muted-foreground">Nothing is attached to this {noun}.</p>
         : (
@@ -209,11 +248,8 @@ export function ThreadAttachments<Status extends string>({ repo, config, thread,
             {thread.attachments.map((attachment) => (
               <li key={attachment.id} className="px-4 py-2 text-sm">
                 <div className="flex items-center gap-2">
-                  {attachment.inline ? <Image size={16} aria-hidden className="shrink-0 text-muted-foreground" /> : <FileText size={16} aria-hidden className="shrink-0 text-muted-foreground" />}
-                  <a href={attachmentUrl(repo, config.kind, thread.id, attachment.id)} className={`min-w-0 truncate ${linkClass}`}
-                    {...(attachment.inline ? { target: "_blank", rel: "noopener noreferrer" } : { download: attachment.name })}>
-                    {attachment.name}
-                  </a>
+                  <AttachmentIcon attachment={attachment} />
+                  <AttachmentLink href={attachmentUrl(repo, config.kind, thread.id, attachment.id)} attachment={attachment} />
                   <span className="shrink-0 text-xs text-muted-foreground">{attachment.inline ? "opens in a new tab" : "downloads"}</span>
                   {attachment.actions.remove.available && confirming !== attachment.id && (
                     <button type="button" aria-label={`Remove ${attachment.name}`} title={`Remove ${attachment.name}`} disabled={write.blocked}
@@ -238,13 +274,7 @@ export function ThreadAttachments<Status extends string>({ repo, config, thread,
             ))}
           </ul>
         )}
-      {(message || notice || write.unresolved) && (
-        <div className="mt-3 max-w-md space-y-3">
-          {message && <FailureMessage failure={message} />}
-          {notice && <FormMessage kind={notice.kind}>{notice.text}</FormMessage>}
-          {write.unresolved && <Unresolved pending={write.busy} onCheck={() => void check()} message={unresolvedMessage(write.unresolved)} />}
-        </div>
-      )}
+      {messages}
       {canAttach && (
         <form aria-label="Attach a file" className="mt-3 max-w-md space-y-2" onSubmit={attach} noValidate>
           <fieldset disabled={write.blocked} className="disabled:opacity-60">
@@ -263,6 +293,6 @@ export function ThreadAttachments<Status extends string>({ repo, config, thread,
           </Button>
         </form>
       )}
-    </section>
+    </ThreadPanel>
   )
 }

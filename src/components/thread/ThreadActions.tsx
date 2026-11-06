@@ -21,7 +21,7 @@ import { useStillHere } from "@/lib/stillHere"
  * Reopen), so a double click is one write; an outcome Haxy couldn't confirm is
  * settled by reading the thread again before anything is offered again.
  */
-export function ThreadActions<Status extends string>({ repo, config, thread, viewer, onChanged, reads, gate }: {
+export function ThreadActions<Status extends string>({ repo, config, thread, viewer, onChanged, reads, gate, className = "mt-4" }: {
   repo: RepoLocator
   config: ThreadConfig<Status>
   thread: ThreadDetail<Status>
@@ -32,6 +32,8 @@ export function ThreadActions<Status extends string>({ repo, config, thread, vie
   reads: ThreadReads<ThreadDetail<Status>>
   /** Where the page holds these writes while another of its writes is in flight, if it does. */
   gate?: WriteGate
+  /** Where the actions sit, as layout classes. */
+  className?: string
 }) {
   const navigate = useNavigate()
   const [pending, setPending] = useState<"status" | "remove" | null>(null)
@@ -109,7 +111,7 @@ export function ThreadActions<Status extends string>({ repo, config, thread, vie
   })
 
   return (
-    <div className="mt-4 space-y-3">
+    <div className={`space-y-3 ${className}`}>
       {/* the actions have no fields, so a refusal's field errors (a patch's branch gone) are said here */}
       {failure && <FailureMessage failure={failure} shown={[]} labels={branchLabels} />}
       {notice && <FormMessage kind="error">{notice}</FormMessage>}
