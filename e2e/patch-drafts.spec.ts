@@ -2,7 +2,7 @@ import type { Page, Route } from "@playwright/test"
 import { alice, type Account } from "./support/accounts"
 import { bob, draftsRepo, editForkDraft, publishForkDraft, startForkDraft, tuiPage } from "./support/drafts"
 import { expect, test } from "./support/fixtures"
-import { setPatchRole, tuiPatches } from "./support/patches"
+import { branchPicker, chooseBranch, setPatchRole, tuiPatches } from "./support/patches"
 
 // Starting a patch with a new fork, listing, editing, publishing and removing
 // drafts in the browser, through Vite's proxy against a real Haxy server.
@@ -42,7 +42,7 @@ async function startFromNewPatchPage(page: Page, title: string): Promise<string>
   const form = page.getByRole("form", { name: "New draft" })
   await form.getByLabel("Title").fill(title)
   await form.getByLabel("Labels").fill("perf")
-  await expect(form.getByLabel("Target branch")).toHaveValue("branch:main")
+  await expect(branchPicker(form, "Target branch")).toHaveValue("main")
   await form.getByRole("button", { name: "Start with a new fork" }).click()
   await expect(page).toHaveURL(new RegExp(`${drafts}/[0-9a-f]{32}$`))
   return page.url().split("/").pop() ?? ""
@@ -77,7 +77,7 @@ test.describe("on a server", () => {
     await actions(page).getByRole("link", { name: "Edit" }).click()
     const edit = page.getByRole("form", { name: "Edit draft" })
     await edit.getByLabel("Title").fill("Parse twice as fast")
-    await edit.getByLabel("Target branch").selectOption({ label: "feature" })
+    await chooseBranch(edit, "Target branch", "feat", "feature")
     await edit.getByRole("button", { name: "Save changes" }).click()
     await expect(page).toHaveURL(`${hub.url}${drafts}/${id}`)
     await page.reload()
