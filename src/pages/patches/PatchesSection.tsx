@@ -5,6 +5,8 @@ import { patchStatuses, revisionView } from "@/lib/patches"
 import type { RepoLocator, RepoSection } from "@/lib/repo"
 import { threadView, threadsRoute } from "@/lib/threads"
 import { patchThreads } from "./config"
+import { conflictView } from "@/lib/conflicts"
+import { ConflictsSection } from "@/pages/conflicts/ConflictsSection"
 import { PatchDetailView } from "./PatchDetail"
 import { RevisionDiffView } from "./RevisionDiff"
 
@@ -20,6 +22,8 @@ import { RevisionDiffView } from "./RevisionDiff"
  */
 export function PatchesSection({ repo, sections, tail }: { repo: RepoLocator; sections: RepoSection[]; tail: string }) {
   const unavailable = sections.includes("patches") ? null : "Patches are turned off for this repository."
+  const conflict = conflictView(tail)
+  if (conflict !== null) return <ConflictsSection repo={repo} config={patchThreads} view={conflict} unavailable={unavailable} />
   const revision = revisionView(tail)
   if (revision !== null) return <RevisionDiffView key={revision.revision} repo={repo} revision={revision.revision} />
   const view = threadView(patchStatuses, tail)

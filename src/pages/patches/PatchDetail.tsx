@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react"
 import { Link, useLocation } from "react-router"
-import { ArrowLeft, FileCode2, GitCommitHorizontal, GitCompareArrows, MessageSquare, TriangleAlert } from "lucide-react"
+import { ArrowLeft, FileCode2, GitCommitHorizontal, GitCompareArrows, MessageSquare } from "lucide-react"
 import { FailureState, LoadingState } from "@/components/listing"
 import { Markdown } from "@/components/Markdown"
 import { linkClass } from "@/components/thread/config"
@@ -20,6 +20,7 @@ import { repoRoute, type RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 import { threadsRoute, type WriteViewer } from "@/lib/threads"
 import { patchThreads } from "./config"
+import { ConflictBanner } from "@/pages/conflicts/ConflictBanner"
 
 const config = patchThreads
 
@@ -106,11 +107,7 @@ function Body({ repo, loaded, readStartedAt, clock, viewer, revalidate, notifica
       </div>
       {/* edit, close or reopen, remove: each answer also reads the patch again in the background */}
       <ThreadActions repo={repo} config={config} thread={asPatchThread(patch)} viewer={viewer} onChanged={(value) => { changes.onChanged(patchOf(value)); revalidate() }} />
-      {patch.conflicted && (
-        <p className="mt-4 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-2 text-sm">
-          <TriangleAlert size={16} aria-hidden />Concurrent edits to this patch conflict; the values shown are this server's.
-        </p>
-      )}
+      {patch.conflicted && <ConflictBanner repo={repo} kind="patches" id={patch.id} noun="patch" />}
       {patch.labels.length > 0 && <Field title="Labels"><div className="flex flex-wrap gap-1"><LabelLinks labels={patch.labels} to={listOf} /></div></Field>}
       <Proposal repo={repo} patch={patch} />
       <Review repo={repo} patch={patch} />

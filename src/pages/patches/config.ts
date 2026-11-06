@@ -15,4 +15,5 @@ export const patchThreads: ThreadConfig<PatchStatus> = {
   // a merged patch stays merged
   statusChanges: { open: { to: "closed", label: "Close patch" }, closed: { to: "open", label: "Reopen patch" } },
   branches: { load: getBranchChoices },
+  conflicts: true,
 }

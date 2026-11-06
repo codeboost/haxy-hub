@@ -2217,3 +2217,129 @@ Implemented in `haxy/src/api/repo.zig` (`Overview.default_branch_id`). Haxy Hub:
 `e2e/patches-branches.spec.ts` (1,100 branches, typed and refused names, names that aren't
 UTF-8), `e2e/patches-write.spec.ts`, and the overview's field in `e2e/refs-api.spec.ts` and
 `e2e/repo-api.spec.ts`.
+
+## Metadata conflicts
+
+From issue [#25](issues/25-metadata-conflicts.md). When Haxy merges two hosts' event histories
+(a local-mode sync, or a server consuming the merge a sync pushed), an issue or patch field
+that both sides changed differently since their common version is a **metadata conflict**: the
+thread keeps this host's value, says `conflicted: true`, and Haxy records both sides (and the
+common version) until a later event settles it. These are a thread's details only (title,
+labels, description, and a patch's status, revision and target); a patch's **code** conflicts
+with its target are its `mergeability` and never appear here. Discussions have no conflicts.
+
+| Route | Method | Answer |
+| --- | --- | --- |
+| `…/issues/conflicts?cursor=&page_size=` | `GET`/`HEAD` | `{"items": ThreadSummary[], "page"}`: the conflicted issues, newest first |
+| `…/issues/{id}/conflict` | `GET`/`HEAD` | `{"thread": ThreadSummary, "conflict": Conflict \| null, "actions": {"resolve"}}` |
+| `…/issues/{id}/conflict` | `POST` | a resolution (below): the issue as `…/issues/{id}` reads it |
+
+and the same under `…/patches` (whose summaries are patch summaries). Other methods are
+`unsupported` with `Allow` (`GET, HEAD` on the list, `GET, HEAD, POST` on a conflict). The
+routes resolve the repository as the thread routes do; a kind that is off is `not_found` with
+its usual message, and an unknown or removed thread is `not_found` ("There is no issue with
+this id."). They are read by the TUI's issues and patches tabs (`ui.Repo.Issues.init` /
+`ui.Repo.Patches.init`, conflicts and resolve views), so the list, its order, window (20 by
+default, at most 100) and count are the TUI's conflicts tab's; a cursor naming a thread that
+isn't conflicted any more is `validation` on `cursor`.
+
+**A conflict** is what the TUI's resolve form shows (`ui.widget.thread.readConflict`), read
+from one snapshot:
+
+```json
+{
+  "revision": "5c0d…",
+  "fields": [
+    { "name": "title", "resolution": "text",
+      "ours":   { "value": "Local title",  "author": { "kind": "email", "email": "me@example.test" } },
+      "theirs": { "value": "Server title", "author": { "kind": "user", "name": "alice" } } },
+    { "name": "target", "resolution": "choice",
+      "ours":   { "value": { "name": "release-a", "id": "branch:release-a" }, "author": … },
+      "theirs": { "value": { "name": "release-b", "id": "branch:release-b" }, "author": … } }
+  ],
+  "description": { "ours_author": …, "theirs_author": …, "chunks": [
+    { "kind": "same", "text": "Intro." },
+    { "kind": "auto", "side": "theirs", "text": "Only they changed this." },
+    { "kind": "conflict", "ours": "Local words.", "theirs": "Server words." }
+  ] }
+}
+```
+
+- `ours` is this host's (live) value, `theirs` the merged-in side's; each `author` is who wrote
+  that value (the event commit's author, an account by name where one holds the email, as for
+  thread authors), `unknown` when Haxy can't say.
+- `fields` lists the conflicted fields in the TUI's order: `title` and `labels` (`text`: any text
+  resolves them), then a patch's `status` (`"open" | "closed" | "merged"`), `revision`
+  (`{"source_commit", "squash_commit"}` or null) and `target` (a branch, as answers name them)
+  (`choice`: one side whole). An issue's status can only conflict between histories that
+  began apart; the TUI offers no choice for it, so neither does the API, and a resolution keeps
+  this host's status.
+- `description` is null unless the description conflicts. Its chunks are Haxy's three-way line
+  merge against the common version (`diff3.chunks`): `same` (both agree), `auto` (only `side`
+  changed it, so its version stands; `text` null means it removed the lines) and `conflict`
+  (both changed it; null means that side removed the lines). A resolution writes the chunks
+  back together: agreed and `auto` chunks as they are, each `conflict` chunk as resolved. A
+  description can conflict with no `conflict` chunk (each side changed different lines); a
+  resolution then writes the line-by-line merge of both.
+- `revision` is opaque: a digest of everything the resolution is built from (the conflicted
+  fields, this host's thread, the merged-in side and the common version,
+  `evt.conflictRevision`), so it moves when anything changes the conflict.
+- `actions.resolve` is available to someone with the write role in the repository who may
+  write in the kind's tab (the TUI's resolve form asks `authorize(.write, kind)`); otherwise
+  `unauthenticated` ("Log in to resolve conflicts."), `forbidden` ("Only the repository's
+  writers can resolve conflicts.") or, with no conflict, `conflict`.
+
+**Resolving** sends `{"revision", "title"?, "labels"?, "description"?, "theirs"?}`: the
+conflict's `revision` as loaded; a text for a conflicted `title` or `labels`; `description`, one
+text per `conflict` chunk in order (an empty text drops that part's lines; line breaks may be
+CRLF); and `theirs`, the `choice` fields taken from their side. Whatever is left out keeps this
+host's value, as the TUI's form prefills it. Exactly what the TUI's form offers is accepted:
+naming a field that doesn't conflict, a wrong number of chunk texts, or a `theirs` name that
+isn't a conflicted choice field is `validation` keyed by that field; the title and labels
+follow the shared field rules. A missing or malformed `revision` is `validation`; a conflict
+that changed or was settled since it was loaded (by a resolution, an edit or a sync) is
+`conflict` keyed by `revision` ("This conflict changed since you loaded it."), and nothing is
+written. A resolution taking their target re-captures a branch patch's revision against it, as
+any retarget does, so it is refused as a retarget is when that can't be done: a source branch
+deleted since is `validation` on `source`, a target that no longer exists or shares no history
+with the source on `target` (`branchesError`, as in "Writing patches"; Hub lists these fields
+by their labels, since the form doesn't show them).
+
+A resolution is one ordinary event, written by `thread_write.resolve`, which the TUI's resolve
+form and Haxy's HTML resolve form now use too: it re-emits the thread with the resolved fields,
+and consuming any event on a thread settles its conflict, here and wherever the event syncs to
+(a later sync carries it to the other host, whose conflict it settles too). Only writers may
+resolve (`error.Forbidden`). With a revision, `evt.Issue`/`evt.Patch`'s `updateAt` refuses a
+conflict that is no longer at it (`error.Stale`): a xit repository checks again inside the
+write's transaction (`evt.ConflictCheck`), a git repository under #12's events lock (which
+`resolve` holds, after catching the events branch up). The TUI and HTML forms send no revision
+and resolve whatever conflict there is when they submit, as before. A patch resolution that
+takes their target captures a revision through `pch.writeBranchPatchGuarded`, which runs the
+same conflict check inside the capture's own transaction (and, in a git repository, under the
+lock), so a conflict settled meanwhile without changing the patch's fields (a resolution that
+kept this host's values) refuses it too.
+
+**Haxy Hub.** The issues and patches sections gain a **Conflicts** tab (after Labels, always
+shown, since the lists' answers carry no conflict count), `<hub repo>/issues/conflicts[?cursor=]`
+(and `…/patches/conflicts`), listing the conflicted threads, each leading to
+`<hub repo>/issues/<id>/conflict`; a thread page's conflict banner links there too
+(`ConflictBanner`). The conflict page shows both sides of each conflicted field with who wrote
+them ("Current", "Merged in"), a "Use this" for each side and the resolved text for text
+fields, one side to pick for choice fields, and the description chunk by chunk (agreed parts,
+parts only one side changed with its author, and each conflicting part with both sides and its
+resolved text); the form starts at this host's values, as the TUI's does. Resolving goes to the
+thread page. A `conflict` on the revision says the conflict changed and offers to load it
+again; an unknown outcome reads the conflict again: still at the same revision means nothing
+was recorded, anything else that it was settled, perhaps by this request. Readers see the
+sides with the reason they can't resolve. Haxy's own `<repo>/issues[/start:<id>]/conflicts`
+and `<repo>/issue:<id>[/theirs:<fields>]/resolve` URLs (and patches') open these pages
+(`hubPathForConflictPath`), superseding "no Hub page yet" in the sections above.
+
+Implemented in `haxy/src/api/conflicts.zig` (routes, reads, authorization),
+`haxy/src/api/conflict_shapes.zig` (the answer's shapes, `parseRequest`, `check`),
+`haxy/src/thread_write.zig` (`resolve`), `haxy/src/event.zig` (`ConflictRevision`,
+`conflictRevision`, `conflictRevisionAt`, `readConflictRevision`, `ConflictCheck`) and
+`haxy/src/event/Issue.zig`/`Patch.zig` (`Resolve.revision`); unit tests in
+`haxy/src/test/conflicts.zig` and `haxy/src/test/api_conflicts.zig`. Haxy Hub:
+`src/lib/conflicts.ts` and `src/pages/conflicts/`; e2e in `e2e/conflicts-api.spec.ts` and
+`e2e/conflicts.spec.ts`, with conflicts made by real syncs (`e2e/support/conflicts.ts`).

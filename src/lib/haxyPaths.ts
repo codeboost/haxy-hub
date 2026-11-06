@@ -6,6 +6,7 @@ import { hubPathForIssuePath, hubPathForThreadPath } from "@/lib/threads"
 import { discussionPaths } from "@/lib/discussions"
 import { hubPathForFindPath } from "@/lib/finder"
 import { hubPathForPatchPath } from "@/lib/patches"
+import { hubPathForConflictPath } from "@/lib/conflicts"
 
 /**
  * Haxy's own page URLs (the TUI and its browser renderer, as written in
@@ -28,6 +29,7 @@ import { hubPathForPatchPath } from "@/lib/patches"
  * | `/<repo>/files[/<ref>]/find:<s>…`                       | see `hubPathForFindPath` (`@/lib/finder`) |
  * | `/<repo>/commits…`                                      | see `hubPathForCommitPath` (`@/lib/commits`) |
  * | `/<repo>/patches…`, `/<repo>/patch:<id>…`, `/<repo>/diff/patchrev:<id>…` | see `hubPathForPatchPath` (`@/lib/patches`) |
+ * | `/<repo>/issues/conflicts`, `/<repo>/issue:<id>/resolve` (and patches') | see `hubPathForConflictPath` (`@/lib/conflicts`) |
  *
  * `<ref>` is `branch:<name>`, `tag:<name>` or `object:<oid>`, which become the
  * ref ids `branch:<name>`, `tag:<name>` and `commit:<oid>` with the name and
@@ -123,6 +125,7 @@ function repoTailRoute(repo: RepoLocator, segments: string[]): string | null {
 export function hubPathForHaxyPath(haxyPath: string, local = false): string {
   // Like the TUI, match on the path alone.
   const path = haxyPath.split(/[?#]/, 1)[0]
+  const conflict = hubPathForConflictPath(path, local); if (conflict !== null) return conflict
   const issue = hubPathForIssuePath(path, local); if (issue !== null) return issue
   const discussion = hubPathForThreadPath(path, local, discussionPaths); if (discussion !== null) return discussion
   const events = hubPathForEventsPath(path, local); if (events !== null) return events

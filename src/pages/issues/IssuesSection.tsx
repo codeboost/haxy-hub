@@ -2,6 +2,8 @@ import type { ThreadConfig } from "@/components/thread/config"
 import { ThreadSection } from "@/components/thread/ThreadSection"
 import type { RepoLocator, RepoSection } from "@/lib/repo"
 import type { IssueStatus } from "@/lib/threads"
+import { conflictView } from "@/lib/conflicts"
+import { ConflictsSection } from "@/pages/conflicts/ConflictsSection"
 
 export const issueThreads: ThreadConfig<IssueStatus> = {
   kind: "issues",
@@ -10,10 +12,11 @@ export const issueThreads: ThreadConfig<IssueStatus> = {
   statuses: ["open", "closed"],
   statusLabels: { open: "Open", closed: "Closed" },
   statusChanges: { open: { to: "closed", label: "Close issue" }, closed: { to: "open", label: "Reopen issue" } },
+  conflicts: true,
 }
 
 /**
- * A repository's issues: `<repo>/issues[/closed|/labels|/<id>]`. The issues
+ * A repository's issues: `<repo>/issues[/closed|/labels|/conflicts|/<id>]`. The issues
  * are always requested, since another client may have turned them on or off
  * since `sections` was read. When Haxy answers not found and the repository's
  * sections (read again on each navigation) lack issues, they are turned off,
@@ -21,5 +24,7 @@ export const issueThreads: ThreadConfig<IssueStatus> = {
  */
 export function IssuesSection({ repo, sections, tail }: { repo: RepoLocator; sections: RepoSection[]; tail: string }) {
   const unavailable = sections.includes("issues") ? null : "Issues are turned off for this repository."
+  const conflict = conflictView(tail)
+  if (conflict !== null) return <ConflictsSection repo={repo} config={issueThreads} view={conflict} unavailable={unavailable} />
   return <ThreadSection repo={repo} config={issueThreads} tail={tail} unavailable={unavailable} />
 }
