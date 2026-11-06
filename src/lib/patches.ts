@@ -60,13 +60,14 @@ export type PatchReview =
 
 /**
  * One patch: its summary, what it proposes and where to review it, its
- * attachments, and what the viewer may do to it (merging is #19's).
+ * attachments, and what the viewer may do to it.
  */
 export type PatchDetail = ThreadSummary<PatchStatus> & Attached & {
   description: MarkdownBlock[]
   description_text: string
   source: PatchSource
-  target: PatchBranch
+  /** The target branch, with its tip as the read saw it (null without one, or once merged), which a merge sends back. */
+  target: PatchBranch & { commit: ObjectId | null }
   revision: PatchRevision | null
   /** How it was merged, and the revision recording what landed. */
   merged: { method: "source" | "squash"; revision: EventId } | null
@@ -76,7 +77,7 @@ export type PatchDetail = ThreadSummary<PatchStatus> & Attached & {
   review: PatchReview
   /** The opaque revision of what an edit replaces (title, labels, description, target), which an edit sends back. */
   edit_revision: string
-  actions: Record<"edit" | "set_status" | "remove" | "attach", ActionAvailability>
+  actions: Record<"edit" | "set_status" | "remove" | "attach" | "merge", ActionAvailability>
 }
 
 /** A window of a patch revision's diff: its base commit's tree against its source commit's. */

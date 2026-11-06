@@ -14,7 +14,7 @@ import { AuthorName, Instant, LabelLinks, SectionUnavailable } from "./ThreadPar
 import { RefreshFailed, ThreadComments, useKept } from "./ThreadComments"
 import { ThreadAssignees } from "@/components/assignees/ThreadAssignees"
 import { ThreadAttachments } from "@/components/attachments/ThreadAttachments"
-import { useAnswerClock, useThreadAnswers, type AnswerClock } from "@/components/assignees/useThreadAnswers"
+import { readsThen, useAnswerClock, useThreadAnswers, type AnswerClock } from "@/components/assignees/useThreadAnswers"
 import { ThreadNotifications, useCommentsShown } from "@/components/notifications/ThreadNotifications"
 import { withNotification, type NotificationRead } from "@/lib/notifications"
 
@@ -38,6 +38,8 @@ function Body<Status extends string>({ repo, config, loaded, readStartedAt, cloc
   const onChanged = (value: ThreadDetail<Status>) => { answers.onChanged(value); revalidate() }
   const onAssigneesChanged = (value: ThreadDetail<Status>) => { answers.onAssigneesChanged(value); revalidate() }
   const onAttachmentsChanged = (value: ThreadDetail<Status>) => { answers.onAttachmentsChanged(value); revalidate() }
+  // a read that settles an unknown outcome is ordered by when it started, then read again in the background too
+  const reads = <T,>(apply: (value: T, startedAt: number) => void) => readsThen(clock, apply, revalidate)
   // assigning someone may notify them (yourself, say): the panel reads its state again after each assignee change
   const [assigneeChanges, setAssigneeChanges] = useState(0)
   // the comments the page has shown, so it acknowledges only after showing them
@@ -55,14 +57,15 @@ function Body<Status extends string>({ repo, config, loaded, readStartedAt, cloc
         <span>Opened <Instant value={thread.created_at} /> by <AuthorName author={thread.author} /></span>
         <span className="inline-flex items-center gap-1"><MessageSquare size={14} aria-hidden />{thread.comment_count} {thread.comment_count === 1 ? "comment" : "comments"}</span>
       </div>
-      <ThreadActions repo={repo} config={config} thread={thread} viewer={viewer} onChanged={onChanged} />
+      <ThreadActions repo={repo} config={config} thread={thread} viewer={viewer} onChanged={onChanged} reads={reads(answers.onRead)} />
       {thread.conflicted && (
         <p className="mt-4 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-2 text-sm">
           <TriangleAlert size={16} aria-hidden />Concurrent edits to this {config.noun.toLowerCase()} conflict; the values shown are this server's.
         </p>
       )}
       {thread.labels.length > 0 && <Field title="Labels"><div className="flex flex-wrap gap-1"><LabelLinks labels={thread.labels} to={listOf} /></div></Field>}
-      <ThreadAssignees repo={repo} config={config} thread={thread} viewer={viewer} onChanged={(value) => { onAssigneesChanged(value); setAssigneeChanges((count) => count + 1) }} />
+      <ThreadAssignees repo={repo} config={config} thread={thread} viewer={viewer} onChanged={(value) => { onAssigneesChanged(value); setAssigneeChanges((count) => count + 1) }}
+        reads={reads((value: ThreadDetail<Status>, startedAt) => { answers.onAssigneesRead(value, startedAt); setAssigneeChanges((count) => count + 1) })} />
       <ThreadNotifications repo={repo} config={config} thread={thread.id} viewer={viewer} read={notification} readStartedAt={readStartedAt} clock={clock} onRetry={reload} refresh={assigneeChanges}
         comments={shown.comments} />
       <Field title="Description">
@@ -70,7 +73,7 @@ function Body<Status extends string>({ repo, config, loaded, readStartedAt, cloc
           {thread.description.length === 0 ? <p className="text-muted-foreground">No description.</p> : <Markdown blocks={thread.description} resolveLink={(destination) => linkTarget(destination, repo.kind === "local")} />}
         </div>
       </Field>
-      <ThreadAttachments repo={repo} config={config} thread={thread} viewer={viewer} onChanged={onAttachmentsChanged} />
+      <ThreadAttachments repo={repo} config={config} thread={thread} viewer={viewer} onChanged={onAttachmentsChanged} reads={reads(answers.onAttachmentsRead)} />
       <ThreadComments repo={repo} config={config} thread={thread.id} {...shown.commentReads} />
     </article>
   )

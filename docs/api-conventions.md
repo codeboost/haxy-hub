@@ -225,8 +225,8 @@ Resources that offer actions include what the current viewer may do:
 - The Vite proxy's 10s `proxyTimeout` is scoped per route (`vite.config.ts`; Vite uses
   the first matching entry). Every `/api/` route keeps it except those listed before the
   catch-all, which have no proxy timeout: `/api/v1/repos` (repository creation, #10),
-  `/api/v1/repo/sync` (local-mode sync, #27) and a thread's attachments (uploads and
-  downloads, #14; see Attachments). A slow write route lands in that list along
+  `/api/v1/repo/sync` (local-mode sync, #27), a thread's attachments (uploads and
+  downloads, #14; see Attachments) and a patch's merge (#19; see Merging patches). A slow write route lands in that list along
   with its endpoint.
 
 ## Session
@@ -1814,6 +1814,90 @@ Implemented in `haxy/src/api/patches.zig` (`handleWrite`, `branchName`, `branche
 `src/lib/patchThread.ts`, `src/lib/patches.ts` (`getBranchChoices`),
 `src/components/thread/BranchFields.tsx` and `src/pages/patches/`; e2e in
 `e2e/patches-write-api.spec.ts` and `e2e/patches-write.spec.ts`.
+
+### Merging patches
+
+From issue [#19](issues/19-patch-merge.md). A maintainer merges an open patch with its source
+commits or squashed into one commit, as the TUI's merge page offers:
+
+| Route | Method | Body | Answer |
+| --- | --- | --- | --- |
+| `…/patches/{id}/merge` | `POST` | `{method: "source" \| "squash", revision, target_commit}` | the merged patch, as `…/patches/{id}` reads it |
+
+Any other method is `unsupported` with `Allow: POST`. The write passes the session guard and
+viewer binding as every write does.
+
+- **The client sends what it reviewed.** `revision` is the patch revision's id (`revision.id`)
+  and `target_commit` the target branch's tip, which a patch's answer now gives as
+  `target.commit` (read from the same snapshot as the rest; null when the branch has no commits,
+  or the patch is merged). The merge checks both again **inside its own write transaction**,
+  under the target's lock (`pch.mergeInner`), before it merges anything: a revision the patch no
+  longer proposes, or a patch that changed while merging, is `conflict` keyed by `revision`; a
+  target that moved (or is gone) since is `conflict` keyed by `target_commit`. Nothing is merged
+  then, and the client reads the patch again before offering a merge. Malformed values
+  (`method`, a `revision` that isn't 32 hex digits, a `target_commit` that isn't a commit id) are
+  `validation` on their field.
+- **How the method fares** is Haxy's cached mergeability check, as the TUI requires it: a method
+  that conflicts with the target is `conflict` keyed by `method`, and so is one Haxy hasn't
+  checked against the target's current tip yet (`unknown`; reads never run a merge, and the
+  check follows a push within moments). `mergeability` says each method's state beforehand.
+- **Eligibility** is `Patches.mergeBlock`, rechecked when the merge runs. A patch Haxy no longer
+  offers to merge answers with the reason its `mergeability` (and `actions.merge`) would now
+  give, code and message alike: `unsupported` for local mode, a patch no longer open (merging a
+  merged patch again is refused, never done twice), nothing pushed, or its fork gone;
+  `conflict` for fields awaiting resolution. An unknown, removed or draft patch is `not_found`.
+- **Who may merge** is the TUI's and the merge form's rule (`patch_merge.min_role`): a writer or
+  the owner, in a patches tab they may write to (`ui.authorizeUser`), checked afresh when the
+  merge runs. Anonymous viewers are `unauthenticated` ("Log in to merge patches."), readers
+  `forbidden` ("Only the repository's writers can merge its patches."). A patch's `actions`
+  gain `merge`, available when Haxy offers the merge (`mergeBlock`) and the viewer may merge;
+  otherwise its reason, the patch's state first.
+- **One merge for every client.** `haxy/src/patch_merge.zig`'s `merge` is the TUI's merge
+  button, Haxy's merge form and this route: it takes the method and what was reviewed, and
+  answers with the merge done or a typed `Refusal`. The TUI sends the patch as its page loaded
+  it; Haxy's merge page posts it in its form's query (`?revision=&target=`), and a refusal
+  brings the merge page back saying why ("not merged: the target branch moved…"), where it used
+  to redirect to the patch as if it had merged. That was the squash form that "sometimes did
+  nothing": a merge refused for a stale revision, an unchecked target tip or a missing fork was
+  answered exactly as a merge.
+- **Merging is long-running**: it runs the merge, imports the revision and reindexes the moved
+  target. It has no client timeout, and `vite.config.ts` lists the route among those without a
+  proxy timeout (see Timeouts). A lost or timed-out answer is an unknown outcome: Hub reads the
+  patch again and shows it as it now is, and never retries the merge itself.
+- **Local mode** doesn't merge (merge with Git): `actions.merge` and `mergeability` say so, and
+  the route answers `unsupported` with that reason.
+
+**Haxy Hub.** The patch page (`src/components/patches/PatchMerge.tsx`, hooked into
+`PatchDetail.tsx`) offers **Merge** and **Squash and merge** while `actions.merge` is available,
+each enabled while its method is `clean` (else it says why), each after an inline confirmation.
+The answer is ordered against the page's background reads (`useChangeAnswers`) and followed by
+one. A confirmation sends the revision and target tip it was opened on, even when a background
+read brings newer ones meanwhile, so Haxy refuses rather than merges what wasn't confirmed. A
+refusal is shown with the patch read again, and an unknown outcome is settled by reading the
+patch; until such a read succeeds, nothing is offered but checking the patch again (a patch
+removed meanwhile settles it: the page goes back to the list, as the shared thread pieces do). A
+status change and a merge never cross on the page: they share a write gate
+(`src/components/thread/writeGate.ts`, `ThreadActions`' optional `gate`), so merging is held
+while a close or reopen (or the read settling it) is in flight, and the status actions while a
+merge (or its follow-up read) is. Those reads
+are stamped on the page's answer clock when they start (`useChangeAnswers`'s `onRead`), so a
+change answered meanwhile (a close, say) stands over them; each is followed by the page's own
+background read, so the rest of the page (its attachments, say) is read afresh too. The shared
+write components (`ThreadActions`, `ThreadAssignees`, `ThreadAttachments`) apply the reads that
+settle their own unknown outcomes the same way, on every thread page: through a `reads` prop
+(`ThreadReads`: the clock, ticked by `readStart` when the read starts, and `onRead`, which the
+pages wire to `useThreadAnswers`'/`useChangeAnswers`' start-stamped `onRead`, `onAssigneesRead`
+and `onAttachmentsRead`), never as a change stamped on arrival. Without
+`actions.merge` the page says why ("Merge unavailable"). `src/lib/patchMerge.ts` holds the
+request and the choices.
+
+Implemented in `haxy/src/patch_merge.zig` (`merge`, `Refusal`, `refusalText`),
+`haxy/src/patch.zig` (`MergeInput.reviewed`, checked in the merge's transaction),
+`haxy/src/api/patch_merge.zig` (route, `availability`, `refusalError`), `haxy/src/api/patches.zig`
+(`target.commit`, `actions.merge`), `haxy/src/ui/Repo/Patches.zig` (`mergePatch`, `mergeQuery`,
+`mergePrompt`, `Entry.target_oid`), `haxy/src/ui/widget/thread.zig` (the merge page) and
+`haxy/src/web.zig` (`handlePatchMerge`); unit tests in `haxy/src/test/patch_merge.zig`. e2e in
+`e2e/patch-merge-api.spec.ts` and `e2e/patch-merge.spec.ts`.
 
 ## Threads: discussions
 

@@ -55,6 +55,8 @@ export default defineConfig(({ mode }) => {
     // arrives, and a download streams it back; neither is bounded by 10s on
     // a slow link. Any thread kind's attachments, on a server or locally.
     "^/api/v1/(?:repos/[^/?]+/[^/?]+|repo)/(?:issues|discussions|patches)/[^/?]+/attachments(?:/[^/?]+)?(?:\\?|$)": backend,
+    // A merge runs the merge and reindexes the target, and answers once it landed.
+    "^/api/v1/(?:repos/[^/?]+/[^/?]+|repo)/patches/[^/?]+/merge(?:\\?|$)": backend,
     "^/api(?:/|$)": { ...backend, proxyTimeout: 10_000 },
   }
   return {

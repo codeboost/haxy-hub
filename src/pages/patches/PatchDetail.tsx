@@ -7,21 +7,26 @@ import { linkClass } from "@/components/thread/config"
 import { RefreshFailed, ThreadComments, useKept } from "@/components/thread/ThreadComments"
 import { AuthorName, Instant, LabelLinks, SectionUnavailable } from "@/components/thread/ThreadParts"
 import { ThreadAttachments } from "@/components/attachments/ThreadAttachments"
-import { useAnswerClock, useAttachmentAnswers, useChangeAnswers, type AnswerClock } from "@/components/assignees/useThreadAnswers"
+import { readsThen, useAnswerClock, useAttachmentAnswers, useChangeAnswers, type AnswerClock, type ThreadReads } from "@/components/assignees/useThreadAnswers"
 import { ThreadActions } from "@/components/thread/ThreadActions"
+import { useWriteGates } from "@/components/thread/writeGate"
+import { PatchMerge } from "@/components/patches/PatchMerge"
 import { asPatchThread, patchOf } from "@/lib/patchThread"
 import { ThreadNotifications, useCommentsShown } from "@/components/notifications/ThreadNotifications"
 import { useSession } from "@/app/session"
 import { commitRoute } from "@/lib/commits"
 import { linkTarget } from "@/lib/markdown"
 import { withNotification, type NotificationRead } from "@/lib/notifications"
-import { getPatch, revisionCommitsRoute, revisionDiffRoute, revisionFilesRoute, revisionRef, type MergeResult, type PatchDetail } from "@/lib/patches"
+import { getPatch, revisionCommitsRoute, revisionDiffRoute, revisionFilesRoute, revisionRef, type MergeResult, type PatchDetail, type PatchStatus } from "@/lib/patches"
 import { repoRoute, type RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
-import { threadsRoute, type WriteViewer } from "@/lib/threads"
+import { threadsRoute, type ThreadDetail, type WriteViewer } from "@/lib/threads"
+import type { Attached } from "@/lib/attachments"
 import { patchThreads } from "./config"
 
 const config = patchThreads
+
+const writers = ["status", "merge"] as const
 
 /**
  * `<repo>/patches/<id>`: one patch, as the TUI's patch detail shows it —
@@ -77,19 +82,10 @@ export function PatchDetailView({ repo, id, unavailable }: { repo: RepoLocator; 
 }
 
 function Body({ repo, loaded, readStartedAt, clock, viewer, revalidate, notification, stateAt, reload }: { repo: RepoLocator; loaded: PatchDetail; readStartedAt: number; clock: AnswerClock; viewer: WriteViewer; revalidate(): void; notification: NotificationRead; stateAt: number; reload(): void }) {
-  // the patch as the latest change of it here (a status) answered, and its
-  // attachments as the latest upload or removal did, over reads that started
-  // before them; each kind of change owns its fields, the rest come from the
-  // read (as `useThreadAnswers` composes an issue)
-  const changes = useChangeAnswers(loaded, readStartedAt, clock)
-  const answers = useAttachmentAnswers(loaded, readStartedAt, clock)
-  const attached = answers.thread
-  const patch: PatchDetail = {
-    ...changes.thread,
-    attachments: attached.attachments,
-    attachment_limits: attached.attachment_limits,
-    actions: { ...changes.thread.actions, attach: attached.actions.attach },
-  }
+  const answered = usePatchAnswers(loaded, readStartedAt, clock, revalidate)
+  const { patch } = answered
+  // a status change and a merge never cross: each holds while the other is in flight
+  const gates = useWriteGates(writers)
   // the comments the page has shown, so it acknowledges only after showing them
   const shown = useCommentsShown(stateAt)
   const listOf = (search: string) => threadsRoute(repo, "patches", config.statuses, patch.status, { search })
@@ -105,7 +101,8 @@ function Body({ repo, loaded, readStartedAt, clock, viewer, revalidate, notifica
         <span className="inline-flex items-center gap-1"><MessageSquare size={14} aria-hidden />{patch.comment_count} {patch.comment_count === 1 ? "comment" : "comments"}</span>
       </div>
       {/* edit, close or reopen, remove: each answer also reads the patch again in the background */}
-      <ThreadActions repo={repo} config={config} thread={asPatchThread(patch)} viewer={viewer} onChanged={(value) => { changes.onChanged(patchOf(value)); revalidate() }} />
+      <ThreadActions repo={repo} config={config} thread={asPatchThread(patch)} viewer={viewer} onChanged={(value) => answered.onChanged(patchOf(value))}
+        reads={answered.threadReads} gate={gates.status} />
       {patch.conflicted && (
         <p className="mt-4 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-2 text-sm">
           <TriangleAlert size={16} aria-hidden />Concurrent edits to this patch conflict; the values shown are this server's.
@@ -113,6 +110,8 @@ function Body({ repo, loaded, readStartedAt, clock, viewer, revalidate, notifica
       )}
       {patch.labels.length > 0 && <Field title="Labels"><div className="flex flex-wrap gap-1"><LabelLinks labels={patch.labels} to={listOf} /></div></Field>}
       <Proposal repo={repo} patch={patch} />
+      {/* merging answers with the patch, which reads it again in the background too */}
+      <PatchMerge repo={repo} patch={patch} viewer={viewer} onChanged={answered.onChanged} reads={answered.reads} gate={gates.merge} />
       <Review repo={repo} patch={patch} />
       {/* patches have no assignees, so nothing else on the page changes whether the viewer is notified */}
       <ThreadNotifications repo={repo} config={config} thread={patch.id} viewer={viewer} read={notification} readStartedAt={readStartedAt} clock={clock} onRetry={reload} refresh={0} comments={shown.comments} />
@@ -122,10 +121,41 @@ function Body({ repo, loaded, readStartedAt, clock, viewer, revalidate, notifica
         </div>
       </Field>
       {/* each answer also reads the patch again in the background, so what another client changed shows */}
-      <ThreadAttachments repo={repo} config={config} thread={patch} viewer={viewer} onChanged={(value) => { answers.onAttachmentsChanged(value); revalidate() }} />
+      <ThreadAttachments repo={repo} config={config} thread={patch} viewer={viewer} onChanged={answered.onAttachmentsChanged}
+        reads={answered.attachmentReads} />
       <ThreadComments repo={repo} config={config} thread={patch.id} {...shown.commentReads} />
     </article>
   )
+}
+
+/**
+ * The patch as the page shows it: as the latest change of it here (a status)
+ * answered, and its attachments as the latest upload or removal did, over
+ * reads that started before them; each kind of change owns its fields, the
+ * rest come from the read (as `useThreadAnswers` composes an issue). Every
+ * answer, and every read that settles an unknown outcome (ordered by when it
+ * started), is followed by a background read of the patch.
+ */
+function usePatchAnswers(loaded: PatchDetail, readStartedAt: number, clock: AnswerClock, revalidate: () => void) {
+  const changes = useChangeAnswers(loaded, readStartedAt, clock)
+  const answers = useAttachmentAnswers(loaded, readStartedAt, clock)
+  const attached = answers.thread
+  const patch: PatchDetail = {
+    ...changes.thread,
+    attachments: attached.attachments,
+    attachment_limits: attached.attachment_limits,
+    actions: { ...changes.thread.actions, attach: attached.actions.attach },
+  }
+  const reads = readsThen(clock, changes.onRead, revalidate)
+  const threadReads: ThreadReads<ThreadDetail<PatchStatus>> = { clock, onRead: (value, startedAt) => reads.onRead(patchOf(value), startedAt) }
+  return {
+    patch,
+    reads,
+    threadReads,
+    attachmentReads: readsThen(clock, answers.onAttachmentsRead, revalidate),
+    onChanged: (value: PatchDetail) => { changes.onChanged(value); revalidate() },
+    onAttachmentsChanged: (value: Attached) => { answers.onAttachmentsChanged(value); revalidate() },
+  }
 }
 
 function Field({ title, children }: { title: string; children: ReactNode }) {

@@ -81,7 +81,10 @@ test("local mode opens a branch-backed patch that Haxy's own patches tab lists, 
     revision: { id, source_commit: commits.branch[0] },
     edit_revision: id,
   })
-  expect(created.actions).toEqual({ edit: { available: true }, set_status: { available: true }, remove: { available: true }, attach: { available: true } })
+  expect(created.actions).toEqual({
+    edit: { available: true }, set_status: { available: true }, remove: { available: true }, attach: { available: true },
+    merge: { available: false, reason: { code: "unsupported", message: "Local mode doesn't merge patches; merge the branches with Git." } },
+  })
   expect((await tuiPatches(backend, "", "open")).ids).toEqual([chosen])
   expect(await tuiPatchPage(backend, "", chosen)).toContain("Add a parser")
 
@@ -106,7 +109,7 @@ test("local mode opens a branch-backed patch that Haxy's own patches tab lists, 
   const retargeted = await ok(await send(request, hub.url, "PATCH", `${base}/${chosen}`, {
     revision: edited.edit_revision, title: "Add a parser, tested", labels: "parser", description: "Parses things.", target: "branch:other",
   }))
-  expect(retargeted.target).toEqual({ name: "other", id: "branch:other" })
+  expect(retargeted.target).toMatchObject({ name: "other", id: "branch:other" })
   expect(retargeted.revision!.id).not.toBe(created.revision!.id)
 
   // closing and reopening, which a retry repeats harmlessly
