@@ -1,11 +1,9 @@
-import { writeFileSync } from "node:fs"
-import path from "node:path"
 import type { Page, Route } from "@playwright/test"
 import { alice, registerUser, type Account } from "./support/accounts"
 import type { Backend } from "./support/backend"
 import { expect, test } from "./support/fixtures"
 import { localGit } from "./support/history"
-import { closePatch, createBranchPatch, divergeBranch, editPatch, removePatch, setPatchRole, tuiPatchPage, tuiPatches } from "./support/patches"
+import { branchPicker, chooseBranch, closePatch, createBranchPatch, divergeBranch, editPatch, removePatch, setPatchRole, tuiPatchPage, tuiPatches } from "./support/patches"
 import { pushRepo } from "./support/push"
 import { createRepo, signedIn } from "./support/repos"
 
@@ -64,18 +62,18 @@ test("local mode opens a patch from two branches, edits and retargets it, closes
   await expect(page).toHaveURL(`${hub.url}/repo/patches/new`)
   const form = page.getByRole("form", { name: "New patch" })
   // the target starts at the default branch; the source must be chosen
-  await expect(form.getByLabel("Target branch")).toHaveValue("branch:main")
+  await expect(branchPicker(form, "Target branch")).toHaveValue("main")
   await form.getByLabel("Title").fill("Add a parser")
   await form.getByRole("button", { name: "Open patch" }).click()
   await expect(form.getByText("Choose one of the repository's branches.")).toBeVisible()
   await expect(form.getByLabel("Title")).toHaveValue("Add a parser")
   // the same branch twice is refused beside the target
-  await form.getByLabel("Source branch").selectOption({ label: "main" })
+  await chooseBranch(form, "Source branch", "main", "main")
   await form.getByRole("button", { name: "Open patch" }).click()
   await expect(form.getByText("Choose another branch than the source.")).toBeVisible()
   expect((await tuiPatches(backend, "", "open")).ids).toEqual([])
 
-  await form.getByLabel("Source branch").selectOption({ label: "feature" })
+  await chooseBranch(form, "Source branch", "feature", "feature")
   await form.getByLabel("Labels").fill("parser")
   await form.getByLabel("Description").fill("Parses **things**.")
   // a double click opens one patch
@@ -100,10 +98,10 @@ test("local mode opens a patch from two branches, edits and retargets it, closes
   const edit = page.getByRole("form", { name: "Edit patch" })
   await expect(edit.getByLabel("Title")).toHaveValue("Add a parser")
   await expect(edit.getByLabel("Description")).toHaveValue("Parses **things**.")
-  await expect(edit.getByLabel("Target branch")).toHaveValue("branch:main")
-  await expect(edit.getByLabel("Source branch")).toHaveCount(0)
+  await expect(branchPicker(edit, "Target branch")).toHaveValue("main")
+  await expect(branchPicker(edit, "Source branch")).toHaveCount(0)
   await edit.getByLabel("Title").fill("Add a parser, tested")
-  await edit.getByLabel("Target branch").selectOption({ label: "other" })
+  await chooseBranch(edit, "Target branch", "other", "other")
   await edit.getByRole("button", { name: "Save changes" }).click()
   await expect(page).toHaveURL(`${hub.url}/repo/patches/${id}`)
   await page.reload()
@@ -159,20 +157,6 @@ test("Haxy's own links to its patch forms open Hub's", async ({ page, request, l
   await expect(page.getByRole("form", { name: "Edit patch" }).getByLabel("Title")).toHaveValue("Add a parser")
 })
 
-test("a default branch whose name shows ambiguously is never picked as the target by its look-alike", async ({ page, launch }) => {
-  // two branches whose names aren't UTF-8 and show alike ("caf\uFFFD"), the default one of them
-  const e8 = Uint8Array.from([...Buffer.from("caf"), 0xe8])
-  const e9 = Uint8Array.from([...Buffer.from("caf"), 0xe9])
-  const backend = await launch.local({ refs: [{ kind: "branch", name: e8, files: { "e8.txt": "e8\n" } }, { kind: "branch", name: e9, files: { "e9.txt": "e9\n" } }] })
-  writeFileSync(path.join(backend.dataDir, ".git", "HEAD"), Buffer.concat([Buffer.from("ref: refs/heads/"), Buffer.from(e9), Buffer.from("\n")]))
-  const hub = await launch.hub(backend.port)
-  await page.goto(`${hub.url}/repo/patches/new`)
-  const target = page.getByRole("form", { name: "New patch" }).getByLabel("Target branch")
-  await expect(target.getByRole("option", { name: "caf\uFFFD" })).toHaveCount(2)
-  // the form can't tell which of the two is the default, so it picks neither
-  await expect(target).toHaveValue("")
-})
-
 test("a refusal naming a branch the page doesn't show says why", async ({ page, request, launch }) => {
   const backend = await branchedLocal(launch)
   const hub = await launch.hub(backend.port)
@@ -189,7 +173,7 @@ test("a refusal naming a branch the page doesn't show says why", async ({ page, 
   // so does retargeting it, though the edit form has no source picker
   await actions(page).getByRole("link", { name: "Edit" }).click()
   const form = page.getByRole("form", { name: "Edit patch" })
-  await form.getByLabel("Target branch").selectOption({ label: "other" })
+  await chooseBranch(form, "Target branch", "other", "other")
   await form.getByRole("button", { name: "Save changes" }).click()
   await expect(form.getByRole("alert")).toContainText("Source branch: There is no such branch.")
   expect(await tuiPatchPage(backend, "", id)).toContain("Add a parser")
@@ -215,7 +199,7 @@ test("an edit based on a version someone else changed is refused until the curre
   await expect(current).toContainText("Their title")
   await expect(current).toContainText("other")
   await expect(form.getByLabel("Title")).toHaveValue("My title")
-  await expect(form.getByLabel("Target branch")).toHaveValue("branch:main")
+  await expect(branchPicker(form, "Target branch")).toHaveValue("main")
   await form.getByRole("button", { name: "Save changes" }).click()
   await expect(page).toHaveURL(`${hub.url}/repo/patches/${id}`)
   await page.reload()
@@ -237,7 +221,7 @@ test("a creation whose answer is lost is looked up by its id; a lost status answ
     await route.abort("connectionreset")
   })
   await form.getByLabel("Title").fill("Lost answer")
-  await form.getByLabel("Source branch").selectOption({ label: "feature" })
+  await chooseBranch(form, "Source branch", "feature", "feature")
   await form.getByRole("button", { name: "Open patch" }).click()
   await expect(form.getByText("The patch was opened.")).toBeVisible()
   await expect(form.getByRole("button", { name: "Open patch" })).toBeDisabled()
@@ -254,7 +238,7 @@ test("a creation whose answer is lost is looked up by its id; a lost status answ
     await route.abort("connectionreset")
   })
   await form.getByLabel("Title").fill("Removed meanwhile")
-  await form.getByLabel("Source branch").selectOption({ label: "feature" })
+  await chooseBranch(form, "Source branch", "feature", "feature")
   await form.getByRole("button", { name: "Open patch" }).click()
   await expect(form.getByText("nothing was opened")).toBeVisible()
   await form.getByRole("button", { name: "Open patch" }).click()
@@ -316,7 +300,7 @@ test.describe("on a server", () => {
     await page.getByRole("link", { name: "New patch" }).click()
     const form = page.getByRole("form", { name: "New patch" })
     await form.getByLabel("Title").fill("Bob's take")
-    await form.getByLabel("Source branch").selectOption({ label: "feature" })
+    await chooseBranch(form, "Source branch", "feature", "feature")
     await form.getByRole("button", { name: "Open patch" }).click()
     await expect(page).toHaveURL(/\/repos\/alice\/parser\/patches\/[0-9a-f]{32}$/)
     const his = page.url().split("/").pop()!

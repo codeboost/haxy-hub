@@ -1793,9 +1793,9 @@ Wrong methods are `unsupported` with `Allow` (`GET, HEAD, POST` on the list,
 **Haxy Hub.** The patches section gains `<hub repo>/patches/new` ("New patch" on the lists when
 `actions.create` is available) and `<hub repo>/patches/<id>/edit`: the shared `ThreadNew` and
 `ThreadEdit` forms, whose patch config's `branches` adds a **Source branch** (new only) and a
-**Target branch** picker (`BranchFields`) listing the repository's branches by ref id (every
-page of `…/branches`, at most 1000; a new patch's target starts at the default branch, by
-an exact name: a default whose name isn't UTF-8 shows ambiguously, so none is picked then). A
+**Target branch** picker (`BranchFields`), which search every branch of the repository or take
+a typed name (see "Patch branch pickers"; a new patch's target starts at the default branch, by
+its exact id). A
 refusal of a field the form or the action doesn't show (a patch's source when editing or
 reopening) is listed in its message, by the field's label (`FailureMessage`'s `shown`). The
 patch page shows the shared `ThreadActions` (Edit, Close patch / Reopen patch, Remove with an
@@ -2172,3 +2172,48 @@ Implemented in `haxy/src/api/notifications.zig` (routes) and `haxy/src/notify.zi
 `src/app/NotificationsLink.tsx` and `src/components/notifications/ThreadNotifications.tsx`;
 e2e in `e2e/notifications-api.spec.ts` and `e2e/notifications.spec.ts`, and for discussions and
 patches in `e2e/thread-kinds-api.spec.ts` and `e2e/thread-kinds.spec.ts`.
+
+## Patch branch pickers
+
+From issue [#33](issues/33-patch-branch-picker-beyond-1000.md). A patch's **Source branch** and
+**Target branch** fields (`BranchFields`, in the New patch and patch edit forms) reach any branch
+of the repository, however many it has, without a new route:
+
+- **Searching.** Each field is a text field with a list (an ARIA combobox). The list shows the
+  branches whose names **start with** what is typed, a page of 50 at a time from `…/branches?search=`
+  (see Refs), with **More branches** for the next page; while a picked branch is shown untouched
+  the list starts from the first branch. Typing pauses 200 ms before a search; an answer to a
+  superseded search is dropped. Arrow keys move through the list (the active option kept in
+  sight), Enter picks, Escape closes; the list stays open while the focus is anywhere in the
+  picker, so Tab reaches **More branches** and a failed search's **Try again**, which hand the
+  focus back to the field at the first branch they add. Keys an input method is composing
+  with are left to it. The active option is kept by branch id and cleared on a pick. While a
+  search runs, the list keeps showing what it had, marked busy (`aria-busy`, its buttons
+  `aria-disabled`), until the answer replaces it; a button the answer takes away hands the focus
+  back to the field. Rows answering another search than the one typed are shown but can't be
+  chosen (`aria-disabled`; arrows, Enter and clicks skip them). Reading more cancels a refresh still due, so a reopened list's next page
+  isn't undone by it.
+- **Picking** sends the branch's `id` exactly as Haxy listed it. A name that isn't UTF-8 shows
+  with U+FFFD, alike others (two branches may both show `caf�`), so the list also shows its
+  encoded bytes (`caf� (caf%E9)`), and a picked one is named under its field (`Chosen branch:
+  caf%E9`).
+- **Typing** a name and not picking one sends it as typed: its UTF-8 bytes as the ref id Haxy
+  would give it (`branch:` and the name percent-encoded, as `branchId` builds it), so a typed name
+  travels byte-exact too. Haxy checks it like any other (`validation` keyed by `source` or
+  `target`, "There is no such branch…"), and the field shows the refusal; before sending, the
+  list already says when no branch starts with the text. A name that isn't UTF-8 can only be
+  picked, never typed.
+- **The default target** is the overview's `default_branch_id` (below), not a name match; none
+  is picked when the default branch has no commits (`empty`) or HEAD names no branch.
+
+**The repository overview** (`GET /api/v1/repos/<owner>/<name>`, `GET /api/v1/repo`) gains
+`default_branch_id`: the branch HEAD names as a ref id (`branch:<encoded name>`, see Refs),
+beside `default_branch` (its name for display); null exactly when `default_branch` is (a
+detached HEAD). It is additive; nothing else in the overview changed.
+
+Implemented in `haxy/src/api/repo.zig` (`Overview.default_branch_id`). Haxy Hub:
+`src/lib/patches.ts` (`getBranchChoices`, `BranchSearch`, `branchPageSize`),
+`src/lib/branchPicker.ts` and `src/components/thread/BranchFields.tsx`; e2e in
+`e2e/patches-branches.spec.ts` (1,100 branches, typed and refused names, names that aren't
+UTF-8), `e2e/patches-write.spec.ts`, and the overview's field in `e2e/refs-api.spec.ts` and
+`e2e/repo-api.spec.ts`.

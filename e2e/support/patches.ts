@@ -1,4 +1,4 @@
-import type { APIRequestContext, PlaywrightWorkerArgs } from "@playwright/test"
+import { expect, type APIRequestContext, type Locator, type PlaywrightWorkerArgs } from "@playwright/test"
 import type { Account } from "./accounts"
 import type { Backend } from "./backend"
 import { pushRepo, type Git } from "./push"
@@ -108,6 +108,22 @@ export function divergeBranch(git: Git, branch: string, ahead: FixtureCommit[], 
   return { base, branch: onBranch, main: onMain }
 }
 
+// --- Hub's branch pickers ---------------------------------------------------------
+
+/** A patch form's branch picker ("Source branch", "Target branch"): a text field that searches Haxy's branches. */
+export function branchPicker(form: Locator, label: string): Locator {
+  return form.getByRole("combobox", { name: label })
+}
+
+/** Types `search` into a patch form's branch picker and picks the branch listed as `option`. */
+export async function chooseBranch(form: Locator, label: string, search: string, option: string): Promise<void> {
+  const picker = branchPicker(form, label)
+  await picker.click()
+  await picker.fill(search)
+  await form.getByRole("listbox", { name: label }).getByRole("option", { name: option, exact: true }).click()
+  await expect(picker).toHaveValue(option.replace(/ \(.*\)$/, ""))
+}
+
 // --- what Haxy's own pages show -------------------------------------------------
 
 function pageText(html: string): string {
@@ -140,5 +156,11 @@ export async function tuiPatches(backend: Backend, repoBase: string, status: "op
 /** The text of a patch's own page in Haxy's web UI (the TUI's), without its scripts. */
 export async function tuiPatchPage(backend: Backend, repoBase: string, id: string): Promise<string> {
   const response = await fetch(`${backend.origin}${repoBase}/patch:${id}`)
+  return pageText(await response.text())
+}
+
+/** The text of a patch's edit form in Haxy's web UI (the TUI's), whose target field holds the patch's target branch. */
+export async function tuiPatchEditPage(backend: Backend, repoBase: string, id: string): Promise<string> {
+  const response = await fetch(`${backend.origin}${repoBase}/patch:${id}/edit`)
   return pageText(await response.text())
 }

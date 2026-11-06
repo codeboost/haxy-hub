@@ -6,12 +6,12 @@
  * the TUI's patches tab's (`ui.Repo.Patches`), so Hub never decides which
  * revision a patch is reviewed at, or what its diff leaves out.
  */
-import { getJson, type ActionAvailability, type EventId, type ObjectId, type RequestOptions, type UnavailableCode } from "@/lib/api"
+import { getJson, type ActionAvailability, type EventId, type ObjectId, type Page, type RequestOptions, type UnavailableCode } from "@/lib/api"
 import type { Attached } from "@/lib/attachments"
 import { commitsRoute } from "@/lib/commits"
 import type { CommitDiff, DiffQuery } from "@/lib/diff"
 import type { MarkdownBlock } from "@/lib/markdown"
-import { apiBase, canonicalPath, getRepo, listRefs, pathSegments, repoRoute, type EncodedPath, type RefId, type RefItem, type RepoLocator } from "@/lib/repo"
+import { apiBase, canonicalPath, getRepo, listRefs, pathSegments, repoRoute, type EncodedPath, type RefId, type RefItem, type RepoLocator, type RepoOverview } from "@/lib/repo"
 import { commentRoute, editThreadRoute, newThreadRoute, threadLabelsRoute, threadRoute, threadsRoute, type ThreadSummary } from "@/lib/threads"
 
 export type PatchStatus = "open" | "closed" | "merged"
@@ -95,44 +95,33 @@ export function getPatch(repo: RepoLocator, id: EventId, options: Options = {}):
   return getJson(`${apiBase(repo)}/patches/${encodeURIComponent(id)}`, options)
 }
 
+/** A page of the repository's branches whose names start with `search`, in name order, from `cursor`. */
+export type BranchSearch = (query: { search: string; cursor?: string }, options?: Options) => Promise<Page<RefItem>>
+
 /** The branches a patch's form chooses among, and the target it starts at. */
 export type BranchChoices = {
-  /** Every branch, in name order, up to `maxBranchChoices`. */
-  branches: RefItem[]
-  /** There are more branches than are listed. */
-  truncated: boolean
-  /** The repository's default branch, a new patch's target unless chosen otherwise; null when it has none listed. */
+  /** Finds any of the repository's branches by the start of its name, a page at a time. */
+  search: BranchSearch
+  /** The repository's default branch by its exact id, a new patch's target unless chosen otherwise; null when it has no commits or HEAD names no branch. */
   defaultTarget: RefId | null
 }
 
-/** How many branches a patch's form lists at most. */
-export const maxBranchChoices = 1000
+/** How many branches a picker lists at a time. */
+export const branchPageSize = 50
 
-/** The repository's branches (following the list's pages), and its default branch. */
+/** Searches the repository's branches, and names its default branch. */
 export async function getBranchChoices(repo: RepoLocator, options: Options = {}): Promise<BranchChoices> {
-  const [overview, branches] = await Promise.all([getRepo(repo, options), (async () => {
-    const items: RefItem[] = []
-    let cursor: string | undefined
-    do {
-      const page = await listRefs(repo, "branch", { cursor, page_size: 100 }, options)
-      items.push(...page.items)
-      cursor = page.page.next_cursor ?? undefined
-    } while (cursor && items.length < maxBranchChoices)
-    return { items: items.slice(0, maxBranchChoices), truncated: cursor !== undefined }
-  })()])
-  return { branches: branches.items, truncated: branches.truncated, defaultTarget: defaultTargetOf(branches.items, overview.default_branch) }
+  const overview = await getRepo(repo, options)
+  return { search: branchSearch(repo), defaultTarget: defaultTargetOf(overview) }
 }
 
-/**
- * The listed branch whose name is the default branch's, the overview's name
- * for display: only when that name is exact, since names that aren't UTF-8
- * show alike ("caf\uFFFD" for several), and only when one branch has it.
- * Otherwise none, so the form never picks a look-alike.
- */
-function defaultTargetOf(branches: RefItem[], name: string | null): RefId | null {
-  if (name === null || name.includes("\uFFFD")) return null
-  const named = branches.filter((branch) => branch.name === name)
-  return named.length === 1 ? named[0].id : null
+function branchSearch(repo: RepoLocator): BranchSearch {
+  return (query, options = {}) => listRefs(repo, "branch", { ...query, page_size: branchPageSize }, options)
+}
+
+/** The default branch, by the id Haxy gives it; none when it has no commit, so it isn't a branch yet. */
+function defaultTargetOf(overview: RepoOverview): RefId | null {
+  return overview.empty ? null : overview.default_branch_id
 }
 
 /** A window of revision `id`'s diff. */

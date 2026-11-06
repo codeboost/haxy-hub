@@ -26,6 +26,8 @@ export type RepoOverview = {
   access: RepoAccess | null
   /** The branch HEAD names, even before its first commit; null when HEAD is detached. */
   default_branch: string | null
+  /** The same branch as a ref id, which names it exactly also when its name shows alike another's. */
+  default_branch_id: RefId | null
   /** The default branch has no commit yet. */
   empty: boolean
   sections: RepoSection[]

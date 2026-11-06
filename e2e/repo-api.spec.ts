@@ -23,6 +23,7 @@ test.describe("with the demo data", () => {
       description: "Linux kernel source tree",
       access: "public",
       default_branch: "master",
+      default_branch_id: "branch:master",
       empty: false,
       sections: ["files", "commits", "refs", "discussions", "issues", "patches"],
       clone: [
@@ -140,6 +141,7 @@ test("local mode serves the repository it opened, with distinct empty, binary an
     description: "",
     access: null,
     default_branch: "main",
+    default_branch_id: "branch:main",
     empty: false,
     sections: ["files", "commits", "refs", "discussions", "issues", "patches", "events"],
     clone: [],

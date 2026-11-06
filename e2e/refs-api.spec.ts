@@ -1,7 +1,10 @@
 import { execFileSync } from "node:child_process"
+import { writeFileSync } from "node:fs"
+import path from "node:path"
 import { createHash } from "node:crypto"
 import { expect, test } from "./support/fixtures"
 import type { FixtureRef } from "./support/backend"
+import { localGit } from "./support/history"
 import { signedIn } from "./support/repos"
 
 // HTTP contract checks for branches, tags and reading files at a ref, through
@@ -230,7 +233,7 @@ test("when HEAD names a branch without commits, explicit refs and the ref lists 
   const hub = await launch.hub(backend.port)
 
   // the overview and the default view describe HEAD's branch
-  expect(await (await request.get(`${hub.url}/api/v1/repo`)).json()).toMatchObject({ default_branch: "unborn", empty: true })
+  expect(await (await request.get(`${hub.url}/api/v1/repo`)).json()).toMatchObject({ default_branch: "unborn", default_branch_id: "branch:unborn", empty: true })
   const files = await request.get(`${hub.url}/api/v1/repo/files`)
   expect(files.status()).toBe(404)
   expect(await files.json()).toEqual({ error: { code: "not_found", message: "This repository has no commits yet." } })
@@ -239,4 +242,16 @@ test("when HEAD names a branch without commits, explicit refs and the ref lists 
   expect((await (await request.get(`${hub.url}/api/v1/repo/files?path=which.txt&ref=tag:v1.0`)).json()).content.lines[0]).toBe("v1.0")
   expect((await (await request.get(`${hub.url}/api/v1/repo/branches`)).json()).items).toEqual([{ name: "main", id: "branch:main" }])
   expect((await (await request.get(`${hub.url}/api/v1/repo/tags`)).json()).items).toEqual([{ name: "v1.0", id: "tag:v1.0" }])
+})
+
+test("the overview names the default branch by its exact id, also when its name shows alike another's", async ({ request, launch }) => {
+  const e8 = Uint8Array.from([...Buffer.from("caf"), 0xe8])
+  const backend = await launch.local({ refs: [{ kind: "branch", name: e8 }, { kind: "branch", name: latin1 }] })
+  writeFileSync(path.join(backend.dataDir, ".git", "HEAD"), Buffer.concat([Buffer.from("ref: refs/heads/"), Buffer.from(latin1), Buffer.from("\n")]))
+  const hub = await launch.hub(backend.port)
+
+  expect(await (await request.get(`${hub.url}/api/v1/repo`)).json()).toMatchObject({ default_branch: "caf\uFFFD", default_branch_id: "branch:caf%E9", empty: false })
+  // a detached HEAD names no branch
+  writeFileSync(path.join(backend.dataDir, ".git", "HEAD"), `${localGit(backend)(["rev-parse", "main"])}\n`)
+  expect(await (await request.get(`${hub.url}/api/v1/repo`)).json()).toMatchObject({ default_branch: null, default_branch_id: null })
 })
