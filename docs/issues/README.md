@@ -38,3 +38,4 @@ Status values: `ready-for-agent` (AFK) · `needs-human` (HITL) · `in-progress` 
 | 30 | [Writes never land under a different signed-in user](30-session-bound-write-identity.md) | AFK | [#04](04-account-management.md) | 99, 100 |
 | 31 | [Repository administration: remaining recovery edge cases](31-admin-recovery-edge-cases.md) | AFK | [#23](23-repo-administration.md) | 93, 94, 97 |
 | 32 | [Sync: don't advance to events Haxy can't read](32-sync-unreadable-remote-events.md) | AFK | [#27](27-local-mode-sync.md) | 84, 85, 86 |
+| 33 | [Patch branch pickers beyond 1,000 branches](33-patch-branch-picker-beyond-1000.md) | AFK | [#18](18-patches-branch-write.md) | 64, 72 |

@@ -957,6 +957,13 @@ with no host.
   back if access returns. A full subscriber tier is `conflict`; a stale read acknowledgement
   is 200 and changes nothing; the thread page reads the notification state before the thread,
   so it never acknowledges what it hasn't shown (user decisions, #22).
+- Branch-backed patch writes name branches by byte-exact ref id. The edit revision is
+  answered as `edit_revision` (a patch's `revision` is its proposed revision) and covers the
+  target; retargeting re-captures the patch revision, as in the TUI. A source with nothing to
+  propose is accepted and shows `no_changes`. A merged patch can't change status or target,
+  but its text can be edited and it can be removed. Every new branch patch refuses an id any
+  event already has, in the TUI and HTML forms too. Removal is Haxy's existing removal
+  (user decisions, #18).
 
 ## Known follow-up
 
