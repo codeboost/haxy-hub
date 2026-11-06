@@ -1,4 +1,4 @@
-import type { Page, Route } from "@playwright/test"
+import type { Locator, Page, Route } from "@playwright/test"
 import { alice, registerUser, writeHeaders, type Account } from "./support/accounts"
 import { expect, test } from "./support/fixtures"
 import { editCommentForm, postComment, tuiCommentIds, tuiCommentPage, tuiThreadPage } from "./support/comments"
@@ -57,6 +57,13 @@ async function tracker(playwright: Parameters<typeof signedIn>[0], backend: Para
 
 const comments = (page: Page) => page.getByRole("list", { name: "Comments" })
 const card = (page: Page, text: string) => page.getByRole("article", { name: /^Comment by / }).filter({ hasText: text })
+const cardOf = (page: Page, text: string) => comments(page).getByRole("listitem").filter({ has: card(page, text) })
+
+/** Picks one of a comment's own actions from its menu. */
+async function choose(page: Page, comment: Locator, action: "Edit" | "Remove") {
+  await comment.getByRole("button", { name: "Comment actions" }).click()
+  await page.getByRole("menu").getByRole("menuitem", { name: action }).click()
+}
 
 test("a reader comments and replies in the browser; both persist after a refresh and a restart, and Haxy's own pages show them", async ({ page, playwright, launch }) => {
   let backend = await launch.server()
@@ -87,7 +94,7 @@ test("a reader comments and replies in the browser; both persist after a refresh
   await expect(page.getByRole("heading", { name: "Comments (1)" })).toBeVisible()
   await expect(page.getByText("1 comment", { exact: true })).toBeVisible()
 
-  // a reply to that comment, with its reply context
+  // a reply to that comment, in that comment's card
   await card(page, "Seen it on Linux too.").getByRole("button", { name: "Reply" }).click()
   const reply = page.getByRole("form", { name: "Reply" })
   await reply.getByLabel("Reply").fill("Also on macOS.")
@@ -95,7 +102,8 @@ test("a reader comments and replies in the browser; both persist after a refresh
   await expect(card(page, "Also on macOS.")).toBeFocused()
   const second = page.url().split("#comment-")[1]
   expect(second).not.toBe(first)
-  await expect(card(page, "Also on macOS.").getByRole("link", { name: "replying to bobby" })).toBeVisible()
+  await expect(cardOf(page, "Seen it on Linux too.").getByRole("region", { name: "1 reply" }).getByRole("article")).toHaveText([/Also on macOS\./])
+  await expect(card(page, "Also on macOS.").getByRole("link", { name: /^replying to/ })).toHaveCount(0)
 
   for (const step of ["refresh", "restart"] as const) {
     if (step === "restart") backend = await backend.restart!()
@@ -106,12 +114,50 @@ test("a reader comments and replies in the browser; both persist after a refresh
     expect(await tuiCommentPage(backend, "/alice:tracker", issue, first), step).toContain("Also on macOS.")
   }
 
-  // the reply context leads to the comment replied to, on its own page
-  await card(page, "Also on macOS.").getByRole("link", { name: "replying to bobby" }).click()
+  // the comment's permalink opens its own page, where its reply says whom it answers
+  await card(page, "Seen it on Linux too.").getByRole("link", { name: "Permalink" }).click()
   await expect(page).toHaveURL(`${hub.url}${issuePath}/comments/${first}`)
   await expect(page.getByRole("heading", { level: 2, name: "Comment on Crash on save" })).toBeVisible()
   await expect(page.getByRole("heading", { name: "1 reply" })).toBeVisible()
   await expect(page.getByRole("list", { name: "Replies" }).getByRole("article")).toHaveText([/Also on macOS\./])
+  await expect(page.getByRole("list", { name: "Replies" }).getByRole("link", { name: "replying to bobby" })).toBeVisible()
+  await owner.dispose()
+})
+
+test("replies sit in the card of the comment they answer, and each comment's edit and remove are in its menu", async ({ page, playwright, launch }) => {
+  const backend = await launch.server()
+  const hub = await launch.hub(backend.port)
+  const { owner, issue } = await tracker(playwright, backend, hub.url)
+  const top = await postComment(owner, backend, "/alice:tracker", issue, "The top comment")
+  await postComment(owner, backend, "/alice:tracker", issue, "Another top comment")
+  const answer = await postComment(owner, backend, "/alice:tracker", issue, "An answer", top)
+  await postComment(owner, backend, "/alice:tracker", issue, "An answer to the answer", answer)
+  const issuePath = `/repos/alice/tracker/issues/${issue}`
+  await logIn(page, hub.url, alice, issuePath)
+
+  const replies = cardOf(page, "The top comment").getByRole("region", { name: "2 replies" })
+  await expect(replies.getByRole("article")).toHaveText([/An answer/, /An answer to the answer/])
+  await expect(cardOf(page, "Another top comment").getByRole("region")).toHaveCount(0)
+  // a reply to the card's own comment needs no reply context; a reply to a reply says whom it answers
+  await expect(card(page, "An answer").first().getByRole("link", { name: /^replying to/ })).toHaveCount(0)
+  await expect(card(page, "An answer to the answer").getByRole("link", { name: "replying to alice" })).toBeVisible()
+  await expect(card(page, "An answer to the answer").getByRole("button", { name: "Reply" })).toBeVisible()
+
+  await choose(page, card(page, "An answer to the answer"), "Edit")
+  const editor = page.getByRole("form", { name: "Edit comment" })
+  await editor.getByLabel("Comment").fill("A reworded reply")
+  await editor.getByRole("button", { name: "Save comment" }).click()
+  await expect(replies.getByRole("article")).toHaveText([/An answer/, /A reworded reply/])
+
+  await choose(page, card(page, "The top comment"), "Remove")
+  await page.getByRole("alertdialog", { name: "Remove this comment?" }).getByRole("button", { name: "Remove comment" }).click()
+  await expect(comments(page).getByRole("article").first()).toContainText("(removed)")
+  await page.reload()
+  await expect(cardOf(page, "(removed)").getByRole("region", { name: "2 replies" }).getByRole("article")).toHaveCount(2)
+
+  // on a comment's own page its replies' parent is outside the list, so each reply says whom it answers
+  await page.goto(`${hub.url}${issuePath}/comments/${answer}`)
+  await expect(page.getByRole("list", { name: "Replies" }).getByRole("article").getByRole("link", { name: "replying to alice" })).toBeVisible()
   await owner.dispose()
 })
 
@@ -178,13 +224,12 @@ test("authors edit and remove their own comments, the repository's owner moderat
   // another reader may reply, but neither edit nor remove
   await logIn(page, hub.url, carol, issuePath)
   await expect(card(page, "Frist").getByRole("button", { name: "Reply" })).toBeVisible()
-  await expect(card(page, "Frist").getByRole("button", { name: "Edit" })).toHaveCount(0)
-  await expect(card(page, "Frist").getByRole("button", { name: "Remove" })).toHaveCount(0)
+  await expect(card(page, "Frist").getByRole("button", { name: "Comment actions" })).toHaveCount(0)
   await page.context().clearCookies()
 
   // the author edits it; an edit made after someone else's change is held back
   await logIn(page, hub.url, bob, issuePath)
-  await card(page, "Frist").getByRole("button", { name: "Edit" }).click()
+  await choose(page, card(page, "Frist"), "Edit")
   const editor = page.getByRole("form", { name: "Edit comment" })
   await editor.getByLabel("Comment").fill("First!")
   await editor.getByRole("button", { name: "Save comment" }).click()
@@ -194,7 +239,7 @@ test("authors edit and remove their own comments, the repository's owner moderat
   await expect(card(page, "First!")).toBeVisible()
   expect(await tuiThreadPage(backend, "/alice:tracker", issue)).toContain("First!")
 
-  await card(page, "First!").getByRole("button", { name: "Edit" }).click()
+  await choose(page, card(page, "First!"), "Edit")
   await editor.getByLabel("Comment").fill("First! (mine)")
   await editCommentForm(owner, backend, "/alice:tracker", issue, bobs, "First! (moderated)")
   await editor.getByRole("button", { name: "Save comment" }).click()
@@ -213,17 +258,17 @@ test("authors edit and remove their own comments, the repository's owner moderat
   // the repository's owner removes it, after confirming; it stays in the thread as removed
   await logIn(page, hub.url, alice, issuePath)
   const writes = countWrites(page, /\/comments\/[0-9a-f]{32}$/)
-  await card(page, "First! (mine)").getByRole("button", { name: "Remove" }).click()
+  await choose(page, card(page, "First! (mine)"), "Remove")
   const confirm = page.getByRole("alertdialog", { name: "Remove this comment?" })
   await confirm.getByRole("button", { name: "Cancel" }).click()
   expect(writes).toEqual([])
-  await card(page, "First! (mine)").getByRole("button", { name: "Remove" }).click()
+  await choose(page, card(page, "First! (mine)"), "Remove")
   await confirm.getByRole("button", { name: "Remove comment" }).dblclick()
   await expect(comments(page).getByRole("article").first()).toContainText("(removed)")
   expect(writes).toEqual([`DELETE /api/v1/repos/alice/tracker/issues/${issue}/comments/${bobs}`])
   await page.reload()
   await expect(comments(page).getByRole("article").first()).toContainText("(removed)")
-  await expect(comments(page).getByRole("article").first().getByRole("button", { name: "Edit" })).toHaveCount(0)
+  await expect(comments(page).getByRole("article").first().getByRole("button", { name: "Comment actions" })).toHaveCount(0)
   const tui = await tuiThreadPage(backend, "/alice:tracker", issue)
   expect(tui).toContain("(removed)")
   expect(tui).not.toContain("First! (mine)")
@@ -265,7 +310,7 @@ test("a post whose answer is lost is looked up by its id; a retry never posts tw
     await route.fetch()
     await route.abort("connectionreset")
   })
-  await card(page, "Never sent").getByRole("button", { name: "Edit" }).click()
+  await choose(page, card(page, "Never sent"), "Edit")
   await page.getByRole("form", { name: "Edit comment" }).getByLabel("Comment").fill("Sent after all")
   await page.getByRole("form", { name: "Edit comment" }).getByRole("button", { name: "Save comment" }).click()
   await expect(card(page, "Sent after all")).toBeVisible()
@@ -285,16 +330,16 @@ test("local mode comments, replies, edits and removes without logging in", async
   await page.getByRole("form", { name: "Reply" }).getByLabel("Reply").fill("From Hub")
   await page.getByRole("form", { name: "Reply" }).getByRole("button", { name: "Post reply" }).click()
   await expect(card(page, "From Hub")).toBeFocused()
-  await expect(card(page, "From Hub").getByRole("link", { name: "replying to e2e@example.test" })).toBeVisible()
+  await expect(cardOf(page, "From the TUI").getByRole("region", { name: "1 reply" }).getByRole("article")).toHaveText([/From Hub/])
   expect(await tuiCommentPage(backend, "", issue, fromTui)).toContain("From Hub")
 
-  await card(page, "From the TUI").getByRole("button", { name: "Edit" }).click()
+  await choose(page, card(page, "From the TUI"), "Edit")
   await page.getByRole("form", { name: "Edit comment" }).getByLabel("Comment").fill("From the TUI, edited in Hub")
   await page.getByRole("form", { name: "Edit comment" }).getByRole("button", { name: "Save comment" }).click()
   // the card shows the editor's text before the save lands; the editor closes once Haxy has answered
   await expect(page.getByRole("form", { name: "Edit comment" })).toHaveCount(0)
   await expect(card(page, "edited in Hub")).toBeVisible()
-  await card(page, "From Hub").getByRole("button", { name: "Remove" }).click()
+  await choose(page, card(page, "From Hub"), "Remove")
   await page.getByRole("alertdialog", { name: "Remove this comment?" }).getByRole("button", { name: "Remove comment" }).click()
   await page.reload()
   await expect(comments(page).getByRole("article")).toHaveText([/edited in Hub/, /\(removed\)/])
@@ -312,7 +357,7 @@ test("an edit made after another tab switched accounts says who is signed in now
   await postComment(author, backend, "/alice:tracker", issue, "Mine to edit")
   const issuePath = `/repos/alice/tracker/issues/${issue}`
   await logIn(page, hub.url, bob, issuePath)
-  await card(page, "Mine to edit").getByRole("button", { name: "Edit" }).click()
+  await choose(page, card(page, "Mine to edit"), "Edit")
   const editor = page.getByRole("form", { name: "Edit comment" })
   await editor.getByLabel("Comment").fill("Edited by whoever is signed in")
 
@@ -350,10 +395,10 @@ test("edits and removals on two comments that overlap both show, without a refre
     if (held.length === 2) release()
     await bothSent
   })
-  await card(page, "Keep me").getByRole("button", { name: "Edit" }).click()
+  await choose(page, card(page, "Keep me"), "Edit")
   await page.getByRole("form", { name: "Edit comment" }).getByLabel("Comment").fill("Kept and edited")
   await page.getByRole("form", { name: "Edit comment" }).getByRole("button", { name: "Save comment" }).click()
-  await card(page, "Remove me").getByRole("button", { name: "Remove" }).click()
+  await choose(page, card(page, "Remove me"), "Remove")
   await page.getByRole("alertdialog", { name: "Remove this comment?" }).getByRole("button", { name: "Remove comment" }).click()
   await bothSent
   // the removal's answer first, then the edit's
@@ -429,7 +474,7 @@ test("an edit that lands after the comments were read again still shows, without
     await editHeld
     await route.continue()
   })
-  await card(page, "Before the edit").getByRole("button", { name: "Edit" }).click()
+  await choose(page, card(page, "Before the edit"), "Edit")
   await page.getByRole("form", { name: "Edit comment" }).getByLabel("Comment").fill("After the edit")
   await page.getByRole("form", { name: "Edit comment" }).getByRole("button", { name: "Save comment" }).click()
   await editArrived
@@ -457,11 +502,11 @@ test("a refresh that fails after a write keeps the comments and every open draft
   const internal = { status: 500, contentType: "application/json", body: JSON.stringify({ error: { code: "internal", message: "Haxy failed." } }) }
 
   // the thread page: an edit and a new comment are being written when another comment is removed
-  await card(page, "Being edited").getByRole("button", { name: "Edit" }).click()
+  await choose(page, card(page, "Being edited"), "Edit")
   await page.getByRole("form", { name: "Edit comment" }).getByLabel("Comment").fill("Unsaved edit")
   await page.getByRole("form", { name: "New comment" }).getByLabel("New comment").fill("Unsent comment")
   await onFirst(page, new RegExp(`/issues/${issue}/comments(\\?.*)?$`), "GET", (route) => route.fulfill(internal))
-  await card(page, "To be removed").getByRole("button", { name: "Remove" }).click()
+  await choose(page, card(page, "To be removed"), "Remove")
   await page.getByRole("alertdialog", { name: "Remove this comment?" }).getByRole("button", { name: "Remove comment" }).click()
   const refresh = page.getByRole("alert").filter({ hasText: "Couldn't refresh the comments" })
   await expect(refresh).toBeVisible()
@@ -478,7 +523,7 @@ test("a refresh that fails after a write keeps the comments and every open draft
   await card(page, "Being edited").getByRole("button", { name: "Reply" }).click()
   await page.getByRole("form", { name: "Reply" }).getByLabel("Reply").fill("Unsent reply")
   await onFirst(page, new RegExp(`/comments/${first}(\\?.*)?$`), "GET", (route) => route.fulfill(internal))
-  await page.locator(`#comment-${reply}`).getByRole("button", { name: "Remove" }).click()
+  await choose(page, page.locator(`#comment-${reply}`), "Remove")
   await page.getByRole("alertdialog", { name: "Remove this comment?" }).getByRole("button", { name: "Remove comment" }).click()
   const pageRefresh = page.getByRole("alert").filter({ hasText: "Couldn't refresh this comment" })
   await expect(pageRefresh).toBeVisible()

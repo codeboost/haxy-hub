@@ -62,7 +62,8 @@ test("a failed background read of the issue keeps the page and its drafts, and s
   await postComment(owner, backend, "/alice:tracker", issue, "Being edited")
   await logIn(page, hub.url, alice, `/repos/alice/tracker/issues/${issue}`)
 
-  await card(page, "Being edited").getByRole("button", { name: "Edit" }).click()
+  await card(page, "Being edited").getByRole("button", { name: "Comment actions" }).click()
+  await page.getByRole("menu").getByRole("menuitem", { name: "Edit" }).click()
   await page.getByRole("form", { name: "Edit comment" }).getByLabel("Comment").fill("Unsaved edit")
 
   // posting a comment reads the issue again; that read fails

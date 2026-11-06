@@ -251,19 +251,21 @@ test("a reader comments on a discussion and replies; both persist after a refres
   await reply.getByLabel("Reply").fill("Agreed.")
   await reply.getByRole("button", { name: "Post reply" }).click()
   await expect(card("Agreed.")).toBeFocused()
-  await expect(card("Agreed.").getByRole("link", { name: "replying to alice" })).toBeVisible()
+  const comments = page.getByRole("list", { name: "Comments" })
+  await expect(comments.getByRole("listitem").filter({ has: card("What should come first?") }).getByRole("region", { name: "1 reply" }).getByRole("article")).toHaveText([/Agreed\./])
 
   await page.reload()
-  await expect(page.getByRole("list", { name: "Comments" }).getByRole("article")).toHaveCount(3)
+  await expect(comments.getByRole("article")).toHaveCount(3)
   const tui = await tuiDiscussionPage(backend, "/alice:forum", id)
   expect(tui).toContain("Plugins,")
   expect(tui).toContain("Agreed.")
 
-  // the reply context opens the comment's own page, which leads back into the discussion
-  await card("Agreed.").getByRole("link", { name: "replying to alice" }).click()
+  // the comment's permalink opens its own page, where its reply says whom it answers
+  await card("What should come first?").getByRole("link", { name: "Permalink" }).click()
   await expect(page).toHaveURL(`${hub.url}${path}/comments/${first}`)
   await expect(page.getByRole("heading", { level: 2, name: "Comment on Roadmap" })).toBeVisible()
   await expect(page.getByRole("list", { name: "Replies" }).getByRole("article")).toHaveText([/Agreed\./])
+  await expect(page.getByRole("list", { name: "Replies" }).getByRole("link", { name: "replying to alice" })).toBeVisible()
   await page.reload()
   await expect(page.getByRole("heading", { level: 2, name: "Comment on Roadmap" })).toBeVisible()
   await owner.dispose()

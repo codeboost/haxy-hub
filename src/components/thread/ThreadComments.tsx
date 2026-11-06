@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState, type ReactNode } from "react"
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router"
 import { RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,7 @@ import { useResource, type Resource } from "@/lib/resource"
 import { loginPath } from "@/lib/session"
 import { nextReadOrder } from "@/lib/notifications"
 import { commentAnchor, listComments, threadCommentsRoute, type CommentPermalink, type CommentWindow, type ThreadComment } from "@/lib/comments"
+import { groupReplies, repliesElsewhere } from "@/lib/commentGroups"
 import { linkClass, type ThreadConfig } from "./config"
 import { CommentCard } from "./CommentCard"
 import { CommentComposer } from "./CommentForms"
@@ -110,7 +111,22 @@ export function useWrittenComments(): WrittenComments {
   }
 }
 
-/** A comment window as a list of cards, each shown as this page's latest write on it left it (see `WrittenComments`). */
+/** The replies held in a comment's card, under how many there are. */
+function CommentReplies({ count, children }: { count: number; children: ReactNode }) {
+  const id = useId()
+  return (
+    <section aria-labelledby={id} className="border-t bg-secondary/40">
+      <p id={id} className="px-4 pt-3 text-xs font-medium text-muted-foreground sm:px-5">{count} {count === 1 ? "reply" : "replies"}</p>
+      <ol className="divide-y">{children}</ol>
+    </section>
+  )
+}
+
+/**
+ * A comment window as a list of cards, each a comment whose parent isn't in
+ * the window with the replies beneath it (`groupReplies`), each comment shown
+ * as this page's latest write on it left it (see `WrittenComments`).
+ */
 export function CommentItems<Status extends string>({ repo, config, thread, window, readToken, written, label, focused, onPosted }: {
   repo: RepoLocator
   config: ThreadConfig<Status>
@@ -124,12 +140,22 @@ export function CommentItems<Status extends string>({ repo, config, thread, wind
   onPosted(posted: CommentPermalink): void
 }) {
   const { viewer } = useSession()
+  const items = window.items.map((item) => written.current(item, readToken))
+  const card = (comment: ThreadComment, placement: { nested?: boolean; showsParent?: boolean; replies?: ReactNode }) => (
+    <CommentCard repo={repo} config={config} thread={thread} comment={comment} viewer={viewer?.name ?? null} focused={focused === comment.id}
+      onPosted={onPosted} onChanged={written.record} {...placement} />
+  )
   return (
-    <ol aria-label={label} className="space-y-3">
-      {window.items.map((item) => (
-        <li key={item.id}>
-          <CommentCard repo={repo} config={config} thread={thread} comment={written.current(item, readToken)} viewer={viewer?.name ?? null} focused={focused === item.id}
-            onPosted={onPosted} onChanged={written.record} />
+    <ol aria-label={label} className="space-y-4">
+      {groupReplies(items).map(({ root, replies }) => (
+        <li key={root.id}>
+          {card(root, {
+            replies: replies.length > 0 && (
+              <CommentReplies count={replies.length}>
+                {replies.map((reply) => <li key={reply.id}>{card(reply, { nested: true, showsParent: repliesElsewhere(reply, root) })}</li>)}
+              </CommentReplies>
+            ),
+          })}
         </li>
       ))}
     </ol>

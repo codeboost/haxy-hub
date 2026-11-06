@@ -2,13 +2,14 @@ import { useState } from "react"
 import { Link, useLocation } from "react-router"
 import { DropdownMenu } from "radix-ui"
 import { ChevronDown, FolderGit2, LogIn, LogOut, Plus, UserPlus, UserRound } from "lucide-react"
+import { Avatar } from "@/components/Avatar"
 import { Button } from "@/components/ui/button"
+import { menuContentClass, menuItemClass } from "@/components/ui/menu"
 import { useConnection } from "@/app/connection"
 import { useSession } from "@/app/session"
 import { ApiError } from "@/lib/api"
 import { loginPath, type Viewer } from "@/lib/session"
 
-const menuItemClass = "flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-disabled:pointer-events-none data-disabled:opacity-50 data-highlighted:bg-accent data-highlighted:text-accent-foreground [&_svg]:size-4 [&_svg]:text-muted-foreground"
 
 function LoggedOut() {
   const location = useLocation()
@@ -26,10 +27,6 @@ function LoggedOut() {
   )
 }
 
-function Avatar({ name }: { name: string }) {
-  return <span aria-hidden className="grid size-6 place-items-center rounded-full bg-accent text-xs font-semibold text-accent-foreground uppercase">{name.slice(0, 1)}</span>
-}
-
 function UserMenu({ viewer, pending, onLogOut }: { viewer: Viewer; pending: boolean; onLogOut: () => void }) {
   return (
     <DropdownMenu.Root>
@@ -41,7 +38,7 @@ function UserMenu({ viewer, pending, onLogOut }: { viewer: Viewer; pending: bool
         </Button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content align="end" sideOffset={6} className="z-50 min-w-48 rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+        <DropdownMenu.Content align="end" sideOffset={6} className={`min-w-48 ${menuContentClass}`}>
           <DropdownMenu.Item asChild className={menuItemClass}><Link to="/account"><UserRound />Account</Link></DropdownMenu.Item>
           <DropdownMenu.Item asChild className={menuItemClass}><Link to={`/users/${encodeURIComponent(viewer.name)}`}><FolderGit2 />Your repositories</Link></DropdownMenu.Item>
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
