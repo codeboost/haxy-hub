@@ -4,7 +4,7 @@ import { LoaderCircle, Undo2 } from "lucide-react"
 import { useSession } from "@/app/session"
 import { Button } from "@/components/ui/button"
 import { FailureMessage, failureOf, type Failure } from "@/components/form"
-import { EmptyState, FailureState, LoadingState, Pager, useListParams } from "@/components/listing"
+import { EmptyState, FailureState, Pager, useListParams } from "@/components/listing"
 import { linkClass } from "@/components/thread/config"
 import { Instant, SectionUnavailable } from "@/components/thread/ThreadParts"
 import { ApiError } from "@/lib/api"
@@ -155,9 +155,7 @@ function History({ repo, viewer, transaction, cursor }: { repo: RepoLocator; vie
   const written = result !== null || notice !== null || write.unresolved !== null || choice !== null
 
   let list: ReactNode
-  if (history.kind === "loading") {
-    list = <LoadingState>Loading the undo history…</LoadingState>
-  } else if (history.kind === "failed") {
+  if (history.kind === "failed") {
     // unsupported (local mode) or not found (may not see it): Haxy says why
     if (history.error.code === "unsupported" || history.error.code === "not_found") {
       if (!written) return <SectionUnavailable>{history.error.message}</SectionUnavailable>

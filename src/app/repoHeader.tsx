@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import { createContext, useContext, useLayoutEffect, useState, type ReactNode } from "react"
 import type { RepoSection } from "@/lib/repo"
 
 export type RepoTab = { section: RepoSection; label: string; href: string | null }
@@ -29,7 +29,7 @@ export function useRepoHeader(): RepoHeaderInfo | null {
 /** Puts this repository in the app header while the calling page is mounted. */
 export function useShowRepoHeader(info: RepoHeaderInfo) {
   const { show } = useContext(RepoHeaderContext)
-  useEffect(() => {
+  useLayoutEffect(() => {
     show(info)
     return () => show(null)
   }, [info, show])

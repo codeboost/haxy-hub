@@ -1,5 +1,5 @@
 import { Link } from "react-router"
-import { FailureState, LoadingState, UnavailableState } from "@/components/listing"
+import { FailureState, UnavailableState } from "@/components/listing"
 import { useConnection } from "@/app/connection"
 import { useSession } from "@/app/session"
 import { getAccount } from "@/lib/account"
@@ -33,8 +33,6 @@ export function AccountPage() {
 function Settings() {
   const account = useResource("account", (signal) => getAccount({ signal }))
   switch (account.kind) {
-    case "loading":
-      return <LoadingState>Loading your account…</LoadingState>
     case "failed":
       return (
         <>

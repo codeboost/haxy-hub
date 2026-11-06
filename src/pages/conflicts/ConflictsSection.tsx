@@ -1,7 +1,7 @@
 import { Link } from "react-router"
 import { TriangleAlert } from "lucide-react"
 import { useSession } from "@/app/session"
-import { EmptyState, FailureState, LoadingState, Pager, useListParams } from "@/components/listing"
+import { EmptyState, FailureState, Pager, useListParams } from "@/components/listing"
 import { linkClass, type ThreadConfig } from "@/components/thread/config"
 import { AuthorName, Instant, SectionUnavailable, ThreadTabs } from "@/components/thread/ThreadParts"
 import { conflictRoute, conflictsRoute, listConflicts, type ConflictKind, type ConflictView } from "@/lib/conflicts"
@@ -38,7 +38,6 @@ function ConflictsList<Status extends string>({ repo, config, kind, unavailable 
       <p className="mt-4 max-w-3xl text-sm text-muted-foreground">
         {config.plural} whose details were edited differently on two hosts, which Haxy merged without choosing between them. Each keeps this host's values until someone resolves it.
       </p>
-      {conflicts.kind === "loading" && <LoadingState>Loading conflicts…</LoadingState>}
       {conflicts.kind === "failed" && (
         conflicts.error.code === "validation" && cursor
           ? <EmptyState title="This page is no longer available"><Link to={firstPage} className={linkClass}>Back to the first page</Link></EmptyState>

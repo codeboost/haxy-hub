@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router"
 import { RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { FailureState, LoadingState } from "@/components/listing"
+import { FailureState } from "@/components/listing"
 import type { ApiError } from "@/lib/api"
 import { useSession } from "@/app/session"
 import type { RepoLocator } from "@/lib/repo"
@@ -46,7 +46,7 @@ export function useFocusedComment(loaded: unknown): string | null {
  * cards and every open draft stay mounted; the failure comes separately, in
  * `refreshFailed`.
  */
-export type Kept<T> = { kind: "loading" } | { kind: "failed"; error: ApiError } | { kind: "loaded"; data: T; refreshFailed: ApiError | null }
+export type Kept<T> = { kind: "failed"; error: ApiError } | { kind: "loaded"; data: T; refreshFailed: ApiError | null }
 
 export function useKept<T>(resource: Resource<T>, key: string): Kept<T> {
   const kept = useRef<{ key: string; data: T } | null>(null)
@@ -178,9 +178,6 @@ export function ThreadComments<Status extends string>({ repo, config, thread, on
 
   let body
   switch (comments.kind) {
-    case "loading":
-      body = <LoadingState>Loading comments…</LoadingState>
-      break
     case "failed":
       body = <FailureState title="Couldn't load the comments" error={comments.error} onRetry={read.reload} />
       break

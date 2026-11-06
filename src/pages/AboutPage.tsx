@@ -1,13 +1,11 @@
 import { Markdown } from "@/components/Markdown"
-import { FailureState, LoadingState, UnavailableState } from "@/components/listing"
+import { FailureState, UnavailableState } from "@/components/listing"
 import { getAbout } from "@/lib/discovery"
 import { useResource } from "@/lib/resource"
 
 export function AboutPage() {
   const about = useResource("about", (signal) => getAbout({ signal }))
   switch (about.kind) {
-    case "loading":
-      return <LoadingState>Loading the about page…</LoadingState>
     case "failed":
       if (about.error.code === "unsupported") {
         return <UnavailableState title="About">The forge's about page belongs to a multi-user Haxy server; it isn't available in local mode.</UnavailableState>

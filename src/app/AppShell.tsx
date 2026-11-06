@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { Link, NavLink, Outlet } from "react-router"
 import { GitBranch, LoaderCircle, RefreshCw, Unplug } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -8,6 +9,8 @@ import { NotificationsLink } from "@/app/NotificationsLink"
 import type { BackendCheck } from "@/lib/connection"
 import { RepoHeaderProvider, useRepoHeader } from "@/app/repoHeader"
 import { RepoBreadcrumb, RepoTabs } from "@/app/RepoBar"
+import { ReadsProgress } from "@/app/ReadsProgress"
+import { LoadingState } from "@/components/listing"
 
 function ConnectionProblem({ check }: { check: Exclude<BackendCheck, { kind: "connected" }> }) {
   const { checking, retry } = useConnection()
@@ -103,6 +106,7 @@ function Shell() {
   return (
     <RepoHeaderProvider>
       <div className="min-h-screen">
+        <ReadsProgress />
         <Header />
         <main className="mx-auto max-w-5xl px-4 py-8 sm:px-10">
           {check === null ? (
@@ -111,8 +115,11 @@ function Shell() {
             <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="animate-spin" size={16} /> Loading…</p>
           ) : (
             // Keyed by viewer: logging out or switching accounts discards every
-            // page's viewer-specific state.
-            <Outlet key={viewerKey} />
+            // page's viewer-specific state. Navigations keep the current page
+            // until the next one has read what it shows.
+            <Suspense fallback={<LoadingState>Loading…</LoadingState>}>
+              <Outlet key={viewerKey} />
+            </Suspense>
           )}
         </main>
       </div>

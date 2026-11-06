@@ -1,6 +1,6 @@
 import { Link } from "react-router"
 import { GitBranch, Tag } from "lucide-react"
-import { EmptyState, FailureState, LoadingState, Pager, SearchForm, listQuery, useListParams } from "@/components/listing"
+import { EmptyState, FailureState, Pager, SearchForm, listQuery, useListParams } from "@/components/listing"
 import { listRefs, refsRoute, repoRoute, type RefKind, type RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 
@@ -37,7 +37,6 @@ export function RepoRefs({ repo, kind }: { repo: RepoLocator; kind: RefKind }) {
       </nav>
       {/* ref names may start with whitespace git allows, and the prefix is matched exactly */}
       <SearchForm key={`${kind} ${search}`} label={`Search ${noun.plural}`} search={search} exact />
-      {refs.kind === "loading" && <LoadingState>Loading {noun.plural}…</LoadingState>}
       {refs.kind === "failed" && <FailureState title={`Couldn't load ${noun.plural}`} error={refs.error} onRetry={refs.reload} />}
       {refs.kind === "loaded" && (
         refs.data.items.length === 0 ? (

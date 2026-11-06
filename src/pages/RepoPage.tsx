@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import { Link, useLocation, useParams, type RouteObject } from "react-router"
 import { CommandList } from "@/components/GitCommands"
-import { EmptyState, FailureState, LoadingState, UnavailableState } from "@/components/listing"
+import { EmptyState, FailureState, UnavailableState } from "@/components/listing"
 import { RepoFiles } from "@/components/RepoFiles"
 import { RepoRefs } from "@/components/RepoRefs"
 import { getRepo, refsRoute, repoRoute, routePath, routeRef, type RefId, type RefKind, type RepoLocator, type RepoOverview, type RepoSection } from "@/lib/repo"
@@ -97,8 +97,6 @@ export function RepoPage({ local = false, section = "files", refs }: { local?: b
   const overview = useResource(`repo ${key}`, (signal) => getRepo(repo, { signal }), location.pathname + location.search + location.key)
 
   switch (overview.kind) {
-    case "loading":
-      return <LoadingState>Loading the repository…</LoadingState>
     case "failed":
       if (overview.error.code === "not_found") return <NotFound repo={repo} />
       if (overview.error.code === "unsupported") {

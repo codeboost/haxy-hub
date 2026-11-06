@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { Suspense, useDeferredValue, useState } from "react"
 import { Link } from "react-router"
 import { Popover } from "radix-ui"
 import { Check, ChevronDown, GitBranch, GitCommitHorizontal, GitPullRequest, Tag } from "lucide-react"
@@ -8,6 +8,8 @@ import { useResource } from "@/lib/resource"
 
 const pickerPageSize = 20
 const shortIdLength = 7
+
+const noteClass = "px-3 py-2 text-sm text-muted-foreground"
 
 const kindLabels: Record<ReadRef["kind"], string> = { branch: "Branch", tag: "Tag", commit: "Commit", revision: "Patch revision" }
 const kindIcons = { branch: GitBranch, tag: Tag, commit: GitCommitHorizontal, revision: GitPullRequest } as const
@@ -41,10 +43,8 @@ function RefLabel({ read }: { read: ReadRef }) {
 
 function RefOptions({ repo, path, read, kind, search, onPick }: { repo: RepoLocator; path: EncodedPath; read: ReadRef; kind: RefKind; search: string; onPick: () => void }) {
   const refs = useResource(`picker ${repoKey(repo)} ${kind} ${search}`, (signal) => listRefs(repo, kind, { search, page_size: pickerPageSize }, { signal }))
-  const note = "px-3 py-2 text-sm text-muted-foreground"
-  if (refs.kind === "loading") return <p className={note}>Loading {kindNouns[kind].plural}…</p>
   if (refs.kind === "failed") return <p role="alert" className="px-3 py-2 text-sm text-destructive">{refs.error.message}</p>
-  if (refs.data.items.length === 0) return <p className={note}>{search ? `No ${kindNouns[kind].plural} start with “${search}”.` : `No ${kindNouns[kind].plural} yet.`}</p>
+  if (refs.data.items.length === 0) return <p className={noteClass}>{search ? `No ${kindNouns[kind].plural} start with “${search}”.` : `No ${kindNouns[kind].plural} yet.`}</p>
   return (
     <ul aria-label={kindNouns[kind].title} className="max-h-64 overflow-y-auto py-1">
       {refs.data.items.map((item) => (
@@ -76,6 +76,8 @@ export function RefPicker({ repo, path, read }: { repo: RepoLocator; path: Encod
   const [open, setOpen] = useState(false)
   const [kind, setKind] = useState<RefKind>(read.kind === "tag" ? "tag" : "branch")
   const [search, setSearch] = useState("")
+  const shownKind = useDeferredValue(kind)
+  const shownSearch = useDeferredValue(search)
   const close = () => setOpen(false)
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -92,7 +94,9 @@ export function RefPicker({ repo, path, read }: { repo: RepoLocator; path: Encod
             <input autoFocus value={search} onChange={(event) => setSearch(event.target.value)} aria-label={`Find a ${kind}`} placeholder={`Find a ${kind}…`} className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
           </div>
           <KindTabs kind={kind} onChange={setKind} />
-          <RefOptions repo={repo} path={path} read={read} kind={kind} search={search} onPick={close} />
+          <Suspense fallback={<p className={noteClass}>Loading {kindNouns[kind].plural}…</p>}>
+            <RefOptions repo={repo} path={path} read={read} kind={shownKind} search={shownSearch} onPick={close} />
+          </Suspense>
           <div className="border-t px-3 py-2 text-sm">
             <Link to={refsRoute(repo, kind)} onClick={close} className="text-primary underline-offset-4 hover:underline">View all {kindNouns[kind].plural}</Link>
           </div>

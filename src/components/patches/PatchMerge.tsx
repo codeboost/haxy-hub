@@ -10,6 +10,7 @@ import { readStart, type ThreadReads } from "@/components/assignees/useThreadAns
 import type { RepoLocator } from "@/lib/repo"
 import { useGateReport, type WriteGate } from "@/components/thread/writeGate"
 import { threadsRoute, type WriteViewer } from "@/lib/threads"
+import { useStillHere } from "@/lib/stillHere"
 
 const methodLabels: Record<MergeMethod, string> = { source: "Merge", squash: "Squash and merge" }
 
@@ -150,6 +151,7 @@ function useMerge({ repo, patch, viewer, onChanged, reads, gate }: Props) {
  * but checking again).
  */
 function useReread({ repo, patch, reads }: Pick<Props, "repo" | "patch" | "reads">, mounted: RefObject<boolean>) {
+  const here = useStillHere()
   const navigate = useNavigate()
   const [failure, setFailure] = useState<Failure | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -168,7 +170,7 @@ function useReread({ repo, patch, reads }: Pick<Props, "repo" | "patch" | "reads
     } catch (error) {
       if (!mounted.current) return
       // removed meanwhile: settled, as the shared thread pieces settle it
-      if (error instanceof ApiError && error.code === "not_found") return void navigate(threadsRoute(repo, "patches", patchStatuses, patch.status))
+      if (error instanceof ApiError && error.code === "not_found") return void (here.current && navigate(threadsRoute(repo, "patches", patchStatuses, patch.status)))
       setUnsettled(true)
       setFailure(failed ?? readFailure(error))
     }

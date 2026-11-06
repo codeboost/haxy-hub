@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router"
-import { EmptyState, FailureState, LoadingState, Pager } from "@/components/listing"
+import { EmptyState, FailureState, Pager } from "@/components/listing"
 import { commitRoute, commitsRoute } from "@/lib/commits"
 import { commitDiffRoute, diffParams, displayPath, entryFileRoute, getCommitDiff, type CommitDiff, type DiffEntry, type DiffLine } from "@/lib/diff"
 import { repoRoute, type EncodedPath, type RefId, type RepoLocator } from "@/lib/repo"
@@ -28,7 +28,6 @@ export function CommitDiffView({ repo, id, refId }: { repo: RepoLocator; id: str
     <article aria-labelledby="diff-heading" className="mt-6 min-w-0">
       <p className="text-sm"><Link to={commitRoute(repo, id, refId)} className={linkClass}>Back to the commit</Link></p>
       <h2 id="diff-heading" className="mt-3 text-xl font-semibold">Changes in commit <code className="font-mono">{id.slice(0, 10)}</code></h2>
-      {diff.kind === "loading" && <LoadingState>Loading the changes…</LoadingState>}
       {diff.kind === "failed" && (
         diff.error.code === "not_found" ? (
           <EmptyState title="No such commit">{diff.error.message} <Link to={commitsRoute(repo, refId)} className={linkClass}>Open the history</Link></EmptyState>

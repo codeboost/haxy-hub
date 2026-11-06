@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router"
-import { FailureState, LoadingState } from "@/components/listing"
+import { FailureState } from "@/components/listing"
 import { useSession } from "@/app/session"
 import type { RepoLocator } from "@/lib/repo"
 import { getSettings, type AdminRepo } from "@/lib/repoAdmin"
@@ -45,7 +45,6 @@ function Administration({ repo, page }: { repo: AdminRepo; page: AdminPage }) {
   const location = useLocation()
   const settings = useResource(`repo settings ${repo.owner}/${repo.name} ${viewer?.name ?? ""}`, (signal) => getSettings(repo, { signal }), location.key)
 
-  if (settings.kind === "loading") return <LoadingState>Loading the settings…</LoadingState>
   if (settings.kind === "failed") {
     switch (settings.error.code) {
       case "unauthenticated":

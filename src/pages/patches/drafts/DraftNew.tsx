@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router"
 import { ArrowLeft, GitFork, Plus, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FormMessage, failureOf, type Failure } from "@/components/form"
-import { FailureState, LoadingState } from "@/components/listing"
+import { FailureState } from "@/components/listing"
 import { useBranchChoices } from "@/components/thread/BranchFields"
 import { linkClass } from "@/components/thread/config"
 import { SectionUnavailable } from "@/components/thread/ThreadParts"
@@ -38,7 +38,6 @@ export function DraftNewView({ repo, unavailable }: { repo: RepoLocator; unavail
       <p className="mt-2 text-sm text-muted-foreground">Haxy copies the repository into a fork of your own, where you push your commits. The patch stays your draft until you publish it.</p>
     </>
   )
-  if (drafts.kind === "loading") return <LoadingState>Loading…</LoadingState>
   if (drafts.kind === "failed") {
     if (drafts.error.code === "not_found" && unavailable) return <SectionUnavailable>{unavailable}</SectionUnavailable>
     if (drafts.error.code === "unauthenticated") return <section className="mt-6">{header}<p className="mt-3 text-muted-foreground"><Link to={loginPath(location.pathname + location.search)} className={linkClass}>Log in</Link> to start a patch.</p></section>
@@ -47,7 +46,6 @@ export function DraftNewView({ repo, unavailable }: { repo: RepoLocator; unavail
   const { create } = drafts.data.actions
   let body: ReactNode
   if (!create.available) body = <p className="mt-3 text-muted-foreground">{create.reason.message}</p>
-  else if (branches?.kind === "loading") body = <LoadingState>Loading the branches…</LoadingState>
   else if (branches?.kind === "failed") body = <FailureState title="Couldn't load the branches" error={branches.error} onRetry={branches.reload} />
   else if (branches?.kind === "loaded") body = <StartForm key={viewerKey} repo={repo} viewer={viewer?.name ?? null} branches={branches.data} />
   return <section className="mt-6">{header}{body}</section>

@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router"
 import { CircleDot, MessageSquare } from "lucide-react"
 import { useConnection } from "@/app/connection"
 import { useSession } from "@/app/session"
-import { EmptyState, FailureState, LoadingState, Pager, UnavailableState, useListParams } from "@/components/listing"
+import { EmptyState, FailureState, Pager, UnavailableState, useListParams } from "@/components/listing"
 import { countText, linkClass } from "@/components/thread/config"
 import { Instant } from "@/components/thread/ThreadParts"
 import { listNotifications, notificationRoute, notificationsRoute, onNotificationsChanged, type NotificationItem } from "@/lib/notifications"
@@ -75,7 +75,6 @@ function Inbox() {
         {inbox.kind === "loaded" && inbox.data.page.count.kind !== "unknown" && <span className="ml-3 text-base font-normal text-muted-foreground">{countText(inbox.data.page.count)}</span>}
       </h1>
       {inbox.kind === "loaded" && <p className="mt-2 text-muted-foreground">{inbox.data.unread_count === 0 ? "Everything is read." : `${inbox.data.unread_count} unread.`}</p>}
-      {inbox.kind === "loading" && <LoadingState>Loading your notifications…</LoadingState>}
       {inbox.kind === "failed" && (
         inbox.error.code === "validation" && cursor
           ? <EmptyState title="This page is no longer available"><Link to={notificationsRoute()} className={linkClass}>Back to the first page</Link></EmptyState>

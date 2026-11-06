@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router"
 import { LoaderCircle, Shield, ShieldOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FailureMessage, FormMessage, TextField, failureOf, type Failure } from "@/components/form"
-import { FailureState, LoadingState } from "@/components/listing"
+import { FailureState } from "@/components/listing"
 import { branchId, getBranches, protectBranch, setDefaultBranch, unprotectBranch, type AdminRepo, type BranchName, type RepoBranches } from "@/lib/repoAdmin"
 import type { Page } from "@/lib/api"
 import { listRefs, type RefId, type RefItem } from "@/lib/repo"
@@ -49,7 +49,6 @@ export function BranchesSettings({ repo, viewer }: { repo: AdminRepo; viewer: st
     <section aria-labelledby="branches-heading" className="max-w-2xl">
       <h2 id="branches-heading" className="text-xl font-semibold">Branches</h2>
       {notice && <p role="status" className="mt-4 rounded-md border px-3 py-2 text-sm text-muted-foreground">{notice}</p>}
-      {branches.kind === "loading" && <LoadingState>Loading the branches…</LoadingState>}
       {branches.kind === "failed" && <FailureState title="Couldn't load the branches" error={branches.error} onRetry={branches.reload} />}
       {branches.kind === "loaded" && (
         <>

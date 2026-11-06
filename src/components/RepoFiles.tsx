@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { Link, useLocation, useSearchParams } from "react-router"
 import { File, Folder, CornerLeftUp, History } from "lucide-react"
-import { EmptyState, FailureState, LoadingState, Pager } from "@/components/listing"
+import { EmptyState, FailureState, Pager } from "@/components/listing"
 import { Markdown } from "@/components/Markdown"
 import type { LinkTarget } from "@/lib/markdown"
 import { RepoToolbar } from "@/components/RepoToolbar"
@@ -120,7 +120,6 @@ function Readme({ repo, refId, path, name }: { repo: RepoLocator; refId: RefId |
     <section aria-labelledby={headingId} className="mt-8 rounded-xl border bg-card">
       <h2 id={headingId} className="border-b px-4 py-2 font-mono text-sm font-semibold">{name}</h2>
       <div className="p-4 sm:p-6">
-        {file.kind === "loading" && <LoadingState>Loading {name}…</LoadingState>}
         {file.kind === "failed" && <FailureState title={`Couldn't load ${name}`} error={file.error} onRetry={file.reload} />}
         {file.kind === "loaded" && file.data.kind === "file" && <FileBody repo={repo} refId={refId} file={file.data} />}
       </div>
@@ -221,7 +220,6 @@ export function RepoFiles({ repo, refId, name, path, clone }: { repo: RepoLocato
     <>
       {read && <RepoToolbar repo={repo} path={path} refId={refId} read={read} clone={clone} />}
       {!(files.kind === "loaded" && files.data.kind === "dir") && pathBar(false)}
-      {files.kind === "loading" && <LoadingState>Loading files…</LoadingState>}
       {files.kind === "failed" && (
         files.error.code === "not_found" ? (
           refId === null ? (

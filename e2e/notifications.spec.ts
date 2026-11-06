@@ -501,7 +501,7 @@ test("the page reads the thread only after the notification state, so it never a
     await route.fallback()
   })
   await page.goto(`${hub.url}/repos/alice/tracker/issues/${issue}`)
-  await expect(page.getByRole("status").filter({ hasText: "Loading the issue" })).toBeVisible()
+  await expect(page.getByRole("status").filter({ hasText: "Loading" })).toBeVisible()
   await assignIssue(other, backend, "/alice:tracker", issue, "alice")
   held.open()
 

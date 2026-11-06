@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router"
-import { EmptyState, FailureState, LoadingState, Pager } from "@/components/listing"
+import { EmptyState, FailureState, Pager } from "@/components/listing"
 import { linkClass } from "@/components/thread/config"
 import { commitRoute } from "@/lib/commits"
 import { diffParams, displayPath } from "@/lib/diff"
@@ -37,7 +37,6 @@ export function RevisionDiffView({ repo, revision }: { repo: RepoLocator; revisi
           : <Link to={threadsRoute(repo, "patches", patchThreads.statuses, "open")} className={linkClass}>All patches</Link>}
       </p>
       <h2 id="diff-heading" className="mt-3 text-xl font-semibold">Changes in revision <code className="font-mono">{revision.slice(0, 10)}</code></h2>
-      {diff.kind === "loading" && <LoadingState>Loading the changes…</LoadingState>}
       {diff.kind === "failed" && (
         diff.error.code === "not_found" ? (
           <EmptyState title="No such revision">{diff.error.message}</EmptyState>

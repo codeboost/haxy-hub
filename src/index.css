@@ -56,3 +56,8 @@
   body { @apply m-0 min-w-80 bg-background font-sans text-foreground antialiased; }
   button:not(:disabled) { cursor: pointer; }
 }
+
+@keyframes reads-progress {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}

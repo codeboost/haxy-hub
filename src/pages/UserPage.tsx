@@ -1,6 +1,6 @@
 import { Link, useParams } from "react-router"
 import { Lock } from "lucide-react"
-import { EmptyState, FailureState, LoadingState, Pager, SearchForm, UnavailableState, listQuery, useListParams } from "@/components/listing"
+import { EmptyState, FailureState, Pager, SearchForm, UnavailableState, listQuery, useListParams } from "@/components/listing"
 import { getUser, listUserRepos, type RepoSummary } from "@/lib/discovery"
 import { repoRoute } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
@@ -26,7 +26,6 @@ function Repos({ name }: { name: string }) {
     <section aria-labelledby="repos-heading" className="mt-8">
       <h2 id="repos-heading" className="mb-4 text-xl font-semibold">Repositories</h2>
       <SearchForm key={search} label="Search repositories" search={search} />
-      {repos.kind === "loading" && <LoadingState>Loading repositories…</LoadingState>}
       {repos.kind === "failed" && <FailureState title="Couldn't load repositories" error={repos.error} onRetry={repos.reload} />}
       {repos.kind === "loaded" && (
         repos.data.items.length === 0 ? (
@@ -49,8 +48,6 @@ export function UserPage() {
   const name = useParams().name ?? ""
   const user = useResource(`user ${name}`, (signal) => getUser(name, { signal }))
   switch (user.kind) {
-    case "loading":
-      return <LoadingState>Loading {name}…</LoadingState>
     case "failed":
       if (user.error.code === "unsupported") {
         return <UnavailableState title={name}>Local mode serves a single repository without accounts, so there are no user pages.</UnavailableState>

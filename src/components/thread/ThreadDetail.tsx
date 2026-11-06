@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react"
 import { Link, useLocation } from "react-router"
 import { ArrowLeft, MessageSquare } from "lucide-react"
-import { FailureState, LoadingState } from "@/components/listing"
+import { FailureState } from "@/components/listing"
 import { Markdown } from "@/components/Markdown"
 import { linkTarget } from "@/lib/markdown"
 import type { RepoLocator } from "@/lib/repo"
@@ -100,8 +100,6 @@ export function ThreadDetailView<Status extends string>({ repo, config, id, unav
   // in it) and says so; only the first load may replace it with a failure
   const thread = useKept(read, resourceKey)
   switch (thread.kind) {
-    case "loading":
-      return <LoadingState>Loading the {config.noun.toLowerCase()}…</LoadingState>
     case "failed":
       if (thread.error.code === "not_found") {
         if (unavailable) return <SectionUnavailable>{unavailable}</SectionUnavailable>

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 import { Link, useLocation } from "react-router"
 import { ArrowLeft } from "lucide-react"
-import { FailureState, LoadingState } from "@/components/listing"
+import { FailureState } from "@/components/listing"
 import { Markdown } from "@/components/Markdown"
 import { linkClass } from "@/components/thread/config"
 import { RefreshFailed, useKept } from "@/components/thread/ThreadComments"
@@ -29,8 +29,6 @@ export function DraftDetailView({ repo, id, unavailable }: { repo: RepoLocator; 
   const read = useResource(resourceKey, (signal) => getDraft(repo, id, { signal }), location.key)
   const draft = useKept(read, resourceKey)
   switch (draft.kind) {
-    case "loading":
-      return <LoadingState>Loading the draft…</LoadingState>
     case "failed":
       if (draft.error.code === "not_found") {
         if (unavailable) return <SectionUnavailable>{unavailable}</SectionUnavailable>
