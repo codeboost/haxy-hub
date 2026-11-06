@@ -51,6 +51,10 @@ export default defineConfig(({ mode }) => {
     // A sync (local mode) waits on the remote's fetch and push, and answers
     // once it finished, so the proxy waits for that answer too.
     "^/api/v1/repo/sync(?:\\?|$)": backend,
+    // An attachment upload streams the file (up to Haxy's limit) as it
+    // arrives, and a download streams it back; neither is bounded by 10s on
+    // a slow link. Any thread kind's attachments, on a server or locally.
+    "^/api/v1/(?:repos/[^/?]+/[^/?]+|repo)/(?:issues|discussions|patches)/[^/?]+/attachments(?:/[^/?]+)?(?:\\?|$)": backend,
     "^/api(?:/|$)": { ...backend, proxyTimeout: 10_000 },
   }
   return {

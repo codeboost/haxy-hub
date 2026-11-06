@@ -5,6 +5,7 @@
  * own (the TUI's issues tab): Hub never parses a search or builds a filter.
  */
 import { ApiError, getJson, requestJson, type ActionAvailability, type Count, type EventId, type Page, type PageQuery, type RequestOptions, type Timestamp } from "@/lib/api"
+import type { AttachmentLimits, ThreadAttachment } from "@/lib/attachments"
 import type { MarkdownBlock } from "@/lib/markdown"
 import { repoRoute, type RepoLocator } from "@/lib/repo"
 import { asThreadDetail, asThreadList, type DiscussionDetail, type DiscussionPage } from "@/lib/discussions"
@@ -43,7 +44,7 @@ export type ThreadSummary<Status extends string> = {
 }
 
 /** What the viewer may do to one thread; Haxy checks again when it is done. */
-export type ThreadActions = Record<"edit" | "set_status" | "remove" | "assign", ActionAvailability>
+export type ThreadActions = Record<"edit" | "set_status" | "remove" | "assign" | "attach", ActionAvailability>
 
 /** What the viewer may do to a kind's list: open a thread. */
 export type ThreadListActions = Record<"create", ActionAvailability>
@@ -57,6 +58,10 @@ export type ThreadDetail<Status extends string> = ThreadSummary<Status> & {
   description: MarkdownBlock[]
   description_text: string
   revision: string
+  /** Every attachment, oldest first, as the TUI lists them. */
+  attachments: ThreadAttachment[]
+  /** What Haxy accepts in an upload. */
+  attachment_limits: AttachmentLimits
   actions: ThreadActions
 }
 

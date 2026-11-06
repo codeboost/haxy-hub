@@ -139,10 +139,10 @@ test("a read of the issue that started before Close answered doesn't undo the cl
   await actions(page).getByRole("button", { name: "Close issue" }).click()
   await expect(actions(page).getByRole("button", { name: "Reopen issue" })).toBeVisible()
 
-  // the stale read lands; the close stands
-  const landed = page.waitForResponse((response) => issueRead(issue).test(new URL(response.url()).pathname) && response.request().method() === "GET")
+  // the stale read is let go; the close's answer also read the issue again
+  // (#14), which supersedes the stale read if it hasn't landed yet. Either
+  // way, the close stands
   readHeld.open()
-  await landed
   await expect(card(page, "Posted before closing")).toBeVisible()
   await expect(actions(page).getByRole("button", { name: "Reopen issue" })).toBeVisible()
   await expect(page.getByText("Closed", { exact: true })).toBeVisible()

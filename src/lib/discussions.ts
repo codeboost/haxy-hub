@@ -31,6 +31,9 @@ export type DiscussionPage = Page<DiscussionSummary> & { actions: ThreadListActi
 
 const noSuch: ActionAvailability = { available: false, reason: { code: "unsupported", message: "Discussions have no status or assignees." } }
 
+// wired once the discussion routes serve attachments
+const noAttachments: ActionAvailability = { available: false, reason: { code: "unsupported", message: "Discussions don't take attachments here yet." } }
+
 function asThread(discussion: DiscussionSummary): ThreadSummary<DiscussionList> {
   return { ...discussion, status: "recent", assignees: [], conflicted: false }
 }
@@ -42,7 +45,7 @@ export function asThreadList(page: DiscussionPage): ThreadList<DiscussionList> {
 
 /** A discussion as the shared thread page reads one. */
 export function asThreadDetail(discussion: DiscussionDetail): ThreadDetail<DiscussionList> {
-  return { ...discussion, ...asThread(discussion), actions: { ...discussion.actions, set_status: noSuch, assign: noSuch } }
+  return { ...discussion, ...asThread(discussion), actions: { ...discussion.actions, set_status: noSuch, assign: noSuch, attach: noAttachments }, attachments: [], attachment_limits: { max_bytes: 0, max_name_bytes: 0 } }
 }
 
 /**
