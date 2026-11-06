@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent, type MouseEvent } from "react"
+import { useCallback, useRef, useState, type FormEvent, type MouseEvent } from "react"
 import { useNavigate } from "react-router"
 import { FileText, Image, LoaderCircle, Paperclip, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -96,6 +96,11 @@ export function ThreadAttachments<Status extends string>({ repo, config, thread,
   const [confirming, setConfirming] = useState<string | null>(null)
   const [failure, setFailure] = useState<Failure | null>(null)
   const [notice, setNotice] = useState<{ kind: "error" | "success"; text: string } | null>(null)
+  // a file input shown again is empty, so nothing stays chosen behind it
+  const fileInput = useCallback((element: HTMLInputElement | null) => {
+    input.current = element
+    if (element === null) setChosen(null)
+  }, [])
 
   const canAttach = thread.actions.attach.available
   if (!canAttach && thread.attachments.length === 0) return null
@@ -279,7 +284,7 @@ export function ThreadAttachments<Status extends string>({ repo, config, thread,
         <form aria-label="Attach a file" className="mt-3 max-w-md space-y-2" onSubmit={attach} noValidate>
           <fieldset disabled={write.blocked} className="disabled:opacity-60">
             <label htmlFor="attachment-file" className="text-sm font-medium">Attach a file</label>
-            <input ref={input} id="attachment-file" type="file" name="file"
+            <input ref={fileInput} id="attachment-file" type="file" name="file"
               className="mt-1.5 block w-full text-sm file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-1.5 file:text-sm"
               aria-invalid={fileError ? true : undefined} aria-describedby={fileError ? "attachment-file-hint attachment-file-error" : "attachment-file-hint"}
               onChange={(event) => choose(event.target.files?.[0] ?? null)} />

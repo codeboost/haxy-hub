@@ -59,7 +59,7 @@ export function OpeningPost<Status extends string>({ config, thread, children }:
         <header className="flex flex-wrap items-center gap-x-1.5 border-b bg-secondary/60 px-4 py-2.5 text-sm text-muted-foreground">
           <span className="font-medium text-foreground"><AuthorName author={thread.author} /></span> opened this {config.noun.toLowerCase()} on <Instant value={thread.created_at} />
         </header>
-        <div className="p-4 sm:p-5">{children}</div>
+        <div className="min-w-0 p-4 break-words sm:p-5">{children}</div>
       </section>
     </div>
   )

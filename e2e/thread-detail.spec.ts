@@ -3,6 +3,7 @@ import { alice, registerUser, type Account } from "./support/accounts"
 import { expect, test } from "./support/fixtures"
 import { createDiscussion } from "./support/discussions"
 import { createIssue } from "./support/issues"
+import { postComment } from "./support/comments"
 import { createRepo, signedIn } from "./support/repos"
 
 // A thread's own page: its title, status and actions over the description as
@@ -88,4 +89,44 @@ test("a discussion's page has no status, and says when it has no labels", async 
   await expect(page.getByRole("status", { name: "Status" })).toHaveCount(0)
   await expect(section(page, "Labels")).toContainText("None yet")
   await expect(section(page, "Assignees")).toHaveCount(0)
+})
+
+const LONG_RUN = "x".repeat(400)
+
+const overflows = (element: HTMLElement | SVGElement) => element.scrollWidth > element.clientWidth
+
+test("a long unbroken run of text wraps inside the opening post and a comment card instead of being cut off", async ({ page, launch }) => {
+  const backend = await launch.server()
+  const hub = await launch.hub(backend.port)
+  await registerUser(backend, alice)
+  await logIn(page, hub.url, alice, "/")
+  await createRepo(page.context().request, backend, { name: "tracker", access: "public" })
+  const id = await createIssue(page.context().request, backend, "/alice:tracker", { title: "Long", description: `See ${LONG_RUN}` })
+  await postComment(page.context().request, backend, "/alice:tracker", id, `Inline \`${LONG_RUN}\` here`)
+  await page.goto(`${hub.url}/repos/alice/tracker/issues/${id}`)
+
+  const post = page.getByRole("region", { name: "Description" })
+  const comment = page.getByRole("article", { name: "Comment by alice" })
+  await expect(comment).toContainText(LONG_RUN)
+  expect(await post.evaluate(overflows)).toBe(false)
+  expect(await comment.evaluate(overflows)).toBe(false)
+})
+
+test("a file chosen before the attachments are folded away is not uploaded once they are shown again", async ({ page, launch }) => {
+  const backend = await launch.server()
+  const hub = await launch.hub(backend.port)
+  await registerUser(backend, alice)
+  await logIn(page, hub.url, alice, "/")
+  await createRepo(page.context().request, backend, { name: "tracker", access: "public" })
+  const id = await createIssue(page.context().request, backend, "/alice:tracker", { title: "Crash on save" })
+  await page.goto(`${hub.url}/repos/alice/tracker/issues/${id}`)
+
+  const toggle = section(page, "Attachments").getByRole("button", { name: "Edit attachments" })
+  const form = page.getByRole("form", { name: "Attach a file" })
+  await toggle.click()
+  await form.getByLabel("Attach a file").setInputFiles({ name: "log.txt", mimeType: "text/plain", buffer: Buffer.from("log\n") })
+  await expect(form.getByRole("button", { name: "Attach file" })).toBeEnabled()
+  await toggle.click()
+  await toggle.click()
+  await expect(form.getByRole("button", { name: "Attach file" })).toBeDisabled()
 })

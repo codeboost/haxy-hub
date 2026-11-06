@@ -126,7 +126,7 @@ function CommentFrame({ anchor, nested, focused, header, body, rest, replies }: 
     return (
       <article {...anchor} className={`scroll-mt-24 px-4 py-3 outline-none sm:px-5 ${focused ? "bg-accent/50 ring-2 ring-primary/30 ring-inset" : ""}`}>
         {header}
-        <div className="mt-1.5 pl-7 text-sm">{body}{rest}</div>
+        <div className="mt-1.5 min-w-0 pl-7 text-sm break-words">{body}{rest}</div>
       </article>
     )
   }
@@ -134,7 +134,7 @@ function CommentFrame({ anchor, nested, focused, header, body, rest, replies }: 
     <div className={`overflow-hidden rounded-xl border bg-card shadow-xs ${focused ? "border-primary ring-2 ring-primary/30" : ""}`}>
       <article {...anchor} className="scroll-mt-24 p-4 outline-none sm:px-5">
         {header}
-        <div className="mt-3">{body}</div>
+        <div className="mt-3 min-w-0 break-words">{body}</div>
         {rest}
       </article>
       {replies}
