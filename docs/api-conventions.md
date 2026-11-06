@@ -965,6 +965,24 @@ with no host.
   but its text can be edited and it can be removed. Every new branch patch refuses an id any
   event already has, in the TUI and HTML forms too. Removal is Haxy's existing removal
   (user decisions, #18).
+- A patch merge sends the revision and target tip the user confirmed and is refused when
+  either moved; a method Haxy hasn't checked against the current target tip is refused,
+  not run. An ineligible merge answers the same code as the patch's mergeability reason
+  (e.g. `unsupported` for a closed patch). Haxy's HTML merge form now refuses a POST
+  without the page's revision and tip. There is no protected-branch check, as in Haxy
+  today (user decisions, #19).
+- Fork-backed drafts live under `…/patches/drafts`; a draft is `not_found` to anyone but
+  its author, before any role check; editing, removing and publishing need the patches
+  role at the time of the write. Published fork-backed patches show the fork's commands,
+  push included, to every reader, as the TUI does (user decisions, #20).
+- Only writers (with the kind's tab role) resolve metadata conflicts, as in the TUI; the
+  TUI and HTML resolve forms still send no revision; an issue's status conflict isn't
+  offered. The Conflicts tab is always shown, unlike the TUI's, so list answers keep their
+  counts (user decisions, #25).
+- Patch branch pickers search the repository's branches instead of listing them; a typed
+  name is checked only by Haxy; names that aren't UTF-8 can be picked but not typed; the
+  default target is chosen by the overview's exact `default_branch_id` (user decisions,
+  #33).
 
 ## Known follow-up
 
