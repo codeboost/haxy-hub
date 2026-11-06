@@ -97,13 +97,14 @@ export function eventsPage(tail: string): EventsPage {
 
 /**
  * The Hub page an event's detail opens, or null where Hub has none yet:
- * issues open their page, and a comment on an issue opens the comment's
- * page. Discussions, patches and comments on them have no Hub page yet, and
+ * issues and discussions open their page, and a comment on one opens the
+ * comment's page. Patches and comments on them have no Hub page yet, and
  * are shown as unavailable.
  */
 export function eventTargetRoute(repo: RepoLocator, target: EventTarget): string | null {
-  if (target.thread_kind !== "issue") return null
-  return target.kind === "comment" ? commentRoute(repo, "issues", target.thread, target.comment) : threadRoute(repo, "issues", target.thread)
+  const kind = target.thread_kind === "issue" ? "issues" : target.thread_kind === "discuss" ? "discussions" : null
+  if (kind === null) return null
+  return target.kind === "comment" ? commentRoute(repo, kind, target.thread, target.comment) : threadRoute(repo, kind, target.thread)
 }
 
 // --- Haxy's own event URLs -----------------------------------------------------

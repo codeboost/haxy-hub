@@ -36,7 +36,8 @@ function Body<Status extends string>({ repo, config, loaded, readStartedAt, cloc
       </Link>
       <h2 className="mt-3 text-2xl font-semibold tracking-tight">{thread.title}</h2>
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-        <span className="rounded-full border px-2 py-0.5 text-xs font-medium text-foreground">{config.statusLabels[thread.status]}</span>
+        {/* a kind with one list (discussions) has no status to show */}
+        {config.statuses.length > 1 && <span className="rounded-full border px-2 py-0.5 text-xs font-medium text-foreground">{config.statusLabels[thread.status]}</span>}
         <span>Opened <Instant value={thread.created_at} /> by <AuthorName author={thread.author} /></span>
         <span className="inline-flex items-center gap-1"><MessageSquare size={14} aria-hidden />{thread.comment_count} {thread.comment_count === 1 ? "comment" : "comments"}</span>
       </div>
