@@ -255,6 +255,14 @@ test("an assignment and a status change whose answers cross each show what Haxy 
 test("a repeat that settles an earlier write, when the issue can't be read again, waits for a check instead of claiming the list is current", async ({ page, launch }) => {
   const { backend, id } = await onAlicesIssue(page, launch)
   const issueRead = new RegExp(`/api/v1/repos/alice/tracker/issues/${id}$`)
+  // reads of the issue fail while `failing` is set (a flag, not `times`, so a
+  // background read can't use up the failure meant for the form's own read).
+  // Each answer is followed by a background read of the issue; failing it keeps
+  // the list as this page last showed it, so the change someone else makes
+  // below can't reach the page before the form's own read
+  await expect(form(page).getByLabel("Assign")).toBeVisible()
+  let failing = true
+  await page.route(issueRead, (route) => (failing && route.request().method() === "GET" ? route.abort("connectionreset") : route.fallback()))
   await assign(page, "outside@example.test")
   await expect(assigned(page)).toHaveText(["outside@example.test"])
 
@@ -262,10 +270,10 @@ test("a repeat that settles an earlier write, when the issue can't be read again
   // assigned, and the read that would show the list as it is fails
   const unassignForm = await page.context().request.post(`${backend.origin}/alice:tracker/issue:${id}/assignee:${encodeURIComponent("outside@example.test")}/unassign`, { maxRedirects: 0 })
   expect(unassignForm.status()).toBe(303)
-  await page.route(issueRead, (route) => (route.request().method() === "GET" ? route.abort("connectionreset") : route.continue()), { times: 1 })
   await assignees(page).getByRole("button", { name: "Unassign outside@example.test" }).click()
   await expect(form(page).getByRole("button", { name: "Check again" })).toBeVisible()
   await expect(form(page).getByRole("button", { name: "Assign" })).toBeDisabled()
+  failing = false
   await form(page).getByRole("button", { name: "Check again" }).click()
   await expect(assignees(page).getByText("Nobody is assigned to this issue.")).toBeVisible()
   await expect(form(page).getByRole("button", { name: "Check again" })).toHaveCount(0)
@@ -276,10 +284,11 @@ test("a repeat that settles an earlier write, when the issue can't be read again
   await page.route(/\/assignees$/, answerLost, { times: 1 })
   await assign(page, "bobby@example.test")
   await expect(form(page).getByText("assigning again is safe")).toBeVisible()
-  await page.route(issueRead, (route) => (route.request().method() === "GET" ? route.abort("connectionreset") : route.continue()), { times: 1 })
+  failing = true
   await form(page).getByRole("button", { name: "Assign" }).click()
   await expect(form(page).getByRole("button", { name: "Check again" })).toBeVisible()
   await expect(form(page).getByRole("button", { name: "Assign" })).toBeDisabled()
+  failing = false
   await form(page).getByRole("button", { name: "Check again" }).click()
   await expect(assigned(page)).toHaveText(["bobby"])
   await expect(form(page).getByText("bobby@example.test is assigned.")).toBeVisible()
