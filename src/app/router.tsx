@@ -9,6 +9,7 @@ import { NewRepoPage } from "@/pages/NewRepoPage"
 import { NotFoundPage } from "@/pages/NotFoundPage"
 import { NotificationsPage } from "@/pages/NotificationsPage"
 import { repoRoutes } from "@/pages/RepoPage"
+import { forkRoutes } from "@/pages/forks/ForkPage"
 import { RegisterPage } from "@/pages/RegisterPage"
 import { UserPage } from "@/pages/UserPage"
 import { UsersPage } from "@/pages/UsersPage"
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
       { path: "login", element: <LoginPage /> },
       { path: "repos/new", element: <NewRepoPage /> },
       ...repoRoutes,
+      ...forkRoutes,
       { path: "register", element: <RegisterPage /> },
       { path: "account", element: <AccountPage /> },
       { path: "notifications", element: <NotificationsPage /> },

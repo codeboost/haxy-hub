@@ -6,7 +6,7 @@ import { commitRoute, commitsRoute } from "@/lib/commits"
 import { commitDiffRoute, diffParams, displayPath, entryFileRoute, getCommitDiff, type CommitDiff, type DiffEntry, type DiffLine } from "@/lib/diff"
 import { useHighlightedHunk } from "@/lib/diffHighlight"
 import { languageForFile } from "@/lib/languages"
-import { repoRoute, type EncodedPath, type RefId, type RepoLocator } from "@/lib/repo"
+import { repoRoute, type EncodedPath, type RefId, type SourceLocator, sourceKey } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 
 // A commit's diff against its first parent (`…/commits/<id>/diff`), a window
@@ -17,15 +17,11 @@ import { useResource } from "@/lib/resource"
 
 const linkClass = "text-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 
-function repoKey(repo: RepoLocator): string {
-  return repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
-}
-
 /** `…/commits/<id>/diff`: one window of a commit's diff. */
-export function CommitDiffView({ repo, id, refId }: { repo: RepoLocator; id: string; refId: RefId | null }) {
+export function CommitDiffView({ repo, id, refId }: { repo: SourceLocator; id: string; refId: RefId | null }) {
   const location = useLocation()
   const { path, cursor } = diffParams(location.search)
-  const diff = useResource(`diff ${repoKey(repo)} ${id} ${path} ${cursor}`, (signal) => getCommitDiff(repo, id, { path, cursor }, { signal }))
+  const diff = useResource(`diff ${sourceKey(repo)} ${id} ${path} ${cursor}`, (signal) => getCommitDiff(repo, id, { path, cursor }, { signal }))
   const allFiles = commitDiffRoute(repo, id, refId)
 
   return (
@@ -48,7 +44,7 @@ export function CommitDiffView({ repo, id, refId }: { repo: RepoLocator; id: str
   )
 }
 
-function DiffWindow({ repo, refId, diff, cursor, allFiles }: { repo: RepoLocator; refId: RefId | null; diff: CommitDiff; cursor: string; allFiles: string }) {
+function DiffWindow({ repo, refId, diff, cursor, allFiles }: { repo: SourceLocator; refId: RefId | null; diff: CommitDiff; cursor: string; allFiles: string }) {
   const filter = diff.path
   return (
     <>

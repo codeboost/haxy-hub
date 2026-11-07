@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react"
 import { Link, useLocation } from "react-router"
-import { ArrowLeft, FileCode2, GitCommitHorizontal, GitCompareArrows, MessageSquare } from "lucide-react"
+import { ArrowLeft, FileCode2, GitCommitHorizontal, GitCompareArrows, GitFork, MessageSquare } from "lucide-react"
 import { FailureState } from "@/components/listing"
 import { Markdown } from "@/components/Markdown"
 import { linkClass } from "@/components/thread/config"
@@ -25,6 +25,7 @@ import type { Attached } from "@/lib/attachments"
 import { patchThreads } from "./config"
 import { ConflictBanner } from "@/pages/conflicts/ConflictBanner"
 import { ForkCommands } from "./drafts/ForkCommands"
+import { forkOf, forkRoute } from "@/lib/forks"
 
 const config = patchThreads
 
@@ -191,7 +192,7 @@ function Proposal({ repo, patch }: { repo: RepoLocator; patch: PatchDetail }) {
           {source.kind === "branch" ? (
             <>Branch <Link to={repoRoute(repo, "", source.id)} className={`font-mono ${linkClass}`}>{source.name}</Link></>
           ) : source.fork ? (
-            <>The fork <span className="font-mono">{source.fork.owner}/{source.fork.name}</span></>
+            <>The fork <Link to={forkRoute(forkOf(source.fork, patch.id))} className={`font-mono ${linkClass}`}>{source.fork.owner}/{source.fork.name}</Link></>
           ) : "A fork that has been removed"}
         </Row>
         <Row term={patch.status === "merged" ? "Merged into" : "Target"}>
@@ -248,6 +249,11 @@ function Review({ repo, patch }: { repo: RepoLocator; patch: PatchDetail }) {
           <Link to={revisionFilesRoute(repo, review.revision)} className={button}><FileCode2 size={16} aria-hidden />Files</Link>
           <Link to={revisionCommitsRoute(repo, review.revision)} className={button}><GitCommitHorizontal size={16} aria-hidden />{count === null ? "Commits" : `Commits (${count})`}</Link>
           <Link to={revisionDiffRoute(repo, review.diff, { patch: patch.id })} className={button}><GitCompareArrows size={16} aria-hidden />{patch.status === "merged" ? "What landed" : "Diff"}</Link>
+        </nav>
+      ) : patch.source.kind === "fork" && patch.source.fork ? (
+        <nav aria-label="Review in its fork" className="flex flex-wrap items-center gap-2">
+          <Link to={forkRoute(forkOf(patch.source.fork, patch.id))} className={button}><GitFork size={16} aria-hidden />Browse the fork</Link>
+          <Link to={forkRoute(forkOf(patch.source.fork, patch.id), "diff")} className={button}><GitCompareArrows size={16} aria-hidden />Diff</Link>
         </nav>
       ) : (
         <p role="status" aria-label="Review unavailable" className="text-sm text-muted-foreground">{review.reason.message}</p>

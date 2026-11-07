@@ -11,6 +11,25 @@ import type { MarkdownBlock } from "@/lib/markdown"
 /** Which repository a page shows. */
 export type RepoLocator = { kind: "local" } | { kind: "server"; owner: string; name: string }
 
+/** A fork, by its forker, the name of the repository it was made from, and its id. */
+export type ForkLocator = { kind: "fork"; forker: string; name: string; id: string }
+
+/** Whose files, refs and commits a page browses: a repository's or a fork's. */
+export type SourceLocator = RepoLocator | ForkLocator
+
+/** A key telling sources apart, for caches and resets. */
+export function sourceKey(source: SourceLocator): string {
+  switch (source.kind) {
+    case "local": return "local"
+    case "server": return `${source.owner}/${source.name}`
+    case "fork": return `fork ${source.forker}/${source.name}/${source.id}`
+  }
+}
+
+function forkPath(fork: ForkLocator): string {
+  return [fork.forker, fork.name, fork.id].map(encodeURIComponent).join("/")
+}
+
 /** The sections (tabs) Haxy shows this viewer, in order. */
 export type RepoSection = "files" | "commits" | "refs" | "discussions" | "issues" | "patches" | "events" | "undo" | "settings"
 
@@ -110,8 +129,12 @@ export type FilesQuery = PageQuery & {
 
 type Options = Pick<RequestOptions, "signal">
 
-export function apiBase(repo: RepoLocator): string {
-  return repo.kind === "local" ? "/api/v1/repo" : `/api/v1/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`
+export function apiBase(repo: SourceLocator): string {
+  switch (repo.kind) {
+    case "local": return "/api/v1/repo"
+    case "server": return `/api/v1/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`
+    case "fork": return `/api/v1/forks/${forkPath(repo)}`
+  }
 }
 
 export function getRepo(repo: RepoLocator, options: Options = {}): Promise<RepoOverview> {
@@ -119,7 +142,7 @@ export function getRepo(repo: RepoLocator, options: Options = {}): Promise<RepoO
 }
 
 /** A directory listing or a file window at `path`. */
-export function getFiles(repo: RepoLocator, query: FilesQuery = {}, options: Options = {}): Promise<DirListing | FileView> {
+export function getFiles(repo: SourceLocator, query: FilesQuery = {}, options: Options = {}): Promise<DirListing | FileView> {
   const params = new URLSearchParams()
   if (query.line !== undefined && query.line > 1) params.set("line", String(query.line))
   if (query.cursor) params.set("cursor", query.cursor)
@@ -132,7 +155,7 @@ export function getFiles(repo: RepoLocator, query: FilesQuery = {}, options: Opt
 }
 
 /** A page of the repository's branches or tags in name order, narrowed to names starting with `search`. */
-export function listRefs(repo: RepoLocator, kind: RefKind, query: ListQuery = {}, options: Options = {}): Promise<Page<RefItem>> {
+export function listRefs(repo: SourceLocator, kind: RefKind, query: ListQuery = {}, options: Options = {}): Promise<Page<RefItem>> {
   const params = new URLSearchParams()
   if (query.search) params.set("search", query.search)
   if (query.cursor) params.set("cursor", query.cursor)
@@ -207,8 +230,12 @@ export function pathSegments(path: string): string[] {
   return path.split("/").filter((segment) => segment.length > 0)
 }
 
-function repoBase(repo: RepoLocator): string {
-  return repo.kind === "local" ? "/repo" : `/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`
+function repoBase(repo: SourceLocator): string {
+  switch (repo.kind) {
+    case "local": return "/repo"
+    case "server": return `/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`
+    case "fork": return `/forks/${forkPath(repo)}`
+  }
 }
 
 /**
@@ -218,7 +245,7 @@ function repoBase(repo: RepoLocator): string {
  * ref go in exactly as Haxy encoded them. `query` adds the view's own
  * parameters (a file window's `line`, a directory page's `cursor`).
  */
-export function repoRoute(repo: RepoLocator, path: EncodedPath = "", ref: RefId | null = null, query: Record<string, string> = {}): string {
+export function repoRoute(repo: SourceLocator, path: EncodedPath = "", ref: RefId | null = null, query: Record<string, string> = {}): string {
   const segments = pathSegments(path)
   const route = segments.length === 0 ? repoBase(repo) : `${repoBase(repo)}/files/${segments.join("/")}`
   // the ref is already safe in a query string; the rest is plain text
@@ -239,7 +266,7 @@ export function routeRef(search: string): RefId | null {
 }
 
 /** The Hub route listing `repo`'s branches or tags: `/repos/<owner>/<name>/branches`, `/repo/tags`, … */
-export function refsRoute(repo: RepoLocator, kind: RefKind): string {
+export function refsRoute(repo: SourceLocator, kind: RefKind): string {
   return `${repoBase(repo)}/${kind === "branch" ? "branches" : "tags"}`
 }
 
@@ -248,7 +275,7 @@ export function refsRoute(repo: RepoLocator, kind: RefKind): string {
  * holds it. The router decodes splat parameters, which would turn a literal
  * `%2F` in a file name into a separator, so the raw pathname is used.
  */
-export function routePath(repo: RepoLocator, pathname: string): EncodedPath {
+export function routePath(repo: SourceLocator, pathname: string): EncodedPath {
   // the base's segments, then "files"
   const skip = pathSegments(repoBase(repo)).length + 1
   return canonicalPath(pathSegments(pathname).slice(skip).join("/"))

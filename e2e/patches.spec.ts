@@ -179,7 +179,7 @@ test("a Haxy link to a patch, its comment or its revision diff opens the matchin
 test.describe("with the demo data", () => {
   test.skip(!process.env.HAXY_E2E_DEMO_BIN, "HAXY_BIN was given without HAXY_TRY_BIN")
 
-  test("a merged patch is listed with its status and reviewed at what landed; a forked one says where its commits are", async ({ page, launch }) => {
+  test("a merged patch is listed with its status and reviewed at what landed; a forked one is reviewed in its fork", async ({ page, launch }) => {
     const backend = await launch.demo()
     const hub = await launch.hub(backend.port)
     await page.goto(`${hub.url}/repos/admin/toolbox/patches`)
@@ -198,6 +198,8 @@ test.describe("with the demo data", () => {
     await page.goto(`${hub.url}/repos/admin/toolbox/patches`)
     await page.getByRole("list", { name: "Open patches" }).getByRole("link", { name: "Add structured output to the inspect command" }).click()
     await expect(proposal(page)).toContainText("The fork admin/toolbox")
-    await expect(page.getByRole("status", { name: "Review unavailable" })).toContainText("in its fork")
+    await page.getByRole("navigation", { name: "Review in its fork" }).getByRole("link", { name: "Browse the fork" }).click()
+    await expect(page).toHaveURL(new RegExp(`${hub.url}/forks/admin/toolbox/[0-9a-f]{32}$`))
+    await expect(page.getByRole("heading", { level: 1, name: "Add structured output to the inspect command" })).toBeVisible()
   })
 })

@@ -3,7 +3,7 @@ import { Link } from "react-router"
 import { Popover } from "radix-ui"
 import { Check, ChevronDown, GitBranch, GitCommitHorizontal, GitPullRequest, Tag } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { listRefs, refsRoute, repoRoute, type EncodedPath, type ReadRef, type RefId, type RefKind, type RepoLocator } from "@/lib/repo"
+import { listRefs, refsRoute, repoRoute, type EncodedPath, type ReadRef, type RefId, type RefKind, type SourceLocator, sourceKey } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 
 const pickerPageSize = 20
@@ -22,10 +22,6 @@ function refValue(id: RefId): string {
   return id.slice(id.indexOf(":") + 1)
 }
 
-function repoKey(repo: RepoLocator): string {
-  return repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
-}
-
 /** What the picker's button says: a branch or tag by name, a commit or revision by its short id (the full one for screen readers). */
 function RefLabel({ read }: { read: ReadRef }) {
   const Icon = kindIcons[read.kind]
@@ -41,8 +37,8 @@ function RefLabel({ read }: { read: ReadRef }) {
   )
 }
 
-function RefOptions({ repo, path, read, kind, search, onPick }: { repo: RepoLocator; path: EncodedPath; read: ReadRef; kind: RefKind; search: string; onPick: () => void }) {
-  const refs = useResource(`picker ${repoKey(repo)} ${kind} ${search}`, (signal) => listRefs(repo, kind, { search, page_size: pickerPageSize }, { signal }))
+function RefOptions({ repo, path, read, kind, search, onPick }: { repo: SourceLocator; path: EncodedPath; read: ReadRef; kind: RefKind; search: string; onPick: () => void }) {
+  const refs = useResource(`picker ${sourceKey(repo)} ${kind} ${search}`, (signal) => listRefs(repo, kind, { search, page_size: pickerPageSize }, { signal }))
   if (refs.kind === "failed") return <p role="alert" className="px-3 py-2 text-sm text-destructive">{refs.error.message}</p>
   if (refs.data.items.length === 0) return <p className={noteClass}>{search ? `No ${kindNouns[kind].plural} start with “${search}”.` : `No ${kindNouns[kind].plural} yet.`}</p>
   return (
@@ -72,7 +68,7 @@ function KindTabs({ kind, onChange }: { kind: RefKind; onChange: (kind: RefKind)
 }
 
 /** The ref the files view shows, as a button that opens a searchable list of branches and tags, each opening the same path there. */
-export function RefPicker({ repo, path, read }: { repo: RepoLocator; path: EncodedPath; read: ReadRef }) {
+export function RefPicker({ repo, path, read }: { repo: SourceLocator; path: EncodedPath; read: ReadRef }) {
   const [open, setOpen] = useState(false)
   const [kind, setKind] = useState<RefKind>(read.kind === "tag" ? "tag" : "branch")
   const [search, setSearch] = useState("")

@@ -4,7 +4,7 @@
  * reads everything through the TUI's commits tab.
  */
 import { getJson, type ObjectId, type Page, type PageQuery, type RequestOptions, type Timestamp } from "@/lib/api"
-import { canonicalRef, repoRoute, type ReadRef, type RefId, type RepoLocator } from "@/lib/repo"
+import { apiBase, canonicalRef, repoRoute, type ReadRef, type RefId, type RepoLocator, type SourceLocator } from "@/lib/repo"
 import type { ThreadAuthor } from "@/lib/threads"
 
 /** Who wrote or committed a commit: an account, an email no account holds, or nobody known. */
@@ -75,12 +75,8 @@ export type HistoryQuery = PageQuery & {
 
 type Options = Pick<RequestOptions, "signal">
 
-function apiBase(repo: RepoLocator): string {
-  return repo.kind === "local" ? "/api/v1/repo" : `/api/v1/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`
-}
-
 /** A page of the history at `ref`, or of the commits matching `search`. */
-export function listCommits(repo: RepoLocator, query: HistoryQuery = {}, options: Options = {}): Promise<History> {
+export function listCommits(repo: SourceLocator, query: HistoryQuery = {}, options: Options = {}): Promise<History> {
   const params = new URLSearchParams()
   if (query.search) params.set("search", query.search)
   if (query.cursor) params.set("cursor", query.cursor)
@@ -91,7 +87,7 @@ export function listCommits(repo: RepoLocator, query: HistoryQuery = {}, options
 }
 
 /** One commit, with its whole message up to Haxy's limit. */
-export function getCommit(repo: RepoLocator, id: ObjectId, options: Options = {}): Promise<CommitDetail> {
+export function getCommit(repo: SourceLocator, id: ObjectId, options: Options = {}): Promise<CommitDetail> {
   return getJson<CommitDetail>(`${apiBase(repo)}/commits/${encodeURIComponent(id)}`, options)
 }
 
@@ -109,7 +105,7 @@ function routeQuery(ref: RefId | null, query: Record<string, string>): string {
  * `/repos/<owner>/<name>/commits[?ref=<id>][&search=…][&cursor=…]`, or
  * `/repo/commits…` in local mode.
  */
-export function commitsRoute(repo: RepoLocator, ref: RefId | null = null, query: { search?: string; cursor?: string } = {}): string {
+export function commitsRoute(repo: SourceLocator, ref: RefId | null = null, query: { search?: string; cursor?: string } = {}): string {
   return `${repoRoute(repo)}/commits${routeQuery(ref, { search: query.search ?? "", cursor: query.cursor ?? "" })}`
 }
 
@@ -118,7 +114,7 @@ export function commitsRoute(repo: RepoLocator, ref: RefId | null = null, query:
  * opened from, which its way back returns to. Its diff hangs off this route
  * (`commitDiffRoute`, `@/lib/diff`).
  */
-export function commitRoute(repo: RepoLocator, id: ObjectId, ref: RefId | null = null): string {
+export function commitRoute(repo: SourceLocator, id: ObjectId, ref: RefId | null = null): string {
   return `${repoRoute(repo)}/commits/${encodeURIComponent(id)}${routeQuery(ref, {})}`
 }
 

@@ -4,7 +4,7 @@
  * window through the TUI's diff pane.
  */
 import { getJson, type ObjectId, type Page, type RequestOptions } from "@/lib/api"
-import { apiBase, canonicalPath, canonicalRef, displaySegment, pathSegments, repoRoute, type EncodedPath, type RefId, type RepoLocator } from "@/lib/repo"
+import { apiBase, canonicalPath, canonicalRef, displaySegment, pathSegments, repoRoute, type EncodedPath, type RefId, type SourceLocator } from "@/lib/repo"
 
 export type DiffLine = {
   kind: "context" | "added" | "removed"
@@ -47,7 +47,7 @@ export type DiffQuery = { path?: EncodedPath; cursor?: string; page_size?: numbe
 type Options = Pick<RequestOptions, "signal">
 
 /** A window of commit `id`'s diff. */
-export function getCommitDiff(repo: RepoLocator, id: ObjectId, query: DiffQuery = {}, options: Options = {}): Promise<CommitDiff> {
+export function getCommitDiff(repo: SourceLocator, id: ObjectId, query: DiffQuery = {}, options: Options = {}): Promise<CommitDiff> {
   const params = new URLSearchParams()
   if (query.cursor) params.set("cursor", query.cursor)
   if (query.page_size !== undefined) params.set("page_size", String(query.page_size))
@@ -69,7 +69,7 @@ export function displayPath(path: EncodedPath): string {
  * `ref` is the history the commit was opened from; `path` an encoded path,
  * which goes in exactly as Haxy encoded it.
  */
-export function commitDiffRoute(repo: RepoLocator, id: ObjectId, ref: RefId | null = null, query: { path?: EncodedPath; cursor?: string } = {}): string {
+export function commitDiffRoute(repo: SourceLocator, id: ObjectId, ref: RefId | null = null, query: { path?: EncodedPath; cursor?: string } = {}): string {
   const parts = [
     ref ? `ref=${canonicalRef(ref)}` : "",
     query.path ? `path=${canonicalPath(query.path)}` : "",
@@ -100,7 +100,7 @@ export function diffParams(search: string): { path: EncodedPath; cursor: string 
 }
 
 /** Where an entry's file opens in the files view: as the commit left it, or as its parent had a removed one. */
-export function entryFileRoute(repo: RepoLocator, diff: Pick<CommitDiff, "commit" | "parent">, entry: Pick<DiffEntry, "path" | "status">): string | null {
+export function entryFileRoute(repo: SourceLocator, diff: Pick<CommitDiff, "commit" | "parent">, entry: Pick<DiffEntry, "path" | "status">): string | null {
   const at = entry.status === "removed" ? diff.parent : diff.commit
   return at === null ? null : repoRoute(repo, entry.path, `commit:${at}`)
 }
