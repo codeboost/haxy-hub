@@ -16,16 +16,16 @@ Choose and implement the CSRF / same-origin strategy that every state-changing `
 
 ## Acceptance criteria
 
-- [ ] Login with valid credentials returns to the originating route; invalid credentials show an error and keep the username
-- [ ] Session survives refresh and a backend restart where the existing session store persists
-- [ ] Logout clears private cached data: navigating back does not show private content
-- [ ] A state-changing request without the CSRF token / with a foreign Origin is rejected (HTTP contract test against the running fixture)
-- [ ] An invalidated session results in unauthenticated state on the next request
-- [ ] CSRF strategy documented alongside the API conventions; local mode has no login UI
-- [ ] Zig JSON endpoints follow the API conventions from #01 and share underlying operations with the TUI (no duplicated rules)
-- [ ] Playwright tests run through the Vite proxy against a real Zig fixture backend; mutations are verified after refresh
-- [ ] Existing Zig suites pass; frontend typecheck and build pass
-- [ ] Compatible `haxy-hub-impl` backend commit recorded
+- [x] Login with valid credentials returns to the originating route; invalid credentials show an error and keep the username
+- [x] Session survives refresh and a backend restart where the existing session store persists
+- [x] Logout clears private cached data: navigating back does not show private content
+- [x] A state-changing request without the CSRF token / with a foreign Origin is rejected (HTTP contract test against the running fixture)
+- [x] An invalidated session results in unauthenticated state on the next request
+- [x] CSRF strategy documented alongside the API conventions; local mode has no login UI
+- [x] Zig JSON endpoints follow the API conventions from #01 and share underlying operations with the TUI (no duplicated rules)
+- [x] Playwright tests run through the Vite proxy against a real Zig fixture backend; mutations are verified after refresh
+- [x] Existing Zig suites pass; frontend typecheck and build pass
+- [x] Compatible `haxy-hub-impl` backend commit recorded
 
 ## Blocked by
 

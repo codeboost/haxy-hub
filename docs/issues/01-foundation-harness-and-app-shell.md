@@ -25,12 +25,12 @@ This slice also fixes the JSON API conventions all later slices follow, written 
 
 ## Acceptance criteria
 
-- [ ] `npm run test:e2e` (or equivalent) starts an isolated backend + Vite and runs Playwright; it never touches the developer's live data directory or an existing session
-- [ ] Harness can launch both a server-mode fixture and a local-mode fixture (git repo) and an alternate backend port
-- [ ] App shell renders with routing; refresh on any route reconstructs the same view
-- [ ] Mode indicator shows server vs local; unreachable and incompatible backends show recoverable error states with retry (browser-tested)
-- [ ] API conventions doc is written and reviewed; Zig error/pagination helpers and matching TS types exist and are used by `/api/v1/status`
-- [ ] Existing Zig test suites still pass; README documents the two-process startup and test workflow
+- [x] `npm run test:e2e` (or equivalent) starts an isolated backend + Vite and runs Playwright; it never touches the developer's live data directory or an existing session
+- [x] Harness can launch both a server-mode fixture and a local-mode fixture (git repo) and an alternate backend port
+- [x] App shell renders with routing; refresh on any route reconstructs the same view
+- [x] Mode indicator shows server vs local; unreachable and incompatible backends show recoverable error states with retry (browser-tested)
+- [x] API conventions doc is written and reviewed; Zig error/pagination helpers and matching TS types exist and are used by `/api/v1/status`
+- [x] Existing Zig test suites still pass; README documents the two-process startup and test workflow
 
 
 ## Blocked by

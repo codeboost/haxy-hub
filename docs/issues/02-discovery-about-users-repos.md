@@ -12,15 +12,15 @@ Anonymous visitors can read the forge's existing about information, search and p
 
 ## Acceptance criteria
 
-- [ ] About content matches what the TUI shows
-- [ ] User directory search and pagination work and survive refresh/back/forward (filters and page in the URL)
-- [ ] Owner page lists only repositories the viewer may read; a private repo is absent for anonymous and unrelated users (browser test + direct API check)
-- [ ] Empty directory / no-match / no-repos states are distinct from load failures
-- [ ] Local mode shows these views as unavailable
-- [ ] Zig JSON endpoints follow the API conventions from #01 and share underlying operations with the TUI (no duplicated rules)
-- [ ] Playwright tests run through the Vite proxy against a real Zig fixture backend; mutations are verified after refresh
-- [ ] Existing Zig suites pass; frontend typecheck and build pass
-- [ ] Compatible `haxy-hub-impl` backend commit recorded
+- [x] About content matches what the TUI shows
+- [x] User directory search and pagination work and survive refresh/back/forward (filters and page in the URL)
+- [x] Owner page lists only repositories the viewer may read; a private repo is absent for anonymous and unrelated users (browser test + direct API check)
+- [x] Empty directory / no-match / no-repos states are distinct from load failures
+- [x] Local mode shows these views as unavailable
+- [x] Zig JSON endpoints follow the API conventions from #01 and share underlying operations with the TUI (no duplicated rules)
+- [x] Playwright tests run through the Vite proxy against a real Zig fixture backend; mutations are verified after refresh
+- [x] Existing Zig suites pass; frontend typecheck and build pass
+- [x] Compatible `haxy-hub-impl` backend commit recorded
 
 ## Blocked by
 
