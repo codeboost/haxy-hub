@@ -5,18 +5,18 @@
 
 :root {
   --background: oklch(0.985 0.004 90);
-  --foreground: oklch(0.23 0.015 160);
+  --foreground: oklch(0.23 0.015 45);
   --card: oklch(1 0 0);
   --card-foreground: var(--foreground);
   --popover: var(--card);
   --popover-foreground: var(--foreground);
-  --primary: oklch(0.38 0.065 160);
+  --primary: oklch(0.45 0.11 45);
   --primary-foreground: oklch(0.99 0 0);
   --secondary: oklch(0.95 0.008 90);
   --secondary-foreground: var(--foreground);
   --muted: var(--secondary);
-  --muted-foreground: oklch(0.48 0.015 160);
-  --accent: oklch(0.94 0.025 160);
+  --muted-foreground: oklch(0.48 0.015 45);
+  --accent: oklch(0.94 0.025 45);
   --accent-foreground: var(--primary);
   --destructive: oklch(0.55 0.2 25);
   --border: oklch(0.9 0.008 90);
@@ -26,14 +26,14 @@
 
   --syntax-foreground: var(--foreground);
   --syntax-background: var(--card);
-  --syntax-token-comment: oklch(0.55 0.015 160);
+  --syntax-token-comment: oklch(0.55 0.015 45);
   --syntax-token-keyword: oklch(0.47 0.17 320);
   --syntax-token-string: oklch(0.47 0.12 140);
   --syntax-token-string-expression: var(--syntax-token-string);
   --syntax-token-constant: oklch(0.5 0.14 55);
   --syntax-token-function: oklch(0.46 0.14 255);
   --syntax-token-parameter: oklch(0.45 0.09 25);
-  --syntax-token-punctuation: oklch(0.42 0.01 160);
+  --syntax-token-punctuation: oklch(0.42 0.01 45);
   --syntax-token-link: var(--primary);
   --syntax-token-inserted: oklch(0.47 0.12 145);
   --syntax-token-deleted: var(--destructive);
