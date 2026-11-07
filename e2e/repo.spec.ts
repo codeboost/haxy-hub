@@ -183,6 +183,27 @@ test("a line link highlights its line and survives a refresh", async ({ page, la
   await expect(page.getByRole("table", { name: "main.zig" }).locator("tr[aria-current='location']")).toHaveText(/3\s*pub fn main\(\) void \{/)
 })
 
+test("a code file's syntax is highlighted and a plain text file's isn't", async ({ page, launch }) => {
+  const backend = await launch.local({ files: fixtureFiles })
+  const hub = await launch.hub(backend.port)
+  await page.goto(`${hub.url}/repo/files/src/main.zig`)
+
+  const line = page.getByRole("table", { name: "main.zig" }).locator("#L3 td").nth(1)
+  const keyword = line.locator("span", { hasText: /^pub$/ })
+  await expect(keyword).toBeVisible()
+  const colors = await line.evaluate((cell) => {
+    const color = (text: string) => [...cell.querySelectorAll("span")].find((span) => span.textContent?.trim() === text)
+    return [color("pub"), color("main")].map((span) => (span ? getComputedStyle(span).color : null))
+  })
+  expect(colors[0]).not.toBeNull()
+  expect(colors[0]).not.toEqual(colors[1])
+  await expect(line).toHaveText("pub fn main() void {")
+
+  await page.goto(`${hub.url}/repo/files/big.txt`)
+  await expect(page.getByRole("table", { name: "big.txt" }).locator("#L1")).toHaveText(/1\s*line 1/)
+  await expect(page.getByRole("table", { name: "big.txt" }).locator("tbody span")).toHaveCount(0)
+})
+
 test("a large file shows a window at a time; windows and line links in them survive a refresh", async ({ page, launch }) => {
   const backend = await launch.local({ files: fixtureFiles })
   const hub = await launch.hub(backend.port)

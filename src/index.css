@@ -23,6 +23,21 @@
   --input: var(--border);
   --ring: var(--primary);
   --radius: 0.625rem;
+
+  --syntax-foreground: var(--foreground);
+  --syntax-background: var(--card);
+  --syntax-token-comment: oklch(0.55 0.015 160);
+  --syntax-token-keyword: oklch(0.47 0.17 320);
+  --syntax-token-string: oklch(0.47 0.12 140);
+  --syntax-token-string-expression: var(--syntax-token-string);
+  --syntax-token-constant: oklch(0.5 0.14 55);
+  --syntax-token-function: oklch(0.46 0.14 255);
+  --syntax-token-parameter: oklch(0.45 0.09 25);
+  --syntax-token-punctuation: oklch(0.42 0.01 160);
+  --syntax-token-link: var(--primary);
+  --syntax-token-inserted: oklch(0.47 0.12 145);
+  --syntax-token-deleted: var(--destructive);
+  --syntax-token-changed: oklch(0.5 0.14 55);
 }
 
 @theme inline {

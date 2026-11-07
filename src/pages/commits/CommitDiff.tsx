@@ -1,7 +1,11 @@
 import { Link, useLocation } from "react-router"
+import type { BundledLanguage } from "shiki/langs"
+import { CodeLine } from "@/components/CodeLine"
 import { EmptyState, FailureState, Pager } from "@/components/listing"
 import { commitRoute, commitsRoute } from "@/lib/commits"
 import { commitDiffRoute, diffParams, displayPath, entryFileRoute, getCommitDiff, type CommitDiff, type DiffEntry, type DiffLine } from "@/lib/diff"
+import { useHighlightedHunk } from "@/lib/diffHighlight"
+import { languageForFile } from "@/lib/languages"
 import { repoRoute, type EncodedPath, type RefId, type RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 
@@ -117,6 +121,7 @@ const statusClasses: Record<DiffEntry["status"], string> = {
 function FileChanges({ entries, filtered, file, only }: { entries: DiffEntry[]; filtered: boolean; file: string | null; only: string }) {
   const first = entries[0]
   const shown = displayPath(first.path)
+  const lang = languageForFile(first.name)
   return (
     <section aria-label={shown} className="min-w-0 rounded-xl border bg-card">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 text-sm">
@@ -127,7 +132,7 @@ function FileChanges({ entries, filtered, file, only }: { entries: DiffEntry[]; 
           {!filtered && <Link to={only} className={linkClass}>Only this file</Link>}
         </span>
       </header>
-      {entries.map((entry, index) => <EntryBody key={index} entry={entry} shown={shown} />)}
+      {entries.map((entry, index) => <EntryBody key={index} entry={entry} shown={shown} lang={lang} />)}
     </section>
   )
 }
@@ -136,12 +141,12 @@ function Placeholder({ children }: { children: string }) {
   return <p className="px-4 py-3 text-sm text-muted-foreground">{children}</p>
 }
 
-function EntryBody({ entry, shown }: { entry: DiffEntry; shown: string }) {
+function EntryBody({ entry, shown, lang }: { entry: DiffEntry; shown: string; lang: BundledLanguage | null }) {
   switch (entry.kind) {
     case "file": return <Placeholder>{entry.status === "added" ? "A new file; open it to read it." : "The file was removed; open it to read what it held."}</Placeholder>
     case "binary": return <Placeholder>Binary file not shown: Haxy doesn't diff files that aren't UTF-8 text or that pass its text limits, such as a line of 10,000 bytes or more.</Placeholder>
     case "too_large": return <Placeholder>This change is too large for Haxy to diff.</Placeholder>
-    case "hunk": return <Hunk lines={entry.lines} path={shown} />
+    case "hunk": return <Hunk lines={entry.lines} path={shown} lang={lang} />
   }
 }
 
@@ -162,7 +167,8 @@ function lineLabel(line: DiffLine): string {
 }
 
 /** A hunk's lines, which scroll sideways inside their own box rather than widening the page. */
-function Hunk({ lines, path }: { lines: DiffLine[]; path: EncodedPath }) {
+function Hunk({ lines, path, lang }: { lines: DiffLine[]; path: EncodedPath; lang: BundledLanguage | null }) {
+  const tokens = useHighlightedHunk(lines, lang)
   return (
     <div className="max-w-full overflow-x-auto border-t first:border-t-0">
       <table aria-label={`Changes to ${path}`} className="w-max min-w-full border-collapse font-mono text-xs leading-5">
@@ -172,7 +178,7 @@ function Hunk({ lines, path }: { lines: DiffLine[]; path: EncodedPath }) {
               <td className="w-px px-2 text-right text-muted-foreground select-none">{line.old_number ?? ""}</td>
               <td className="w-px px-2 text-right text-muted-foreground select-none">{line.new_number ?? ""}</td>
               <td className="w-px pl-2 select-none">{prefixes[line.kind]}</td>
-              <td className="pr-4 whitespace-pre">{line.text}</td>
+              <td className="pr-4 whitespace-pre"><CodeLine text={line.text} tokens={tokens?.[index]} /></td>
             </tr>
           ))}
         </tbody>

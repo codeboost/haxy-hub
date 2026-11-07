@@ -61,6 +61,24 @@ test("a reader opens a commit's diff, pages through it, narrows it to one file a
   await expect(page.getByRole("region", { name: "Ref" })).toContainText(`Commit ${head}`)
 })
 
+test("a code file's hunk is highlighted side by side: a comment a removed line opens doesn't color the added lines", async ({ page, launch }) => {
+  const backend = await launch.local({ files: { "app.ts": "let a = 1\n/* old note\nlet b = 2 */\n", "notes.txt": "one\n" } })
+  const hub = await launch.hub(backend.port)
+  const [head] = addCommits(localGit(backend), [{ message: "Drop the note", files: { "app.ts": "let a = 1\nlet c = 3\nlet b = 2 */\n", "notes.txt": "two\n" } }])
+  await page.goto(`${hub.url}/repo/commits/${head}/diff`)
+
+  const app = page.getByRole("region", { name: "Changes" }).getByRole("region", { name: "app.ts" })
+  await expect(app.getByRole("row", { name: "Added, line 2: let c = 3" }).locator("span", { hasText: /^let$/ })).toBeVisible()
+  const color = (name: string, text: RegExp) => app.getByRole("row", { name }).locator("span", { hasText: text }).first().evaluate((span) => getComputedStyle(span).color)
+  const keyword = await color("Line 1: let a = 1", /^let$/)
+  expect(await color("Added, line 2: let c = 3", /^let$/)).toEqual(keyword)
+  expect(await color("Removed, line 2: /* old note", /old note/)).not.toEqual(keyword)
+
+  const notes = page.getByRole("region", { name: "Changes" }).getByRole("region", { name: "notes.txt" })
+  await expect(notes.getByRole("row", { name: "Added, line 1: two" })).toBeVisible()
+  await expect(notes.locator("tbody span")).toHaveCount(0)
+})
+
 test("a path that isn't UTF-8 narrows the diff through links, refresh and back", async ({ page, launch }) => {
   const backend = await launch.local({ files: { "README.md": "# fixture\n" }, byteNamedFiles: [{ path: latin1Name, content: "latin-1\n" }] })
   const hub = await launch.hub(backend.port)
