@@ -2,7 +2,10 @@ import { useEffect, useState, type ReactNode } from "react"
 import { Link, useLocation, useSearchParams } from "react-router"
 import { File, Folder, CornerLeftUp, History } from "lucide-react"
 import { EmptyState, FailureState, Pager } from "@/components/listing"
+import { CodeLine } from "@/components/CodeLine"
 import { Markdown } from "@/components/Markdown"
+import { useHighlightedLines } from "@/lib/highlight"
+import { languageForFile } from "@/lib/languages"
 import type { LinkTarget } from "@/lib/markdown"
 import { RepoToolbar } from "@/components/RepoToolbar"
 import { commitRoute, commitsRoute } from "@/lib/commits"
@@ -166,25 +169,33 @@ function FileBody({ repo, refId, file }: { repo: RepoLocator; refId: RefId | nul
           Line {formatNumber(target)} isn't in this window. <Link to={`${fileRoute(target)}#L${target}`} className={linkClass}>Show line {target}</Link>
         </p>
       )}
-      <div className="overflow-x-auto rounded-lg border">
-        <table aria-label={file.name} className="w-full border-collapse font-mono text-xs leading-5">
-          <tbody>
-            {content.lines.map((line, index) => {
-              const number = content.start_line + index
-              const current = number === target
-              return (
-                <tr key={number} id={`L${number}`} aria-current={current ? "location" : undefined} className={current ? "bg-amber-500/15" : undefined}>
-                  <td className="w-px border-r px-3 text-right align-top text-muted-foreground select-none">
-                    <Link to={`${fileRoute(content.start_line)}#L${number}`} aria-label={`Line ${number}`} preventScrollReset className="hover:text-foreground hover:underline">{number}</Link>
-                  </td>
-                  <td className="px-3 whitespace-pre">{line}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <CodeTable name={file.name} lines={content.lines} startLine={content.start_line} target={target} windowRoute={fileRoute(content.start_line)} />
     </>
+  )
+}
+
+/** A window of a file's lines, numbered from `startLine`, each number a link to its line. */
+function CodeTable({ name, lines, startLine, target, windowRoute }: { name: string; lines: string[]; startLine: number; target: number | null; windowRoute: string }) {
+  const tokens = useHighlightedLines(lines, languageForFile(name))
+  return (
+    <div className="overflow-x-auto rounded-lg border">
+      <table aria-label={name} className="w-full border-collapse font-mono text-xs leading-5">
+        <tbody>
+          {lines.map((line, index) => {
+            const number = startLine + index
+            const current = number === target
+            return (
+              <tr key={number} id={`L${number}`} aria-current={current ? "location" : undefined} className={current ? "bg-amber-500/15" : undefined}>
+                <td className="w-px border-r px-3 text-right align-top text-muted-foreground select-none">
+                  <Link to={`${windowRoute}#L${number}`} aria-label={`Line ${number}`} preventScrollReset className="hover:text-foreground hover:underline">{number}</Link>
+                </td>
+                <td className="px-3 whitespace-pre"><CodeLine text={line} tokens={tokens?.[index]} /></td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
