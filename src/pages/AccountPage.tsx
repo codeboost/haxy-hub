@@ -1,5 +1,5 @@
 import { Link } from "react-router"
-import { FailureState, LoadingState, UnavailableState } from "@/components/listing"
+import { FailureState, UnavailableState } from "@/components/listing"
 import { useConnection } from "@/app/connection"
 import { useSession } from "@/app/session"
 import { getAccount } from "@/lib/account"
@@ -21,7 +21,7 @@ export function AccountPage() {
   if (!viewer) {
     return (
       <section className="max-w-md">
-        <h1 className="text-3xl font-semibold tracking-tight">Account</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
         <p className="mt-3 text-muted-foreground">Log in to manage your account.</p>
         <Link to={loginPath("/account")} className="mt-6 inline-block text-sm text-primary underline-offset-4 hover:underline">Log in</Link>
       </section>
@@ -33,19 +33,17 @@ export function AccountPage() {
 function Settings() {
   const account = useResource("account", (signal) => getAccount({ signal }))
   switch (account.kind) {
-    case "loading":
-      return <LoadingState>Loading your account…</LoadingState>
     case "failed":
       return (
         <>
-          <h1 className="text-3xl font-semibold tracking-tight">Account</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
           <FailureState title="Couldn't load your account" error={account.error} onRetry={account.reload} />
         </>
       )
     case "loaded":
       return (
         <>
-          <h1 className="text-3xl font-semibold tracking-tight">Account</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
           <p className="mt-2 text-muted-foreground">Signed in as <strong className="text-foreground">{account.data.name}</strong>.</p>
           <div className="mt-10 space-y-12">
             <EmailSection account={account.data} />

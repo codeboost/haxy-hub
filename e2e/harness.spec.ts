@@ -35,7 +35,7 @@ test("the demo fixture serves the seeded `zig build try` data in server mode", a
 
   await page.goto(hub.url)
 
-  await expect(page.getByRole("banner").getByText("Server mode")).toBeVisible()
+  await expect(page.getByRole("main")).toContainText("Connected to a multi-user Haxy server.")
   expectIsolated(backend.dataDir)
 })
 

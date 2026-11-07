@@ -330,7 +330,7 @@ test("local mode opens, edits, closes and removes issues without logging in", as
   await form.getByRole("button", { name: "Open issue" }).click()
   await expect(page).toHaveURL(/\/repo\/issues\/[0-9a-f]{32}$/)
   const id = page.url().split("/").pop()!
-  await expect(page.getByText("e2e@example.test")).toBeVisible()
+  await expect(page.getByRole("region", { name: "Description" })).toContainText("e2e@example.test opened this issue")
 
   await actions(page).getByRole("link", { name: "Edit" }).click()
   await page.getByRole("form", { name: "Edit issue" }).getByLabel("Title").fill("From Hub, edited")

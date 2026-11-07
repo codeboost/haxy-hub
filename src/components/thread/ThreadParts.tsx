@@ -85,6 +85,15 @@ export function FilterSummary({ filters, noun }: { filters: ThreadFilters; noun:
   )
 }
 
+/** Who wrote something, as plain text: their account name, else their email. */
+export function authorText(author: ThreadAuthor): string {
+  switch (author.kind) {
+    case "user": return author.name
+    case "email": return author.email
+    case "unknown": return "someone"
+  }
+}
+
 export function AuthorName({ author }: { author: ThreadAuthor }) {
   switch (author.kind) {
     case "user": return <Link to={`/users/${encodeURIComponent(author.name)}`} className={linkClass}>{author.name}</Link>

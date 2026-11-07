@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useRef, useState, type ReactNode } from "react"
 import { Link, useNavigate } from "react-router"
 import { ArrowLeft, RefreshCw, Save } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FormMessage, failureOf, type Failure } from "@/components/form"
-import { FailureState, LoadingState } from "@/components/listing"
+import { FailureState } from "@/components/listing"
 import { useSession } from "@/app/session"
 import { ApiError } from "@/lib/api"
 import type { RepoLocator } from "@/lib/repo"
@@ -13,6 +13,7 @@ import { linkClass, type ThreadConfig } from "./config"
 import { SectionUnavailable } from "./ThreadParts"
 import { ThreadForm } from "./ThreadForm"
 import { useBranchChoices, type BranchOffer } from "./BranchFields"
+import { useStillHere } from "@/lib/stillHere"
 
 /** `<repo>/<kind>/<id>/edit`: replaces a thread's title, labels and description. */
 export function ThreadEditView<Status extends string>({ repo, config, id, unavailable }: { repo: RepoLocator; config: ThreadConfig<Status>; id: string; unavailable: string | null }) {
@@ -24,8 +25,6 @@ export function ThreadEditView<Status extends string>({ repo, config, id, unavai
   const noun = config.noun.toLowerCase()
   const back = <Link to={threadRoute(repo, config.kind, id)} className={`inline-flex items-center gap-1 text-sm ${linkClass}`}><ArrowLeft size={14} aria-hidden />Back to the {noun}</Link>
   switch (thread.kind) {
-    case "loading":
-      return <LoadingState>Loading the {noun}…</LoadingState>
     case "failed":
       if (thread.error.code === "not_found" && unavailable) return <SectionUnavailable>{unavailable}</SectionUnavailable>
       if (thread.error.code === "not_found") return <section className="mt-6"><h2 className="text-2xl font-semibold tracking-tight">{config.noun} not found</h2><p className="mt-2 text-muted-foreground">There is no {noun} with this id in this repository. It may have been removed.</p></section>
@@ -37,7 +36,6 @@ export function ThreadEditView<Status extends string>({ repo, config, id, unavai
           {back}
           <h2 className="mt-3 text-2xl font-semibold tracking-tight">Edit {noun}</h2>
           {!edit.available ? <p className="mt-3 text-muted-foreground">{edit.reason.message}</p>
-            : branches?.kind === "loading" ? <LoadingState>Loading the branches…</LoadingState>
             : branches?.kind === "failed" ? <FailureState title="Couldn't load the branches" error={branches.error} onRetry={branches.reload} />
             : <EditThreadForm key={viewerKey} repo={repo} config={config} loaded={thread.data} viewer={viewer?.name ?? null}
                 branches={branches?.kind === "loaded" ? { choices: branches.data, source: false } : undefined} />}
@@ -69,11 +67,7 @@ function EditThreadForm<Status extends string>({ repo, config, loaded, viewer, b
   const [notice, setNotice] = useState<Notice | null>(null)
   const noun = config.noun.toLowerCase()
 
-  const mounted = useRef(true)
-  useEffect(() => {
-    mounted.current = true
-    return () => { mounted.current = false }
-  }, [])
+  const mounted = useStillHere()
   const generation = useRef(0)
   const begin = () => ++generation.current
   const isLatest = (started: number) => mounted.current && started === generation.current

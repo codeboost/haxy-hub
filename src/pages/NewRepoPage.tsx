@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react"
+import { useId, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router"
 import { LoaderCircle, Plus, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,7 @@ import type { RepoAccess } from "@/lib/discovery"
 import { repoRoute } from "@/lib/repo"
 import { createRepo, hashFormats, repoExists, type HashFormat } from "@/lib/repoCreate"
 import { loginPath } from "@/lib/session"
+import { useStillHere } from "@/lib/stillHere"
 
 const linkClass = "font-medium underline underline-offset-4"
 
@@ -26,7 +27,7 @@ export function NewRepoPage() {
   if (!viewer) {
     return (
       <section className="max-w-md">
-        <h1 className="text-3xl font-semibold tracking-tight">New repository</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">New repository</h1>
         <p className="mt-3 text-muted-foreground">
           <Link to={loginPath(location.pathname + location.search)} className="text-primary underline-offset-4 hover:underline">Log in</Link> to create a repository.
         </p>
@@ -114,11 +115,7 @@ function NewRepoForm({ viewer }: { viewer: string }) {
   const current = uncertain !== null && uncertain.owner === viewer && uncertain.name === name ? uncertain : null
   // A request still running when the form goes away (the user moved on or
   // logged out) finishes without touching the page they are on now.
-  const mounted = useRef(true)
-  useEffect(() => {
-    mounted.current = true
-    return () => { mounted.current = false }
-  }, [])
+  const mounted = useStillHere()
 
   // Bumped by every attempt and every check: an answer that arrives after a
   // newer one started (a check of an earlier name, or an earlier check of
@@ -170,7 +167,7 @@ function NewRepoForm({ viewer }: { viewer: string }) {
   const fields = failure?.fields ?? {}
   return (
     <section className="max-w-lg">
-      <h1 className="text-3xl font-semibold tracking-tight">New repository</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">New repository</h1>
       <p className="mt-3 text-sm text-muted-foreground">Owned by <strong className="text-foreground">{viewer}</strong>.</p>
       <form aria-label="New repository" className="mt-8 space-y-6" onSubmit={submit} noValidate>
         {failure && <FailureMessage failure={failure} />}

@@ -10,6 +10,7 @@ import { readStart, type ThreadReads } from "@/components/assignees/useThreadAns
 import { branchLabels } from "./BranchFields"
 import { useGateReport, type WriteGate } from "./writeGate"
 import type { ThreadConfig } from "./config"
+import { useStillHere } from "@/lib/stillHere"
 
 /**
  * A thread's own actions — edit, close or reopen, remove — each shown only
@@ -20,7 +21,7 @@ import type { ThreadConfig } from "./config"
  * Reopen), so a double click is one write; an outcome Haxy couldn't confirm is
  * settled by reading the thread again before anything is offered again.
  */
-export function ThreadActions<Status extends string>({ repo, config, thread, viewer, onChanged, reads, gate }: {
+export function ThreadActions<Status extends string>({ repo, config, thread, viewer, onChanged, reads, gate, className = "mt-4" }: {
   repo: RepoLocator
   config: ThreadConfig<Status>
   thread: ThreadDetail<Status>
@@ -31,6 +32,8 @@ export function ThreadActions<Status extends string>({ repo, config, thread, vie
   reads: ThreadReads<ThreadDetail<Status>>
   /** Where the page holds these writes while another of its writes is in flight, if it does. */
   gate?: WriteGate
+  /** Where the actions sit, as layout classes. */
+  className?: string
 }) {
   const navigate = useNavigate()
   const [pending, setPending] = useState<"status" | "remove" | null>(null)
@@ -40,6 +43,7 @@ export function ThreadActions<Status extends string>({ repo, config, thread, vie
   // set synchronously, so a double click can't start a second write
   const busy = useRef(false)
   const mounted = useRef(true)
+  const here = useStillHere()
   useGateReport(gate, pending !== null)
   useEffect(() => {
     mounted.current = true
@@ -83,7 +87,7 @@ export function ThreadActions<Status extends string>({ repo, config, thread, vie
     const startedAt = readStart(reads.clock)
     const current = await findThread<Status>(repo, config.kind, thread.id)
     if (!mounted.current) return
-    if (current === null) return void navigate(listRoute)
+    if (current === null) return void (here.current && navigate(listRoute))
     reads.onRead(current, startedAt)
     setNotice(`Haxy couldn't confirm what happened to this request (${cause}). This is the ${noun} as it is now.`)
   })
@@ -95,19 +99,19 @@ export function ThreadActions<Status extends string>({ repo, config, thread, vie
       // already gone, which is what was asked
       if (!(error instanceof ApiError && error.code === "not_found")) throw error
     }
-    if (mounted.current) await navigate(listRoute)
+    if (here.current) await navigate(listRoute)
   }, async (cause) => {
     const startedAt = readStart(reads.clock)
     const current = await findThread<Status>(repo, config.kind, thread.id)
     if (!mounted.current) return
-    if (current === null) return void navigate(listRoute)
+    if (current === null) return void (here.current && navigate(listRoute))
     setConfirming(false)
     reads.onRead(current, startedAt)
     setNotice(`Haxy couldn't confirm what happened to this request (${cause}). The ${noun} still exists; remove it again to try once more.`)
   })
 
   return (
-    <div className="mt-4 space-y-3">
+    <div className={`space-y-3 ${className}`}>
       {/* the actions have no fields, so a refusal's field errors (a patch's branch gone) are said here */}
       {failure && <FailureMessage failure={failure} shown={[]} labels={branchLabels} />}
       {notice && <FormMessage kind="error">{notice}</FormMessage>}

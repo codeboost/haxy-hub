@@ -10,10 +10,29 @@ import { findThread, threadsRoute, type ThreadAssignee, type ThreadDetail, type 
 import { readStart, type ThreadReads } from "@/components/assignees/useThreadAnswers"
 import { useWrite } from "@/pages/settings/shared"
 import { Unresolved } from "@/pages/settings/Unresolved"
-import type { ThreadConfig } from "@/components/thread/config"
+import { linkClass, type ThreadConfig } from "@/components/thread/config"
+import { ThreadPanel, type PanelFrame } from "@/components/thread/ThreadPanel"
+import { Avatar } from "@/components/Avatar"
 
 const chipClass = "inline-flex items-center rounded-full border text-xs"
 const chipLinkClass = "rounded-full px-2 py-0.5 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+
+/** The assignees, each with their avatar, linking to what they are assigned. */
+function AssigneeList({ assignees, noun, to }: { assignees: ThreadAssignee[]; noun: string; to(search: string): string }) {
+  if (assignees.length === 0) return <p className="text-sm text-muted-foreground">Nobody is assigned to this {noun}.</p>
+  return (
+    <ul aria-label="Assigned" className="space-y-1.5">
+      {assignees.map((assignee) => {
+        const name = assigneeName(assignee)
+        return (
+          <li key={assignee.id} className="flex min-w-0 items-center gap-2 text-sm">
+            <Avatar name={name} size="sm" /><Link to={to(assignee.search)} className={`truncate ${linkClass}`}>{name}</Link>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
 
 /**
  * A write whose outcome Haxy couldn't confirm, and that reading the thread
@@ -45,7 +64,7 @@ function unresolvedMessage(unknown: Unknown): string {
  * controls hold until "Check again" gets an answer. Answers update only the
  * assignees (see `useThreadAnswers`).
  */
-export function ThreadAssignees<Status extends string>({ repo, config, thread, viewer, onChanged, reads }: {
+export function ThreadAssignees<Status extends string>({ repo, config, thread, viewer, onChanged, reads, frame = "section" }: {
   repo: RepoLocator
   config: ThreadConfig<Status>
   thread: ThreadDetail<Status>
@@ -54,6 +73,8 @@ export function ThreadAssignees<Status extends string>({ repo, config, thread, v
   onChanged(thread: ThreadDetail<Status>): void
   /** Where a read that settles an outcome goes, ordered by when it started. */
   reads: ThreadReads<ThreadDetail<Status>>
+  /** In the sidebar, the assignees show as a list, with the controls behind a toggle. */
+  frame?: PanelFrame
 }) {
   const navigate = useNavigate()
   const write = useWrite<Unknown>()
@@ -171,8 +192,8 @@ export function ThreadAssignees<Status extends string>({ repo, config, thread, v
   })
 
   return (
-    <section aria-labelledby="thread-assignees" className="mt-6">
-      <h3 id="thread-assignees" className="mb-2 text-sm font-semibold">Assignees</h3>
+    <ThreadPanel id="thread-assignees" title="Assignees" frame={frame} edit={canAssign ? "Edit assignees" : undefined}
+      compact={<AssigneeList assignees={thread.assignees} noun={noun} to={listOf} />}>
       {thread.assignees.length === 0
         ? <p className="text-sm text-muted-foreground">Nobody is assigned to this {noun}.</p>
         : (
@@ -212,6 +233,6 @@ export function ThreadAssignees<Status extends string>({ repo, config, thread, v
           </Button>
         </form>
       )}
-    </section>
+    </ThreadPanel>
   )
 }

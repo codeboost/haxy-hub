@@ -1,3 +1,4 @@
+import { logOutFromHeader } from "./support/accounts"
 import { writeFile } from "node:fs/promises"
 import path from "node:path"
 import { expect, test } from "./support/fixtures"
@@ -58,7 +59,7 @@ test("the header fits a phone-width screen without horizontal scrolling", async 
 
   const nav = page.getByRole("navigation", { name: "Main" })
   for (const name of ["Home", "About", "Users", "Connection"]) await expect(nav.getByRole("link", { name })).toBeInViewport()
-  await expect(page.getByRole("banner").getByText("Server mode")).toBeInViewport()
+  await expect(page.getByRole("banner").getByRole("link", { name: "Log in" })).toBeInViewport()
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBe(0)
 })
@@ -162,14 +163,14 @@ test.describe("with the demo data", () => {
     await logInAs("alice")
     await expect(repos).toContainText("linux")
     await expect(main).not.toContainText("neovim")
-    await header.getByRole("button", { name: "Log out" }).click()
+    await logOutFromHeader(page)
 
     await logInAs("bobby")
     await expect(repos.getByRole("listitem").filter({ hasText: "neovim" })).toContainText("Private")
     await page.reload()
     await expect(repos).toContainText("neovim")
 
-    await header.getByRole("button", { name: "Log out" }).click()
+    await logOutFromHeader(page)
     await expect(header.getByRole("link", { name: "Log in" })).toBeVisible()
     await expect(repos).toContainText("linux")
     await expect(main).not.toContainText("neovim")

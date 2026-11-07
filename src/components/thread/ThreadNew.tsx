@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useRef, useState, type ReactNode } from "react"
 import { Link, useLocation, useNavigate } from "react-router"
 import { ArrowLeft, Plus, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FormMessage, failureOf, type Failure } from "@/components/form"
-import { FailureState, LoadingState } from "@/components/listing"
+import { FailureState } from "@/components/listing"
 import { useSession } from "@/app/session"
 import { ApiError } from "@/lib/api"
 import type { RepoLocator } from "@/lib/repo"
@@ -14,6 +14,7 @@ import { linkClass, type ThreadConfig } from "./config"
 import { SectionUnavailable } from "./ThreadParts"
 import { ThreadForm } from "./ThreadForm"
 import { useBranchChoices, type BranchOffer } from "./BranchFields"
+import { useStillHere } from "@/lib/stillHere"
 
 /**
  * `<repo>/<kind>/new`: opens a thread, for a viewer Haxy says may (the list's
@@ -30,8 +31,6 @@ export function ThreadNewView<Status extends string>({ repo, config, unavailable
   const noun = config.noun.toLowerCase()
   const back = <Link to={threadsRoute(repo, config.kind, config.statuses, config.statuses[0])} className={`inline-flex items-center gap-1 text-sm ${linkClass}`}><ArrowLeft size={14} aria-hidden />{config.plural}</Link>
   switch (list.kind) {
-    case "loading":
-      return <LoadingState>Loading…</LoadingState>
     case "failed":
       if (list.error.code === "not_found" && unavailable) return <SectionUnavailable>{unavailable}</SectionUnavailable>
       return <FailureState title={`Couldn't open a new ${noun}`} error={list.error} onRetry={list.reload} />
@@ -43,8 +42,7 @@ export function ThreadNewView<Status extends string>({ repo, config, unavailable
           <h2 className="mt-3 text-2xl font-semibold tracking-tight">New {noun}</h2>
           {create.available && config.newAlternative && <config.newAlternative repo={repo} />}
           {create.available ? (
-            branches?.kind === "loading" ? <LoadingState>Loading the branches…</LoadingState>
-              : branches?.kind === "failed" ? <FailureState title="Couldn't load the branches" error={branches.error} onRetry={branches.reload} />
+            branches?.kind === "failed" ? <FailureState title="Couldn't load the branches" error={branches.error} onRetry={branches.reload} />
               : <NewThreadForm key={viewerKey} repo={repo} config={config} viewer={viewer?.name ?? null} branches={branches?.kind === "loaded" ? { choices: branches.data, source: true } : undefined} />
           ) : (
             <p className="mt-3 text-muted-foreground">
@@ -84,11 +82,7 @@ function NewThreadForm<Status extends string>({ repo, config, viewer, branches }
   // A request still running when the form goes away finishes without
   // touching the page the user is on now; an answer to a superseded attempt
   // or check changes nothing.
-  const mounted = useRef(true)
-  useEffect(() => {
-    mounted.current = true
-    return () => { mounted.current = false }
-  }, [])
+  const mounted = useStillHere()
   const generation = useRef(0)
   const begin = () => ++generation.current
   const isLatest = (started: number) => mounted.current && started === generation.current

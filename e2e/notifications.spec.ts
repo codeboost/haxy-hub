@@ -297,6 +297,7 @@ test("assigning yourself turns notifications on, and the panel says so without a
   await logIn(page, hub.url, alice, `/repos/alice/tracker/issues/${issue}`)
 
   await expect(settings(page)).toContainText("You're not notified of activity on this issue.")
+  await page.getByRole("button", { name: "Edit assignees" }).click()
   const assign = page.getByRole("form", { name: "Assign someone" })
   await assign.getByLabel("Assign").fill("alice")
   await assign.getByRole("button", { name: "Assign" }).click()
@@ -414,6 +415,7 @@ test("assignee changes that land while the panel is reading its state are read a
     await held.opened
     await route.fulfill({ response })
   })
+  await page.getByRole("button", { name: "Edit assignees" }).click()
   const assign = page.getByRole("form", { name: "Assign someone" })
   const assigned = page.getByRole("list", { name: "Assigned" }).getByRole("link")
   await assign.getByLabel("Assign").fill("outside@example.test")
@@ -472,7 +474,7 @@ test("a mute still on its way when the page is left updates the header's count o
   await settings(page).getByRole("button", { name: "Mute" }).click()
   // the next page counts before the mute lands
   const counted = page.waitForResponse((response) => response.url().endsWith("/api/v1/notifications/count"))
-  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Home", exact: true }).click()
+  await page.getByRole("link", { name: "Haxy Hub home" }).click()
   await counted
   await expect(bell(page)).toHaveAccessibleName("Notifications, 1 unread")
 
@@ -501,7 +503,7 @@ test("the page reads the thread only after the notification state, so it never a
     await route.fallback()
   })
   await page.goto(`${hub.url}/repos/alice/tracker/issues/${issue}`)
-  await expect(page.getByRole("status").filter({ hasText: "Loading the issue" })).toBeVisible()
+  await expect(page.getByRole("status").filter({ hasText: "Loading" })).toBeVisible()
   await assignIssue(other, backend, "/alice:tracker", issue, "alice")
   held.open()
 

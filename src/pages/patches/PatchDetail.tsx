@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react"
 import { Link, useLocation } from "react-router"
 import { ArrowLeft, FileCode2, GitCommitHorizontal, GitCompareArrows, MessageSquare } from "lucide-react"
-import { FailureState, LoadingState } from "@/components/listing"
+import { FailureState } from "@/components/listing"
 import { Markdown } from "@/components/Markdown"
 import { linkClass } from "@/components/thread/config"
 import { RefreshFailed, ThreadComments, useKept } from "@/components/thread/ThreadComments"
@@ -58,8 +58,6 @@ export function PatchDetailView({ repo, id, unavailable }: { repo: RepoLocator; 
   }, `${location.key} ${revalidations}`)
   const patch = useKept(read, resourceKey)
   switch (patch.kind) {
-    case "loading":
-      return <LoadingState>Loading the patch…</LoadingState>
     case "failed":
       if (patch.error.code === "not_found") {
         if (unavailable) return <SectionUnavailable>{unavailable}</SectionUnavailable>

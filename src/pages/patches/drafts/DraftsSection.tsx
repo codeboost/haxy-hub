@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router"
 import { ArrowLeft, GitFork, NotebookPen } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { EmptyState, FailureState, LoadingState, Pager, useListParams } from "@/components/listing"
+import { EmptyState, FailureState, Pager, useListParams } from "@/components/listing"
 import { linkClass } from "@/components/thread/config"
 import { Instant, SectionUnavailable } from "@/components/thread/ThreadParts"
 import { useSession } from "@/app/session"
@@ -72,8 +72,6 @@ function DraftListView({ repo, unavailable }: { repo: RepoLocator; unavailable: 
   const back = <Link to={threadsRoute(repo, "patches", patchStatuses, "open")} className={`inline-flex items-center gap-1 text-sm ${linkClass}`}><ArrowLeft size={14} aria-hidden />Patches</Link>
   const heading = <><div className="mt-6">{back}</div><h2 className="mt-3 text-2xl font-semibold tracking-tight">Your drafts</h2></>
   switch (drafts.kind) {
-    case "loading":
-      return <>{heading}<LoadingState>Loading your drafts…</LoadingState></>
     case "failed":
       if (drafts.error.code === "not_found" && unavailable) return <SectionUnavailable>{unavailable}</SectionUnavailable>
       if (drafts.error.code === "unauthenticated") return <>{heading}<p className="mt-3 text-muted-foreground"><Link to={loginPath(location.pathname + location.search)} className={linkClass}>Log in</Link> to see your drafts.</p></>

@@ -1,5 +1,5 @@
 import { request as playwrightRequest, type Page } from "@playwright/test"
-import { alice, registerUser, writeHeaders } from "./support/accounts"
+import { alice, registerUser, writeHeaders, logOutFromHeader } from "./support/accounts"
 import { expect, test } from "./support/fixtures"
 
 // Login, logout and the persistent session, driven in the browser through
@@ -20,7 +20,6 @@ test("logging in returns to the page it started from and shows the viewer", asyn
   const hub = await launch.hub(backend.port)
 
   await page.goto(`${hub.url}/connection?tab=details`)
-  await expect(header(page)).toContainText("Server mode")
   await header(page).getByRole("link", { name: "Log in" }).click()
   await expect(page.getByRole("heading", { name: "Log in" })).toBeVisible()
   await logIn(page, alice.name, alice.password)
@@ -67,7 +66,7 @@ test("the session survives a refresh and a backend restart", async ({ page, laun
   await page.reload()
   await expect(header(page)).toContainText(`Signed in as ${alice.name}`)
   // the CSRF token survives the restart too: logging out (a write) works
-  await header(page).getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(page)
   await expect(header(page).getByRole("link", { name: "Log in" })).toBeVisible()
   await page.reload()
   await expect(header(page).getByRole("link", { name: "Log in" })).toBeVisible()
@@ -84,7 +83,7 @@ test("logging out clears viewer data, and going back does not show it again", as
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Connection" }).click()
   await expect(page).toHaveURL(`${hub.url}/connection`)
 
-  await header(page).getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(page)
   await expect(header(page).getByRole("link", { name: "Log in" })).toBeVisible()
   await expect(page.getByText(alice.name)).toHaveCount(0)
 
@@ -116,7 +115,7 @@ test("going back to a document loaded before logout does not show the viewer", a
   // entry the browser may restore from its back/forward cache
   await page.goto(`${hub.url}/connection`)
   await expect(header(page)).toContainText(`Signed in as ${alice.name}`)
-  await header(page).getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(page)
   await expect(header(page).getByRole("link", { name: "Log in" })).toBeVisible()
 
   await page.goBack()
@@ -158,7 +157,7 @@ test("local mode has no login UI", async ({ page, launch }) => {
   const hub = await launch.hub(backend.port)
 
   await page.goto(hub.url)
-  await expect(header(page)).toContainText("Local mode")
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Repository" })).toBeVisible()
   await expect(page.getByRole("link", { name: "Log in" })).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Log out" })).toHaveCount(0)
 
@@ -264,7 +263,7 @@ test("a session read in flight during logout cannot undo the logout", async ({ p
   await expect(header(page)).toContainText(`Signed in as ${alice.name}`)
 
   const { delivered } = await staleReadDuringLogout(page)
-  await header(page).getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(page)
   // navigating while the logout is pending reads the session again
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Connection" }).click()
   await delivered
@@ -282,7 +281,7 @@ test("a session read in flight during logout cannot restore the old CSRF token",
   await expect(header(page)).toContainText(`Signed in as ${alice.name}`)
 
   const { delivered } = await staleReadDuringLogout(page)
-  await header(page).getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(page)
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Connection" }).click()
   await delivered
 

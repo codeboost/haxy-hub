@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto"
 import type { Page } from "@playwright/test"
-import { alice, registerUser, writeHeaders, type Account } from "./support/accounts"
+import { alice, registerUser, writeHeaders, type Account, logOutFromHeader } from "./support/accounts"
 import { expect, test } from "./support/fixtures"
 
 // Account management in the browser — registration, email, password, SSH keys
@@ -40,7 +40,7 @@ test("a visitor registers, is signed in, and the account survives a backend rest
   backend = await backend.restart!()
   await page.reload()
   await expect(header(page)).toContainText("Signed in as carol")
-  await header(page).getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(page)
   await logIn(page, hub.url, "carol", "a long password")
 })
 
@@ -159,7 +159,7 @@ test("a user changes their password after the current-password and confirmation 
   // the new password, not the old one, logs in after a restart
   backend = await backend.restart!()
   await page.reload()
-  await header(page).getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(page)
   await page.goto(`${hub.url}/login`)
   await page.getByLabel("Username").fill(alice.name)
   await page.getByLabel("Password").fill(alice.password)
@@ -323,7 +323,7 @@ test("local mode shows the account features as unavailable", async ({ page, laun
   const hub = await launch.hub(backend.port)
 
   await page.goto(hub.url)
-  await expect(header(page)).toContainText("Local mode")
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Repository" })).toBeVisible()
   await expect(header(page).getByRole("link", { name: "Register" })).toHaveCount(0)
 
   for (const path of ["/register", "/account"]) {
@@ -346,7 +346,7 @@ test("an account form loaded for one user never changes another who signed in fr
   // in as bob through Haxy Hub, which also rotates the CSRF token alice's tab holds
   const other = await context.newPage()
   await other.goto(hub.url)
-  await header(other).getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(other)
   await expect(header(other).getByRole("link", { name: "Log in" })).toBeVisible()
   await logIn(other, hub.url, bob.name, bob.password)
 
@@ -359,7 +359,7 @@ test("an account form loaded for one user never changes another who signed in fr
   await expect(page.getByRole("region", { name: "SSH keys" }).getByRole("alert")).toContainText(`signed in as ${bob.name}`)
 
   // and through Haxy's own login form, which rotates the token too (#30)
-  await header(other).getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(other)
   await expect(header(other).getByRole("link", { name: "Log in" })).toBeVisible()
   await logIn(other, hub.url, alice.name, alice.password)
   await page.reload()

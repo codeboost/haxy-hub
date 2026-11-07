@@ -2,7 +2,7 @@ import { Link } from "react-router"
 import { MessageSquare, Plus, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useSession } from "@/app/session"
-import { EmptyState, FailureState, LoadingState, Pager } from "@/components/listing"
+import { EmptyState, FailureState, Pager } from "@/components/listing"
 import type { Count } from "@/lib/api"
 import type { RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
@@ -50,7 +50,6 @@ export function ThreadListView<Status extends string>({ repo, config, status, se
     <>
       <ThreadTabs repo={repo} config={config} current={status} search={search} counts={threads.kind === "loaded" ? threads.data.counts : undefined} />
       <ThreadSearchForm key={search} label={`Search ${config.plural.toLowerCase()}`} placeholder={config.searchPlaceholder} search={search} target={(term) => threadsRoute(repo, config.kind, config.statuses, status, { search: term })} />
-      {threads.kind === "loading" && <LoadingState>Loading {config.plural.toLowerCase()}…</LoadingState>}
       {threads.kind === "failed" && (
         threads.error.code === "validation" && cursor ? (
           // a page link outlived its list (the thread it started at changed)
@@ -99,7 +98,6 @@ export function ThreadLabelsView<Status extends string>({ repo, config, search, 
     <>
       <ThreadTabs repo={repo} config={config} current="labels" search={search} />
       <ThreadSearchForm key={search} label={`Search ${config.plural.toLowerCase()}`} placeholder={config.searchPlaceholder} search={search} target={(term) => threadLabelsRoute(repo, config.kind, { search: term })} />
-      {labels.kind === "loading" && <LoadingState>Loading labels…</LoadingState>}
       {labels.kind === "failed" && <FailureState title="Couldn't load labels" error={labels.error} onRetry={labels.reload} />}
       {labels.kind === "loaded" && (
         labels.data.items.length === 0 ? (

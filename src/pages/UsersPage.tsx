@@ -1,5 +1,5 @@
 import { Link } from "react-router"
-import { EmptyState, FailureState, LoadingState, Pager, SearchForm, UnavailableState, listQuery, useListParams } from "@/components/listing"
+import { EmptyState, FailureState, Pager, SearchForm, UnavailableState, listQuery, useListParams } from "@/components/listing"
 import { listUsers } from "@/lib/discovery"
 import { useResource } from "@/lib/resource"
 
@@ -12,9 +12,8 @@ export function UsersPage() {
   }
   return (
     <section>
-      <h1 className="mb-6 text-3xl font-semibold tracking-tight">Users</h1>
+      <h1 className="mb-6 text-2xl font-semibold tracking-tight">Users</h1>
       <SearchForm key={search} label="Search users" search={search} />
-      {users.kind === "loading" && <LoadingState>Loading users…</LoadingState>}
       {users.kind === "failed" && <FailureState title="Couldn't load users" error={users.error} onRetry={users.reload} />}
       {users.kind === "loaded" && (
         users.data.items.length === 0 ? (

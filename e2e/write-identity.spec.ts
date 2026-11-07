@@ -1,5 +1,5 @@
 import { request as playwrightRequest, type APIRequestContext, type Page } from "@playwright/test"
-import { alice, registerUser, writeHeaders, type Account } from "./support/accounts"
+import { alice, registerUser, writeHeaders, type Account, logOutFromHeader } from "./support/accounts"
 import type { Backend } from "./support/backend"
 import { expect, test } from "./support/fixtures"
 
@@ -259,7 +259,7 @@ test("a stale tab's writes never reach a user who signed in through Haxy Hub", a
 
   const other = await context.newPage()
   await other.goto(hub.url)
-  await header(other).getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(other)
   await expect(header(other).getByRole("link", { name: "Log in" })).toBeVisible()
   await logInThroughHub(other, hub.url, bob)
 
@@ -350,7 +350,7 @@ test("a write for one user never sends a token cached for another", async ({ pag
 
   const other = await context.newPage()
   await other.goto(hub.url)
-  await header(other).getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(other)
   await logInThroughHub(other, hub.url, bob)
 
   const key = { key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl stale@host" }

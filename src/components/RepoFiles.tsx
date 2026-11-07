@@ -1,11 +1,12 @@
-import { useEffect } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { Link, useLocation, useSearchParams } from "react-router"
-import { File, Folder, CornerLeftUp } from "lucide-react"
-import { EmptyState, FailureState, LoadingState, Pager } from "@/components/listing"
+import { File, Folder, CornerLeftUp, History } from "lucide-react"
+import { EmptyState, FailureState, Pager } from "@/components/listing"
 import { Markdown } from "@/components/Markdown"
 import type { LinkTarget } from "@/lib/markdown"
-import { RefBar } from "@/components/RepoRefs"
-import { displaySegment, getFiles, parentPath, pathSegments, repoLinkPath, repoRoute, type DirListing, type EncodedPath, type FileView, type RefId, type RepoLocator } from "@/lib/repo"
+import { RepoToolbar } from "@/components/RepoToolbar"
+import { commitRoute, commitsRoute } from "@/lib/commits"
+import { displaySegment, getFiles, parentPath, pathSegments, repoLinkPath, repoRoute, type DirListing, type EncodedPath, type FileView, type GitCommand, type ReadRef, type RefId, type RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 
 // A repository's files at the default branch or the ref the URL names. The
@@ -49,7 +50,7 @@ function markdownLinks(repo: RepoLocator, ref: RefId | null, dir: EncodedPath): 
 function PathCrumbs({ repo, refId, name, path }: { repo: RepoLocator; refId: RefId | null; name: string; path: EncodedPath }) {
   const segments = pathSegments(path)
   return (
-    <nav aria-label="Path" className="mt-8 flex flex-wrap items-center gap-1 font-mono text-sm">
+    <nav aria-label="Path" className="flex min-w-0 flex-wrap items-center gap-1 font-mono text-sm">
       {segments.length === 0 ? <span aria-current="page" className="font-semibold">{name}</span> : <Link to={repoRoute(repo, "", refId)} className={linkClass}>{name}</Link>}
       {segments.map((segment, index) => {
         const last = index === segments.length - 1
@@ -64,14 +65,34 @@ function PathCrumbs({ repo, refId, name, path }: { repo: RepoLocator; refId: Ref
   )
 }
 
-function Directory({ repo, refId, listing, cursor }: { repo: RepoLocator; refId: RefId | null; listing: DirListing; cursor: string }) {
+const shortIdLength = 7
+
+/** The commit the view shows, and the history from it. */
+function CommitLinks({ repo, refId, read }: { repo: RepoLocator; refId: RefId | null; read: ReadRef }) {
+  const muted = "flex items-center gap-1 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+  return (
+    <div className="flex shrink-0 items-center gap-4 text-sm">
+      <Link to={commitRoute(repo, read.commit, refId)} title={read.commit} aria-label={`Commit ${read.commit}`} className={`${muted} font-mono text-xs hover:underline`}>{read.commit.slice(0, shortIdLength)}</Link>
+      <Link to={commitsRoute(repo, refId)} className={muted}><History size={15} aria-hidden />History</Link>
+    </div>
+  )
+}
+
+/** The path on the left and the commit on the right, heading the directory listing it sits on. */
+function PathBar({ attached, children }: { attached: boolean; children: ReactNode }) {
+  return <div className={`mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border bg-secondary/60 px-4 py-2 ${attached ? "rounded-t-xl" : "rounded-xl"}`}>{children}</div>
+}
+
+function Directory({ repo, refId, listing, cursor, header }: { repo: RepoLocator; refId: RefId | null; listing: DirListing; cursor: string; header: (attached: boolean) => ReactNode }) {
+  const listed = listing.items.length > 0 || cursor !== ""
   const rowClass = "flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
   return (
     <>
-      {listing.items.length === 0 && !cursor ? (
+      {header(listed)}
+      {!listed ? (
         <EmptyState title="This directory is empty" />
       ) : (
-        <ul aria-label="Files" className="mt-4 divide-y rounded-xl border bg-card">
+        <ul aria-label="Files" className="divide-y rounded-b-xl border border-t-0 bg-card">
           {listing.path && (
             <li><Link to={repoRoute(repo, parentPath(listing.path), refId)} aria-label="Parent directory" className={rowClass}><CornerLeftUp size={16} aria-hidden className="text-muted-foreground" />..</Link></li>
           )}
@@ -99,7 +120,6 @@ function Readme({ repo, refId, path, name }: { repo: RepoLocator; refId: RefId |
     <section aria-labelledby={headingId} className="mt-8 rounded-xl border bg-card">
       <h2 id={headingId} className="border-b px-4 py-2 font-mono text-sm font-semibold">{name}</h2>
       <div className="p-4 sm:p-6">
-        {file.kind === "loading" && <LoadingState>Loading {name}…</LoadingState>}
         {file.kind === "failed" && <FailureState title={`Couldn't load ${name}`} error={file.error} onRetry={file.reload} />}
         {file.kind === "loaded" && file.data.kind === "file" && <FileBody repo={repo} refId={refId} file={file.data} />}
       </div>
@@ -181,16 +201,25 @@ function FileSection({ repo, refId, file }: { repo: RepoLocator; refId: RefId | 
  * The directory or file at `path`, read at `refId` (the default branch when
  * null), with the ref it shows and the breadcrumb that leads back up.
  */
-export function RepoFiles({ repo, refId, name, path }: { repo: RepoLocator; refId: RefId | null; name: string; path: EncodedPath }) {
+export function RepoFiles({ repo, refId, name, path, clone }: { repo: RepoLocator; refId: RefId | null; name: string; path: EncodedPath; clone: GitCommand[] }) {
   const [params] = useSearchParams()
   const cursor = params.get("cursor") ?? ""
   const line = windowStart(params)
   const files = useResource(`files ${repoKey(repo)} ${refId} ${path} ${cursor} ${line}`, (signal) => getFiles(repo, { path, ref: refId, cursor, line }, { signal }))
+  // the toolbar keeps the last ref read while the next path loads, rather than jumping away
+  const loadedRef = files.kind === "loaded" ? files.data.ref : null
+  const [read, setRead] = useState<ReadRef | null>(loadedRef)
+  if (loadedRef !== null && loadedRef !== read) setRead(loadedRef)
+  const pathBar = (attached: boolean) => (
+    <PathBar attached={attached}>
+      <PathCrumbs repo={repo} refId={refId} name={name} path={path} />
+      {read && <CommitLinks repo={repo} refId={refId} read={read} />}
+    </PathBar>
+  )
   return (
     <>
-      {files.kind === "loaded" && <RefBar repo={repo} path={path} refId={refId} read={files.data.ref} />}
-      <PathCrumbs repo={repo} refId={refId} name={name} path={path} />
-      {files.kind === "loading" && <LoadingState>Loading files…</LoadingState>}
+      {read && <RepoToolbar repo={repo} path={path} refId={refId} read={read} clone={clone} />}
+      {!(files.kind === "loaded" && files.data.kind === "dir") && pathBar(false)}
       {files.kind === "failed" && (
         files.error.code === "not_found" ? (
           refId === null ? (
@@ -212,7 +241,7 @@ export function RepoFiles({ repo, refId, name, path }: { repo: RepoLocator; refI
           <FailureState title="Couldn't load files" error={files.error} onRetry={files.reload} />
         )
       )}
-      {files.kind === "loaded" && (files.data.kind === "dir" ? <Directory repo={repo} refId={refId} listing={files.data} cursor={cursor} /> : <FileSection repo={repo} refId={refId} file={files.data} />)}
+      {files.kind === "loaded" && (files.data.kind === "dir" ? <Directory repo={repo} refId={refId} listing={files.data} cursor={cursor} header={pathBar} /> : <FileSection repo={repo} refId={refId} file={files.data} />)}
     </>
   )
 }

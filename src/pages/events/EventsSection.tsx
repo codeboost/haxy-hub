@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link } from "react-router"
-import { EmptyState, FailureState, LoadingState, Pager, useListParams } from "@/components/listing"
+import { EmptyState, FailureState, Pager, useListParams } from "@/components/listing"
 import { countText, linkClass } from "@/components/thread/config"
 import { AuthorName, Instant, SectionUnavailable } from "@/components/thread/ThreadParts"
 import type { Count } from "@/lib/api"
@@ -84,7 +84,6 @@ function EventListView({ repo, view, transaction, cursor }: { repo: RepoLocator;
         </div>
       )}
       <EventTabs repo={repo} current={view} transaction={transaction} counts={events.kind === "loaded" ? events.data.counts : undefined} />
-      {events.kind === "loading" && <LoadingState>Loading events…</LoadingState>}
       {events.kind === "failed" && (
         events.error.code === "validation" && cursor ? (
           // a page link outlived its list (the event it started at changed)

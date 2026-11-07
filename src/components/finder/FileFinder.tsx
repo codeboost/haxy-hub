@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router"
 import { File } from "lucide-react"
-import { EmptyState, FailureState, LoadingState, Pager, SearchForm, useListParams } from "@/components/listing"
+import { EmptyState, FailureState, Pager, SearchForm, useListParams } from "@/components/listing"
 import { findFiles, findRoute, type FindAnswer } from "@/lib/finder"
 import { displaySegment, parentPath, pathSegments, repoRoute, routeRef, type ReadRef, type RefId, type RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
@@ -102,7 +102,6 @@ export function FileFinder({ repo }: { repo: RepoLocator }) {
   return (
     <section aria-labelledby="finder-heading" className="mt-6">
       <h2 id="finder-heading" className="text-lg font-semibold">Find a file</h2>
-      {answer.kind === "loading" && <LoadingState>Finding files…</LoadingState>}
       {answer.kind === "failed" && (
         answer.error.code === "not_found" ? (
           <EmptyState title="Nothing here at this ref">{answer.error.message} <Link to={findRoute(repo)} className={linkClass}>Find files on the default branch</Link></EmptyState>

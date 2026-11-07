@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router"
 import { ArrowLeft, RefreshCw, Save } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FormMessage, failureOf, type Failure } from "@/components/form"
-import { FailureState, LoadingState } from "@/components/listing"
+import { FailureState } from "@/components/listing"
 import { useBranchChoices } from "@/components/thread/BranchFields"
 import { linkClass } from "@/components/thread/config"
 import { SectionUnavailable } from "@/components/thread/ThreadParts"
@@ -24,7 +24,6 @@ export function DraftEditView({ repo, id, unavailable }: { repo: RepoLocator; id
   const key = repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
   const draft = useResource(`draft edit ${key} ${id} ${viewerKey}`, (signal) => getDraft(repo, id, { signal }))
   const branches = useBranchChoices(repo, patchThreads, viewerKey)
-  if (draft.kind === "loading") return <LoadingState>Loading the draft…</LoadingState>
   if (draft.kind === "failed") {
     if (draft.error.code === "not_found" && unavailable) return <SectionUnavailable>{unavailable}</SectionUnavailable>
     if (draft.error.code === "not_found") return <section className="mt-6"><h2 className="text-2xl font-semibold tracking-tight">Draft not found</h2><p className="mt-2 text-muted-foreground">You have no draft with this id in this repository. It may have been published or removed.</p></section>
@@ -33,7 +32,6 @@ export function DraftEditView({ repo, id, unavailable }: { repo: RepoLocator; id
   const { edit } = draft.data.actions
   let body: ReactNode
   if (!edit.available) body = <p className="mt-3 text-muted-foreground">{edit.reason.message}</p>
-  else if (branches?.kind === "loading") body = <LoadingState>Loading the branches…</LoadingState>
   else if (branches?.kind === "failed") body = <FailureState title="Couldn't load the branches" error={branches.error} onRetry={branches.reload} />
   else if (branches?.kind === "loaded") body = <EditForm key={viewerKey} repo={repo} loaded={draft.data} viewer={viewer?.name ?? null} branches={branches.data} />
   return (

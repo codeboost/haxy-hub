@@ -1,7 +1,7 @@
+import { useMemo } from "react"
 import { Link, useLocation, useParams, type RouteObject } from "react-router"
-import { Lock } from "lucide-react"
 import { CommandList } from "@/components/GitCommands"
-import { EmptyState, FailureState, LoadingState, UnavailableState } from "@/components/listing"
+import { EmptyState, FailureState, UnavailableState } from "@/components/listing"
 import { RepoFiles } from "@/components/RepoFiles"
 import { RepoRefs } from "@/components/RepoRefs"
 import { getRepo, refsRoute, repoRoute, routePath, routeRef, type RefId, type RefKind, type RepoLocator, type RepoOverview, type RepoSection } from "@/lib/repo"
@@ -17,6 +17,7 @@ import { FileFinder } from "@/components/finder/FileFinder"
 import { SettingsSection } from "@/pages/settings/SettingsSection"
 import { adminRoute } from "@/pages/settings/shared"
 import { useResource } from "@/lib/resource"
+import { useShowRepoHeader, type RepoHeaderInfo } from "@/app/repoHeader"
 
 const sectionLabels: Record<RepoSection, string> = {
   files: "Files",
@@ -45,46 +46,31 @@ const sectionRoutes: Partial<Record<RepoSection, (repo: RepoLocator, ref: RefId 
   patches: (repo) => `${repoRoute(repo)}/patches`,
 }
 
-/** The sections Haxy offers this viewer. Those Haxy Hub doesn't have yet are listed, not linked. */
-function Sections({ repo, refId, sections, current }: { repo: RepoLocator; refId: RefId | null; sections: RepoSection[]; current: RepoSection }) {
-  return (
-    <nav aria-label="Repository sections" className="mt-6 flex flex-wrap gap-1 border-b">
-      {sections.map((section) =>
-        sectionRoutes[section] ? (
-          <Link key={section} to={sectionRoutes[section](repo, refId)} aria-current={section === current ? "page" : undefined} className={`-mb-px border-b-2 px-3 py-2 text-sm ${section === current ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{sectionLabels[section]}</Link>
-        ) : (
-          <span key={section} aria-disabled="true" title="Not available in Haxy Hub yet" className="px-3 py-2 text-sm text-muted-foreground">{sectionLabels[section]}</span>
-        ),
-      )}
-    </nav>
-  )
+function repoHeaderInfo(repo: RepoLocator, refId: RefId | null, overview: RepoOverview, section: RepoSection): RepoHeaderInfo {
+  return {
+    owner: overview.owner,
+    name: overview.name,
+    isPrivate: overview.access === "private",
+    home: repoRoute(repo),
+    tabs: overview.sections.map((key) => ({ section: key, label: sectionLabels[key], href: sectionRoutes[key]?.(repo, refId) ?? null })),
+    current: section,
+  }
 }
 
+/** Shows the repository and its sections in the app header; the description leads its files. */
 function Header({ repo, refId, overview, section }: { repo: RepoLocator; refId: RefId | null; overview: RepoOverview; section: RepoSection }) {
-  return (
-    <>
-      {overview.owner !== null && (
-        <p className="text-sm text-muted-foreground">
-          <Link to="/users" className="hover:underline">Users</Link> / <Link to={`/users/${encodeURIComponent(overview.owner)}`} className="hover:underline">{overview.owner}</Link> /
-        </p>
-      )}
-      <h1 className="flex flex-wrap items-center gap-3 text-3xl font-semibold tracking-tight">
-        {overview.name}
-        {overview.access === "private" && (
-          <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-normal text-muted-foreground"><Lock size={12} aria-hidden />Private</span>
-        )}
-      </h1>
-      {overview.description && <p className="mt-2 text-muted-foreground">{overview.description}</p>}
-      <Sections repo={repo} refId={refId} sections={overview.sections} current={section} />
-    </>
-  )
+  const repoKey = repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
+  const info = useMemo(() => repoHeaderInfo(repo, refId, overview, section), [repoKey, refId, overview, section])
+  useShowRepoHeader(info)
+  if (section !== "files" || !overview.description) return null
+  return <p className="mb-6 text-muted-foreground">{overview.description}</p>
 }
 
 function NotFound({ repo }: { repo: RepoLocator }) {
   const label = repo.kind === "local" ? "this repository" : `${repo.owner}/${repo.name}`
   return (
     <section>
-      <h1 className="text-3xl font-semibold tracking-tight">Repository not found</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Repository not found</h1>
       {/* The same words whether it is missing or hidden from this viewer. */}
       <p className="mt-3 text-muted-foreground">There is no repository <strong>{label}</strong> that you can see.</p>
       {repo.kind === "server" && <Link to={`/users/${encodeURIComponent(repo.owner)}`} className={`mt-6 inline-block text-sm ${linkClass}`}>Browse {repo.owner}'s repositories</Link>}
@@ -111,8 +97,6 @@ export function RepoPage({ local = false, section = "files", refs }: { local?: b
   const overview = useResource(`repo ${key}`, (signal) => getRepo(repo, { signal }), location.pathname + location.search + location.key)
 
   switch (overview.kind) {
-    case "loading":
-      return <LoadingState>Loading the repository…</LoadingState>
     case "failed":
       if (overview.error.code === "not_found") return <NotFound repo={repo} />
       if (overview.error.code === "unsupported") {
@@ -124,7 +108,7 @@ export function RepoPage({ local = false, section = "files", refs }: { local?: b
       }
       return (
         <>
-          <h1 className="text-3xl font-semibold tracking-tight">{repo.kind === "local" ? "Repository" : repo.name}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{repo.kind === "local" ? "Repository" : repo.name}</h1>
           <FailureState title="Couldn't load this repository" error={overview.error} onRetry={overview.reload} />
         </>
       )
@@ -160,10 +144,7 @@ export function RepoPage({ local = false, section = "files", refs }: { local?: b
               {data.remote && <CommandList title="Push an existing repository" commands={[data.remote]} purpose="remote" />}
             </>
           ) : (
-            <>
-              {data.clone.length > 0 && <CommandList title="Clone" commands={data.clone} purpose="clone" />}
-              <RepoFiles repo={repo} refId={refId} name={data.name} path={path} />
-            </>
+            <RepoFiles repo={repo} refId={refId} name={data.name} path={path} clone={data.clone} />
           )}
         </>
       )

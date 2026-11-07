@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react"
 import { KeyRound, LoaderCircle, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FailureMessage, TextField, failureOf, type Failure } from "@/components/form"
-import { FailureState, LoadingState } from "@/components/listing"
+import { FailureState } from "@/components/listing"
 import { ApiError } from "@/lib/api"
 import { addKey, listKeys, removeKey, type SshKey } from "@/lib/account"
 import { useResource } from "@/lib/resource"
@@ -21,7 +21,6 @@ export function KeysSection({ viewer }: { viewer: string }) {
       <p className="mt-1 text-sm text-muted-foreground">Keys that may push to your repositories over SSH. Fingerprints are the SHA256 form <code>ssh-keygen -l</code> prints.</p>
       <AddKeyForm viewer={viewer} onAdded={keys.reload} />
       {notice && <p className="mt-4 rounded-md border px-3 py-2 text-sm text-muted-foreground">{notice}</p>}
-      {keys.kind === "loading" && <LoadingState>Loading SSH keys…</LoadingState>}
       {keys.kind === "failed" && <FailureState title="Couldn't load your SSH keys" error={keys.error} onRetry={keys.reload} />}
       {keys.kind === "loaded" && (
         keys.data.items.length === 0

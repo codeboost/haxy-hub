@@ -1,5 +1,5 @@
 import type { Page, Route } from "@playwright/test"
-import { alice, registerUser, type Account } from "./support/accounts"
+import { alice, registerUser, type Account, logOutFromHeader } from "./support/accounts"
 import { expect, test } from "./support/fixtures"
 import { assignIssue, createIssue, tuiIssuePage } from "./support/issues"
 import { createRepo } from "./support/repos"
@@ -33,6 +33,14 @@ async function answerLost(route: Route) {
   await route.fulfill({ status: 502, body: "" })
 }
 
+/** Shows the assignees' controls, which sit behind the section's toggle. */
+async function editAssignees(page: Page) {
+  const toggle = assignees(page).getByRole("button", { name: "Edit assignees" })
+  await expect(toggle).toHaveAttribute("aria-expanded", "false")
+  await toggle.click()
+  await expect(form(page)).toBeVisible()
+}
+
 async function assign(page: Page, who: string) {
   await form(page).getByLabel("Assign").fill(who)
   await form(page).getByRole("button", { name: "Assign" }).click()
@@ -50,6 +58,8 @@ test("the owner assigns by name and by email, follows an assignee to their issue
 
   await page.goto(`${hub.url}/repos/alice/tracker/issues/${id}`)
   await expect(assignees(page).getByText("Nobody is assigned to this issue.")).toBeVisible()
+  await expect(form(page)).toHaveCount(0)
+  await editAssignees(page)
   await assign(page, "bobby")
   await expect(assigned(page)).toHaveText(["bobby"])
   await expect(form(page).getByLabel("Assign")).toHaveValue("")
@@ -63,6 +73,7 @@ test("the owner assigns by name and by email, follows an assignee to their issue
   expect(tui).toContain("outside@example.test")
 
   // Haxy's refusals show beside the field, keeping what was typed
+  await editAssignees(page)
   await assign(page, "nobody-here")
   await expect(form(page).getByText("No account has this name.")).toBeVisible()
   await expect(form(page).getByLabel("Assign")).toHaveValue("nobody-here")
@@ -82,6 +93,7 @@ test("the owner assigns by name and by email, follows an assignee to their issue
   await expect(page.getByRole("list", { name: "Open issues" }).getByRole("link", { name: "Crash on save" })).toBeVisible()
   await page.goBack()
 
+  await editAssignees(page)
   await assignees(page).getByRole("button", { name: "Unassign bobby" }).click()
   await expect(assigned(page)).toHaveText(["outside@example.test"])
   await page.reload()
@@ -98,7 +110,7 @@ test("someone who may not change the issue sees its assignees, but no way to cha
   await createRepo(page.context().request, backend, { name: "tracker", access: "public" })
   const id = await createIssue(page.context().request, backend, "/alice:tracker", { title: "Alice's" })
   await assignIssue(page.context().request, backend, "/alice:tracker", id, "alice")
-  await page.getByRole("button", { name: "Log out" }).click()
+  await logOutFromHeader(page)
   await expect(header(page)).not.toContainText("Signed in as")
 
   await logIn(page, hub.url, bob, `/repos/alice/tracker/issues/${id}`)
@@ -118,6 +130,7 @@ test("a write whose answer is lost is settled by reading the issue; repeating it
   const route = /\/assignees(\/[0-9a-f]{32})?$/
   const loseAnswer = () => page.route(route, answerLost, { times: 1 })
   await page.goto(`${hub.url}/repos/alice/tracker/issues/${id}`)
+  await editAssignees(page)
 
   // Haxy assigns bobby, but its answer never arrives: the issue says he is
   await loseAnswer()
@@ -169,6 +182,7 @@ test("local mode assigns by email, shows unresolved assignees by email, and link
 
   await page.goto(`${hub.url}/repo/issues/${id}`)
   await expect(assigned(page)).toHaveText(["tui@example.test"])
+  await editAssignees(page)
   await expect(form(page).getByText("An email address: local mode has no accounts.")).toBeVisible()
   await assign(page, "ada")
   await expect(form(page).getByText("Enter an email address.")).toBeVisible()
@@ -184,6 +198,7 @@ test("local mode assigns by email, shows unresolved assignees by email, and link
   await expect(page.getByRole("list", { name: "Open issues" }).getByRole("link", { name: "Unrelated" })).toHaveCount(0)
   await page.goBack()
 
+  await editAssignees(page)
   await assignees(page).getByRole("button", { name: "Unassign tui@example.test" }).click()
   await expect(assigned(page)).toHaveText(["ada@example.test"])
   await page.reload()
@@ -201,6 +216,7 @@ async function onAlicesIssue(page: Page, launch: Parameters<Parameters<typeof te
   await createRepo(page.context().request, backend, { name: "tracker", access: "public" })
   const id = await createIssue(page.context().request, backend, "/alice:tracker", { title: "Busy issue" })
   await page.goto(`${hub.url}/repos/alice/tracker/issues/${id}`)
+  await editAssignees(page)
   return { backend, hub, id }
 }
 

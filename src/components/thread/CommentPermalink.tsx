@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router"
 import { ArrowLeft } from "lucide-react"
-import { FailureState, LoadingState } from "@/components/listing"
+import { FailureState } from "@/components/listing"
 import { useSession } from "@/app/session"
 import type { RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
@@ -41,8 +41,6 @@ export function CommentPermalinkView<Status extends string>({ repo, config, thre
   // only the first load may replace the page; a refresh that fails keeps every open draft
   const loaded = useKept(read, resourceKey)
   switch (loaded.kind) {
-    case "loading":
-      return <LoadingState>Loading the comment…</LoadingState>
     case "failed":
       if (loaded.error.code === "not_found") {
         if (unavailable) return <SectionUnavailable>{unavailable}</SectionUnavailable>

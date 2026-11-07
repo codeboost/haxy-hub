@@ -1,16 +1,17 @@
 import { useState, type ReactNode } from "react"
 import { Link, useLocation } from "react-router"
-import { ArrowLeft, MessageSquare } from "lucide-react"
-import { FailureState, LoadingState } from "@/components/listing"
+import { FailureState } from "@/components/listing"
 import { Markdown } from "@/components/Markdown"
 import { linkTarget } from "@/lib/markdown"
 import type { RepoLocator } from "@/lib/repo"
 import { useSession } from "@/app/session"
 import { useResource } from "@/lib/resource"
-import { getThread, threadsRoute, type ThreadDetail, type WriteViewer } from "@/lib/threads"
+import { getThread, threadsRoute, type FilterLink, type ThreadDetail, type WriteViewer } from "@/lib/threads"
 import { linkClass, type ThreadConfig } from "./config"
 import { ThreadActions } from "./ThreadActions"
-import { AuthorName, Instant, LabelLinks, SectionUnavailable } from "./ThreadParts"
+import { LabelLinks, SectionUnavailable } from "./ThreadParts"
+import { OpeningPost, ThreadHeader } from "./ThreadHeader"
+import { ThreadPanel } from "./ThreadPanel"
 import { RefreshFailed, ThreadComments, useKept } from "./ThreadComments"
 import { ThreadAssignees } from "@/components/assignees/ThreadAssignees"
 import { ThreadAttachments } from "@/components/attachments/ThreadAttachments"
@@ -20,13 +21,26 @@ import { withNotification, type NotificationRead } from "@/lib/notifications"
 import type { ConflictKind } from "@/lib/conflicts"
 import { ConflictBanner } from "@/pages/conflicts/ConflictBanner"
 
-function Field({ title, children }: { title: string; children: ReactNode }) {
-  const id = `thread-${title.toLowerCase()}`
+function Description({ repo, blocks }: { repo: RepoLocator; blocks: ThreadDetail<string>["description"] }) {
+  if (blocks.length === 0) return <p className="text-muted-foreground">No description.</p>
+  return <Markdown blocks={blocks} resolveLink={(destination) => linkTarget(destination, repo.kind === "local")} />
+}
+
+function Labels({ labels, to }: { labels: FilterLink[]; to(search: string): string }) {
   return (
-    <section aria-labelledby={id} className="mt-6">
-      <h3 id={id} className="mb-2 text-sm font-semibold">{title}</h3>
-      {children}
-    </section>
+    <ThreadPanel id="thread-labels" title="Labels" frame="sidebar">
+      {labels.length === 0 ? <p className="text-sm text-muted-foreground">None yet</p> : <div className="flex flex-wrap gap-1"><LabelLinks labels={labels} to={to} /></div>}
+    </ThreadPanel>
+  )
+}
+
+/** The page's two columns: the thread's posts, and its details beside them (below them on a small screen). */
+function Columns({ main, details }: { main: ReactNode; details: ReactNode }) {
+  return (
+    <div className="mt-6 grid gap-8 md:grid-cols-[minmax(0,1fr)_15rem]">
+      <div className="min-w-0">{main}</div>
+      <aside aria-label="Details" className="divide-y self-start text-sm md:sticky md:top-6">{details}</aside>
+    </div>
   )
 }
 
@@ -47,32 +61,28 @@ function Body<Status extends string>({ repo, config, loaded, readStartedAt, cloc
   // the comments the page has shown, so it acknowledges only after showing them
   const shown = useCommentsShown(stateAt)
   const listOf = (search: string) => threadsRoute(repo, config.kind, config.statuses, thread.status, { search })
+  const main = (
+    <>
+      <OpeningPost config={config} thread={thread}><Description repo={repo} blocks={thread.description} /></OpeningPost>
+      <div className="sm:pl-11"><ThreadComments repo={repo} config={config} thread={thread.id} title="Conversation" {...shown.commentReads} /></div>
+    </>
+  )
+  const details = (
+    <>
+      <Labels labels={thread.labels} to={listOf} />
+      <ThreadAssignees repo={repo} config={config} thread={thread} viewer={viewer} frame="sidebar" onChanged={(value) => { onAssigneesChanged(value); setAssigneeChanges((count) => count + 1) }}
+        reads={reads((value: ThreadDetail<Status>, startedAt) => { answers.onAssigneesRead(value, startedAt); setAssigneeChanges((count) => count + 1) })} />
+      <ThreadAttachments repo={repo} config={config} thread={thread} viewer={viewer} frame="sidebar" onChanged={onAttachmentsChanged} reads={reads(answers.onAttachmentsRead)} />
+      <ThreadNotifications repo={repo} config={config} thread={thread.id} viewer={viewer} read={notification} readStartedAt={readStartedAt} clock={clock} onRetry={reload} refresh={assigneeChanges}
+        comments={shown.comments} frame="sidebar" />
+    </>
+  )
   return (
     <article className="mt-6">
-      <Link to={threadsRoute(repo, config.kind, config.statuses, thread.status)} className={`inline-flex items-center gap-1 text-sm ${linkClass}`}>
-        <ArrowLeft size={14} aria-hidden />{config.statusLabels[thread.status]} {config.plural.toLowerCase()}
-      </Link>
-      <h2 className="mt-3 text-2xl font-semibold tracking-tight">{thread.title}</h2>
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-        {/* a kind with one list (discussions) has no status to show */}
-        {config.statuses.length > 1 && <span className="rounded-full border px-2 py-0.5 text-xs font-medium text-foreground">{config.statusLabels[thread.status]}</span>}
-        <span>Opened <Instant value={thread.created_at} /> by <AuthorName author={thread.author} /></span>
-        <span className="inline-flex items-center gap-1"><MessageSquare size={14} aria-hidden />{thread.comment_count} {thread.comment_count === 1 ? "comment" : "comments"}</span>
-      </div>
-      <ThreadActions repo={repo} config={config} thread={thread} viewer={viewer} onChanged={onChanged} reads={reads(answers.onRead)} />
+      <ThreadHeader config={config} thread={thread} back={threadsRoute(repo, config.kind, config.statuses, thread.status)}
+        actions={<ThreadActions repo={repo} config={config} thread={thread} viewer={viewer} onChanged={onChanged} reads={reads(answers.onRead)} className="max-w-md" />} />
       {thread.conflicted && <ConflictBanner repo={repo} kind={config.kind as ConflictKind} id={thread.id} noun={config.noun.toLowerCase()} />}
-      {thread.labels.length > 0 && <Field title="Labels"><div className="flex flex-wrap gap-1"><LabelLinks labels={thread.labels} to={listOf} /></div></Field>}
-      <ThreadAssignees repo={repo} config={config} thread={thread} viewer={viewer} onChanged={(value) => { onAssigneesChanged(value); setAssigneeChanges((count) => count + 1) }}
-        reads={reads((value: ThreadDetail<Status>, startedAt) => { answers.onAssigneesRead(value, startedAt); setAssigneeChanges((count) => count + 1) })} />
-      <ThreadNotifications repo={repo} config={config} thread={thread.id} viewer={viewer} read={notification} readStartedAt={readStartedAt} clock={clock} onRetry={reload} refresh={assigneeChanges}
-        comments={shown.comments} />
-      <Field title="Description">
-        <div className="rounded-xl border bg-card p-4 sm:p-6">
-          {thread.description.length === 0 ? <p className="text-muted-foreground">No description.</p> : <Markdown blocks={thread.description} resolveLink={(destination) => linkTarget(destination, repo.kind === "local")} />}
-        </div>
-      </Field>
-      <ThreadAttachments repo={repo} config={config} thread={thread} viewer={viewer} onChanged={onAttachmentsChanged} reads={reads(answers.onAttachmentsRead)} />
-      <ThreadComments repo={repo} config={config} thread={thread.id} {...shown.commentReads} />
+      <Columns main={main} details={details} />
     </article>
   )
 }
@@ -100,8 +110,6 @@ export function ThreadDetailView<Status extends string>({ repo, config, id, unav
   // in it) and says so; only the first load may replace it with a failure
   const thread = useKept(read, resourceKey)
   switch (thread.kind) {
-    case "loading":
-      return <LoadingState>Loading the {config.noun.toLowerCase()}…</LoadingState>
     case "failed":
       if (thread.error.code === "not_found") {
         if (unavailable) return <SectionUnavailable>{unavailable}</SectionUnavailable>

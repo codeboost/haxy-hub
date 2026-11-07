@@ -1,7 +1,7 @@
 import { Link } from "react-router"
 import { ArrowLeft } from "lucide-react"
 import { useSession } from "@/app/session"
-import { FailureState, LoadingState } from "@/components/listing"
+import { FailureState } from "@/components/listing"
 import { linkClass } from "@/components/thread/config"
 import { SectionUnavailable } from "@/components/thread/ThreadParts"
 import { getConflict, type ConflictKind } from "@/lib/conflicts"
@@ -23,8 +23,6 @@ export function ConflictPage({ repo, kind, noun, id, unavailable }: { repo: Repo
   const lower = noun.toLowerCase()
   const back = <Link to={threadRoute(repo, kind, id)} className={`inline-flex items-center gap-1 text-sm ${linkClass}`}><ArrowLeft size={14} aria-hidden />Back to the {lower}</Link>
   switch (answer.kind) {
-    case "loading":
-      return <LoadingState>Loading the conflict…</LoadingState>
     case "failed":
       if (answer.error.code === "not_found" && unavailable) return <SectionUnavailable>{unavailable}</SectionUnavailable>
       if (answer.error.code === "not_found") return <section className="mt-6"><h2 className="text-2xl font-semibold tracking-tight">{noun} not found</h2><p className="mt-2 text-muted-foreground">There is no {lower} with this id in this repository. It may have been removed.</p></section>

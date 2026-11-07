@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router"
 import { Crown, LoaderCircle, UserMinus, UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FailureMessage, FormMessage, TextField, failureOf, type Failure } from "@/components/form"
-import { FailureState, LoadingState, Pager, useListParams } from "@/components/listing"
+import { FailureState, Pager, useListParams } from "@/components/listing"
 import { ApiError } from "@/lib/api"
 import { repoRoute } from "@/lib/repo"
 import { addMember, listMembers, memberRole, revokeMember, setMemberRole, type AdminRepo, type Member, type MemberRole } from "@/lib/repoAdmin"
@@ -88,7 +88,6 @@ export function MembersSettings({ repo, viewer, mainOwner }: { repo: AdminRepo; 
             onChanged={(role) => changed(member.name, role)} onStale={(message) => { setNotice(message); reload() }} onLost={leave} />
         ))}
       </ul>
-      {members.kind === "loading" && <LoadingState>Loading the members…</LoadingState>}
       {members.kind === "failed" && <FailureState title="Couldn't load the members" error={members.error} onRetry={members.reload} />}
       {members.kind === "loaded" && members.data.items.length === 0 && !cursor && <p className="mt-3 text-sm text-muted-foreground">No one else is a member yet.</p>}
       {members.kind === "loaded" && <Pager page={members.data.page} search="" cursor={cursor} noun="Members" base={adminRoute(repo, "members")} />}

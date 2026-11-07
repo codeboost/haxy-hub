@@ -1,4 +1,4 @@
-import type { APIRequestContext } from "@playwright/test"
+import type { APIRequestContext, Page } from "@playwright/test"
 import type { Backend } from "./backend"
 
 export type Account = { name: string; email: string; password: string }
@@ -38,4 +38,10 @@ export async function writeHeaders(request: APIRequestContext, hubUrl: string): 
   if (!response.ok()) throw new Error(`GET /api/v1/session failed: HTTP ${response.status()}`)
   const body = (await response.json()) as { csrf_token: string }
   return { [csrfHeader]: body.csrf_token, Origin: hubUrl }
+}
+
+/** Logs out through the header's user menu. */
+export async function logOutFromHeader(page: Page): Promise<void> {
+  await page.getByRole("banner").getByRole("button", { name: /^Signed in as / }).click()
+  await page.getByRole("menuitem", { name: "Log out" }).click()
 }

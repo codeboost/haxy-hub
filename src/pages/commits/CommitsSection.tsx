@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router"
 import { GitBranch, GitCommitHorizontal, GitMerge, GitPullRequest, Search, Tag } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { EmptyState, FailureState, LoadingState, Pager } from "@/components/listing"
+import { EmptyState, FailureState, Pager } from "@/components/listing"
 import { AuthorName, Instant } from "@/components/thread/ThreadParts"
 import { commitRoute, commitsRoute, commitsView, getCommit, listCommits, type CommitPerson, type CommitStats, type CommitSummary, type History } from "@/lib/commits"
 import { refsRoute, repoRoute, routeRef, type ReadRef, type RefId, type RepoLocator } from "@/lib/repo"
@@ -116,7 +116,6 @@ function HistoryView({ repo, refId }: { repo: RepoLocator; refId: RefId | null }
   return (
     <section aria-labelledby="commits-heading">
       <h2 id="commits-heading" className="sr-only">History</h2>
-      {history.kind === "loading" && <LoadingState>Loading the history…</LoadingState>}
       {history.kind === "failed" && (
         history.error.code === "not_found" ? (
           refId === null ? <EmptyState title="No commits yet">{history.error.message}</EmptyState>
@@ -210,7 +209,6 @@ function CommitRow({ repo, refId, commit }: { repo: RepoLocator; refId: RefId | 
 function CommitView({ repo, id, refId }: { repo: RepoLocator; id: string; refId: RefId | null }) {
   const commit = useResource(`commit ${repoKey(repo)} ${id}`, (signal) => getCommit(repo, id, { signal }))
   const back = <Link to={commitsRoute(repo, refId)} className={linkClass}>Back to the history</Link>
-  if (commit.kind === "loading") return <LoadingState>Loading the commit…</LoadingState>
   if (commit.kind === "failed") {
     return commit.error.code === "not_found"
       ? <EmptyState title="No such commit">{commit.error.message} {back}</EmptyState>

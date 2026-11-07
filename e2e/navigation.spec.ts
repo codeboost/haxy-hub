@@ -30,7 +30,7 @@ test("an unknown deep link shows not-found inside the shell, also after refresh"
   const notFound = page.getByRole("heading", { level: 1, name: "Page not found" })
   await expect(notFound).toBeVisible()
   await expect(page.getByRole("main")).toContainText("/alice/notes/tree/main")
-  await expect(page.getByRole("banner").getByText("Local mode")).toBeVisible()
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Repository" })).toBeVisible()
 
   await page.reload()
   await expect(notFound).toBeVisible()

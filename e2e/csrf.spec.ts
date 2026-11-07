@@ -151,7 +151,7 @@ test("the app refreshes a stale CSRF token and retries the write once", async ({
   const backend = await launch.server()
   const hub = await launch.hub(backend.port)
   await page.goto(hub.url)
-  await expect(page.getByRole("banner").getByText("Server mode")).toBeVisible()
+  await expect(page.getByRole("main")).toContainText("Connected to a multi-user Haxy server.")
 
   const outcome = (code: string) => page.evaluate(code)
   // Prime the app's in-memory token, then make it stale by replacing the

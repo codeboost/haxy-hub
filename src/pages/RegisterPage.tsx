@@ -20,7 +20,7 @@ export function RegisterPage() {
   if (viewer) {
     return (
       <section className="max-w-md">
-        <h1 className="text-3xl font-semibold tracking-tight">Already logged in</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Already logged in</h1>
         <p className="mt-3 text-muted-foreground">You are logged in as <strong className="text-foreground">{viewer.name}</strong>. Log out to create another account.</p>
         <Link to="/account" className="mt-6 inline-block text-sm text-primary underline-offset-4 hover:underline">Your account</Link>
       </section>
@@ -60,7 +60,7 @@ function RegisterForm() {
   const fields = failure?.fields ?? {}
   return (
     <section className="max-w-sm">
-      <h1 className="text-3xl font-semibold tracking-tight">Create an account</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Create an account</h1>
       <p className="mt-3 text-sm text-muted-foreground">Already have one? <Link to="/login" className="text-primary underline-offset-4 hover:underline">Log in</Link>.</p>
       <form className="mt-8 space-y-5" onSubmit={submit} noValidate>
         {failure && (

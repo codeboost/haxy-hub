@@ -116,7 +116,7 @@ export function FailureState({ title, error, onRetry }: { title: string; error: 
 export function UnavailableState({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
-      <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
       <p role="status" className="mt-3 max-w-xl text-muted-foreground">{children}</p>
     </section>
   )

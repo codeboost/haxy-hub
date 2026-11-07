@@ -1,5 +1,5 @@
 import type { APIRequestContext, Page, PlaywrightWorkerArgs } from "@playwright/test"
-import { alice, registerUser, writeHeaders, type Account } from "./support/accounts"
+import { alice, registerUser, writeHeaders, type Account, logOutFromHeader } from "./support/accounts"
 import type { Backend } from "./support/backend"
 import { expect, test, type Launch } from "./support/fixtures"
 import { createIssue } from "./support/issues"
@@ -67,8 +67,11 @@ test("an owner changes the settings in the browser; other users' next reads foll
   await expect(form.getByRole("status")).toHaveText("Settings saved.")
   // the header follows: private, and issues are gone
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Private")
-  await expect(page.getByText("Kept to ourselves").first()).toBeVisible()
   await expect(sections(page).getByText("Issues")).toHaveCount(0)
+  // the description leads the repository's files
+  await sections(page).getByRole("link", { name: "Files" }).click()
+  await expect(page.getByRole("main").getByText("Kept to ourselves")).toBeVisible()
+  await sections(page).getByRole("link", { name: "Settings" }).click()
 
   // the very next reads by anyone else find nothing
   expect(await overviewStatus(other, api)).toBe(404)
@@ -459,7 +462,7 @@ test("a lost deletion answer probed after another tab signed out says so, rather
   // the deletion never lands; before its answer arrives, the other tab signs out
   await page.route(`**/api/v1/repos/${alice.name}/tools`, async (route) => {
     if (route.request().method() !== "DELETE") return route.continue()
-    await otherTab.getByRole("banner").getByRole("button", { name: "Log out" }).click()
+    await logOutFromHeader(otherTab)
     await expect(otherTab.getByRole("banner").getByRole("link", { name: "Log in" })).toBeVisible()
     await route.fulfill(internalError)
   })
@@ -484,7 +487,7 @@ test("a deletion that lands with its answer lost, probed after another tab signe
   await page.route(`**/api/v1/repos/${alice.name}/tools`, async (route) => {
     if (route.request().method() !== "DELETE") return route.continue()
     await route.fetch()
-    await otherTab.getByRole("banner").getByRole("button", { name: "Log out" }).click()
+    await logOutFromHeader(otherTab)
     await expect(otherTab.getByRole("banner").getByRole("link", { name: "Log in" })).toBeVisible()
     await route.abort("connectionreset")
   })
