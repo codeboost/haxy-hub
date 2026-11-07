@@ -11,7 +11,7 @@ import { linkClass, useWrite } from "./shared"
  * A deletion whose outcome is unknown: what can be said is only whether the
  * repository exists now, never what this attempt did.
  */
-type Uncertain = { cause: string; check: "checking" | "gone" | "exists" | "unchecked" } | { cause: string; check: "viewer"; failure: Failure; now: ViewerChangedError["viewer"] }
+export type Uncertain = { cause: string; check: "checking" | "gone" | "exists" | "unchecked" } | { cause: string; check: "viewer"; failure: Failure; now: ViewerChangedError["viewer"] }
 
 /**
  * Deletes the repository behind Haxy's safeguards (`ui.Delete.perform`): its
@@ -86,7 +86,7 @@ export function DeleteRepo({ repo, viewer, settings }: { repo: AdminRepo; viewer
       ) : (
         <form aria-label="Delete repository" className="mt-5 max-w-sm space-y-4" onSubmit={submit} noValidate>
           {failure && <FailureMessage failure={failure} />}
-          {uncertain && <UnknownOutcome uncertain={uncertain} userPage={userPage} label={`${repo.owner}/${repo.name}`} onCheck={() => void write.start((current) => probe(uncertain.cause, current))} />}
+          {uncertain && <UnknownOutcome uncertain={uncertain} userPage={userPage} back="Back to the owner's repositories" label={`${repo.owner}/${repo.name}`} onCheck={() => void write.start((current) => probe(uncertain.cause, current))} />}
           <fieldset disabled={write.busy} className="space-y-4 disabled:opacity-60">
             <TextField label={`Type ${confirmText} to confirm`} name="confirm" value={confirm} onValue={setConfirm} error={failure?.fields.confirm}
               autoComplete="off" autoCapitalize="none" spellCheck={false} />
@@ -105,7 +105,8 @@ export function DeleteRepo({ repo, viewer, settings }: { repo: AdminRepo; viewer
   )
 }
 
-function UnknownOutcome({ uncertain, userPage, label, onCheck }: { uncertain: Uncertain; userPage: string; label: string; onCheck(): void }) {
+/** What is known after a deletion whose outcome is unknown: only whether its target exists now. */
+export function UnknownOutcome({ uncertain, userPage, back, label, onCheck }: { uncertain: Uncertain; userPage: string; back: string; label: string; onCheck(): void }) {
   const lead = `Haxy couldn't confirm what happened to this request (${uncertain.cause}).`
   const checkAgain = <Button type="button" variant="outline" size="sm" className="mt-2 flex" onClick={onCheck}><RefreshCw />Check again</Button>
   let body: ReactNode
@@ -114,7 +115,7 @@ function UnknownOutcome({ uncertain, userPage, label, onCheck }: { uncertain: Un
       body = <>{lead} Checking whether {label} still exists…</>
       break
     case "gone":
-      body = <>{lead} {label} doesn't exist now. <Link to={userPage} className={linkClass}>Back to the owner's repositories</Link></>
+      body = <>{lead} {label} doesn't exist now. <Link to={userPage} className={linkClass}>{back}</Link></>
       break
     case "exists":
       body = <>{lead} {label} still exists, so it wasn't deleted. Enter your password to try again.</>

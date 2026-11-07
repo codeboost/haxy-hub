@@ -11,7 +11,7 @@ const purposes: Record<ForkCommand["action"], { title: string; purpose: string }
  * The Git commands for the fork a draft (or a patch published from one)
  * lives in, as the server's transport settings build them, each to copy.
  */
-export function ForkCommands({ commands, noun }: { commands: ForkCommand[]; noun: "draft" | "patch" }) {
+export function ForkCommands({ commands, noun }: { commands: ForkCommand[]; noun: "draft" | "patch" | "fork" }) {
   return (
     <>
       {commands.map((command) => (

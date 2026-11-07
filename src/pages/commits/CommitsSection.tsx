@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { EmptyState, FailureState, Pager } from "@/components/listing"
 import { AuthorName, Instant } from "@/components/thread/ThreadParts"
 import { commitRoute, commitsRoute, commitsView, getCommit, listCommits, type CommitPerson, type CommitStats, type CommitSummary, type History } from "@/lib/commits"
-import { refsRoute, repoRoute, routeRef, type ReadRef, type RefId, type RepoLocator } from "@/lib/repo"
+import { refsRoute, repoRoute, routeRef, type ReadRef, type RefId, type SourceLocator, sourceKey } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 import { commitDiffRoute } from "@/lib/diff"
 import { CommitDiffView } from "@/pages/commits/CommitDiff"
@@ -18,12 +18,8 @@ import { CommitDiffView } from "@/pages/commits/CommitDiff"
 
 const linkClass = "text-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 
-function repoKey(repo: RepoLocator): string {
-  return repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
-}
-
 /** `<repo>/commits[/<id>]`: the history, or one commit. */
-export function CommitsSection({ repo }: { repo: RepoLocator }) {
+export function CommitsSection({ repo }: { repo: SourceLocator }) {
   const location = useLocation()
   // the router's own split after `…/commits/`, which matches the route
   // however the URL spells its segments (`%61lice`, `COMMITS`); a commit id
@@ -41,7 +37,7 @@ export function CommitsSection({ repo }: { repo: RepoLocator }) {
 const kindLabels: Record<ReadRef["kind"], string> = { branch: "Branch", tag: "Tag", commit: "Commit", revision: "Patch revision" }
 
 /** Which ref the history is read at, and where else to go from it. */
-function HistoryRef({ repo, refId, read }: { repo: RepoLocator; refId: RefId | null; read: ReadRef }) {
+function HistoryRef({ repo, refId, read }: { repo: SourceLocator; refId: RefId | null; read: ReadRef }) {
   const Icon = read.kind === "branch" ? GitBranch : read.kind === "tag" ? Tag : read.kind === "commit" ? GitCommitHorizontal : GitPullRequest
   return (
     <section aria-label="Ref" className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
@@ -57,7 +53,7 @@ function HistoryRef({ repo, refId, read }: { repo: RepoLocator; refId: RefId | n
 }
 
 /** The search box, which searches at the ref Haxy names (a commit's history is searched on the default branch). */
-function CommitSearchForm({ repo, searchRef, search }: { repo: RepoLocator; searchRef: RefId; search: string }) {
+function CommitSearchForm({ repo, searchRef, search }: { repo: SourceLocator; searchRef: RefId; search: string }) {
   const navigate = useNavigate()
   const [value, setValue] = useState(search)
   return (
@@ -84,7 +80,7 @@ function CommitSearchForm({ repo, searchRef, search }: { repo: RepoLocator; sear
   )
 }
 
-function SearchState({ repo, refId, history, search }: { repo: RepoLocator; refId: RefId | null; history: History; search: string }) {
+function SearchState({ repo, refId, history, search }: { repo: SourceLocator; refId: RefId | null; history: History; search: string }) {
   if (!history.search.available) {
     return <p role="status" aria-label="Commit search" className="mt-4 text-sm text-muted-foreground">Commit search is unavailable here. {history.search.reason.message}</p>
   }
@@ -107,11 +103,11 @@ function countText(history: History): string | null {
   return `${count.kind === "at_least" ? `${value}+` : value} ${count.value === 1 ? "commit" : "commits"}`
 }
 
-function HistoryView({ repo, refId }: { repo: RepoLocator; refId: RefId | null }) {
+function HistoryView({ repo, refId }: { repo: SourceLocator; refId: RefId | null }) {
   const [params] = useSearchParams()
   const search = params.get("search") ?? ""
   const cursor = params.get("cursor") ?? ""
-  const history = useResource(`commits ${repoKey(repo)} ${refId} ${search} ${cursor}`, (signal) => listCommits(repo, { ref: refId, search, cursor }, { signal }))
+  const history = useResource(`commits ${sourceKey(repo)} ${refId} ${search} ${cursor}`, (signal) => listCommits(repo, { ref: refId, search, cursor }, { signal }))
 
   return (
     <section aria-labelledby="commits-heading">
@@ -187,7 +183,7 @@ function MergeBadge() {
   return <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"><GitMerge size={12} aria-hidden />Merge</span>
 }
 
-function CommitRow({ repo, refId, commit }: { repo: RepoLocator; refId: RefId | null; commit: CommitSummary }) {
+function CommitRow({ repo, refId, commit }: { repo: SourceLocator; refId: RefId | null; commit: CommitSummary }) {
   return (
     <li aria-label={commit.summary || commit.id} className="px-4 py-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
@@ -206,8 +202,8 @@ function CommitRow({ repo, refId, commit }: { repo: RepoLocator; refId: RefId | 
 }
 
 /** One commit: who and when, its statistics, and its whole message up to Haxy's limit. */
-function CommitView({ repo, id, refId }: { repo: RepoLocator; id: string; refId: RefId | null }) {
-  const commit = useResource(`commit ${repoKey(repo)} ${id}`, (signal) => getCommit(repo, id, { signal }))
+function CommitView({ repo, id, refId }: { repo: SourceLocator; id: string; refId: RefId | null }) {
+  const commit = useResource(`commit ${sourceKey(repo)} ${id}`, (signal) => getCommit(repo, id, { signal }))
   const back = <Link to={commitsRoute(repo, refId)} className={linkClass}>Back to the history</Link>
   if (commit.kind === "failed") {
     return commit.error.code === "not_found"

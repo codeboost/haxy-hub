@@ -1,7 +1,8 @@
-import { Link, useParams } from "react-router"
+import { Link, useParams, useSearchParams } from "react-router"
 import { Lock } from "lucide-react"
 import { EmptyState, FailureState, Pager, SearchForm, UnavailableState, listQuery, useListParams } from "@/components/listing"
 import { getUser, listUserRepos, type RepoSummary } from "@/lib/discovery"
+import { forkRoute, listUserForks, type ForkItem } from "@/lib/forks"
 import { repoRoute } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 
@@ -44,6 +45,62 @@ function Repos({ name }: { name: string }) {
   )
 }
 
+const forksCursorParam = "forks_cursor"
+
+/** The page's query with the forks cursor set to `cursor` (dropped when empty), keeping the repositories' own parameters. */
+function forksPage(params: URLSearchParams, cursor: string): string {
+  const next = new URLSearchParams(params)
+  if (cursor) next.set(forksCursorParam, cursor)
+  else next.delete(forksCursorParam)
+  const text = next.toString()
+  return text ? `?${text}` : "?"
+}
+
+function Badge({ children }: { children: string }) {
+  return <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-normal text-muted-foreground">{children}</span>
+}
+
+function ForkRow({ forker, fork }: { forker: string; fork: ForkItem }) {
+  return (
+    <li className="px-4 py-3">
+      <p className="flex flex-wrap items-center gap-2 font-medium">
+        <Link to={forkRoute({ kind: "fork", forker, name: fork.name, id: fork.id })} className="text-primary underline-offset-4 hover:underline">{fork.title}</Link>
+        {fork.access === "private" && <Badge>Private</Badge>}
+        {fork.target_deleted && <Badge>Target deleted</Badge>}
+      </p>
+      <p className="mt-0.5 text-sm text-muted-foreground">A fork of {fork.name}</p>
+    </li>
+  )
+}
+
+/** The user's forks the viewer may see, paged by their own cursor so the repositories keep theirs. */
+function Forks({ name }: { name: string }) {
+  const [params] = useSearchParams()
+  const cursor = params.get(forksCursorParam) ?? ""
+  const forks = useResource(`forks ${name} ${cursor}`, (signal) => listUserForks(name, { cursor }, { signal }))
+  const next = forks.kind === "loaded" ? forks.data.page.next_cursor : null
+  return (
+    <section aria-labelledby="forks-heading" className="mt-10">
+      <h2 id="forks-heading" className="mb-4 text-xl font-semibold">Forks</h2>
+      {forks.kind === "failed" && <FailureState title="Couldn't load forks" error={forks.error} onRetry={forks.reload} />}
+      {forks.kind === "loaded" && (
+        forks.data.items.length === 0 ? (
+          cursor ? <EmptyState title="No more forks"><Link className="text-primary underline-offset-4 hover:underline" to={forksPage(params, "")}>Back to the first page</Link></EmptyState>
+            : <EmptyState title="No forks">{name} has no forks you can see.</EmptyState>
+        ) : (
+          <>
+            <ul aria-label="Forks" className="divide-y rounded-xl border bg-card">{forks.data.items.map((fork) => <ForkRow key={fork.id} forker={name} fork={fork} />)}</ul>
+            <nav aria-label="Forks pages" className="mt-3 flex gap-4 text-sm">
+              {cursor && <Link className="text-primary underline-offset-4 hover:underline" to={forksPage(params, "")}>First page</Link>}
+              {next && <Link className="text-primary underline-offset-4 hover:underline" to={forksPage(params, next)}>Next page</Link>}
+            </nav>
+          </>
+        )
+      )}
+    </section>
+  )
+}
+
 export function UserPage() {
   const name = useParams().name ?? ""
   const user = useResource(`user ${name}`, (signal) => getUser(name, { signal }))
@@ -72,6 +129,7 @@ export function UserPage() {
         <>
           <h1 className="text-2xl font-semibold tracking-tight">{user.data.name}</h1>
           <Repos name={user.data.name} />
+          <Forks name={user.data.name} />
         </>
       )
   }

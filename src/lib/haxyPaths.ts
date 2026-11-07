@@ -7,6 +7,7 @@ import { discussionPaths } from "@/lib/discussions"
 import { hubPathForFindPath } from "@/lib/finder"
 import { hubPathForPatchPath } from "@/lib/patches"
 import { hubPathForConflictPath } from "@/lib/conflicts"
+import { hubPathForForkPath } from "@/lib/forks"
 
 /**
  * Haxy's own page URLs (the TUI and its browser renderer, as written in
@@ -30,6 +31,7 @@ import { hubPathForConflictPath } from "@/lib/conflicts"
  * | `/<repo>/commits…`                                      | see `hubPathForCommitPath` (`@/lib/commits`) |
  * | `/<repo>/patches…`, `/<repo>/patch:<id>…`, `/<repo>/diff/patchrev:<id>…` | see `hubPathForPatchPath` (`@/lib/patches`) |
  * | `/<repo>/issues/conflicts`, `/<repo>/issue:<id>/resolve` (and patches') | see `hubPathForConflictPath` (`@/lib/conflicts`) |
+ * | `/<forker>:<name>+<id>…`, `/<name>/forks…`             | see `hubPathForForkPath` (`@/lib/forks`) |
  *
  * `<ref>` is `branch:<name>`, `tag:<name>` or `object:<oid>`, which become the
  * ref ids `branch:<name>`, `tag:<name>` and `commit:<oid>` with the name and
@@ -125,6 +127,8 @@ function repoTailRoute(repo: RepoLocator, segments: string[]): string | null {
 export function hubPathForHaxyPath(haxyPath: string, local = false): string {
   // Like the TUI, match on the path alone.
   const path = haxyPath.split(/[?#]/, 1)[0]
+  // before the repository routes, whose `<owner>:<name>` a fork's `<forker>:<name>+<id>` resembles
+  const fork = hubPathForForkPath(path, local); if (fork !== null) return fork
   const conflict = hubPathForConflictPath(path, local); if (conflict !== null) return conflict
   const issue = hubPathForIssuePath(path, local); if (issue !== null) return issue
   const discussion = hubPathForThreadPath(path, local, discussionPaths); if (discussion !== null) return discussion

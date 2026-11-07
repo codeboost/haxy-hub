@@ -1,7 +1,7 @@
 import { Link } from "react-router"
 import { GitBranch, Tag } from "lucide-react"
 import { EmptyState, FailureState, Pager, SearchForm, listQuery, useListParams } from "@/components/listing"
-import { listRefs, refsRoute, repoRoute, type RefKind, type RepoLocator } from "@/lib/repo"
+import { listRefs, refsRoute, repoRoute, type RefKind, type SourceLocator, sourceKey } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 
 // Choosing a ref: the repository's branches and tags, searchable and paged
@@ -11,19 +11,15 @@ import { useResource } from "@/lib/resource"
 
 const linkClass = "text-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 
-function repoKey(repo: RepoLocator): string {
-  return repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
-}
-
 const nouns: Record<RefKind, { plural: string; title: string }> = {
   branch: { plural: "branches", title: "Branches" },
   tag: { plural: "tags", title: "Tags" },
 }
 
 /** The repository's branches or tags, searchable and paged, each linking to its files. */
-export function RepoRefs({ repo, kind }: { repo: RepoLocator; kind: RefKind }) {
+export function RepoRefs({ repo, kind }: { repo: SourceLocator; kind: RefKind }) {
   const { search, cursor } = useListParams()
-  const refs = useResource(`refs ${repoKey(repo)} ${kind} ${listQuery(search, cursor)}`, (signal) => listRefs(repo, kind, { search, cursor }, { signal }))
+  const refs = useResource(`refs ${sourceKey(repo)} ${kind} ${listQuery(search, cursor)}`, (signal) => listRefs(repo, kind, { search, cursor }, { signal }))
   const noun = nouns[kind]
   const tabClass = "-mb-px border-b-2 px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
   const Icon = kind === "branch" ? GitBranch : Tag

@@ -6,7 +6,7 @@ import { Markdown } from "@/components/Markdown"
 import type { LinkTarget } from "@/lib/markdown"
 import { RepoToolbar } from "@/components/RepoToolbar"
 import { commitRoute, commitsRoute } from "@/lib/commits"
-import { displaySegment, getFiles, parentPath, pathSegments, repoLinkPath, repoRoute, type DirListing, type EncodedPath, type FileView, type GitCommand, type ReadRef, type RefId, type RepoLocator } from "@/lib/repo"
+import { displaySegment, getFiles, parentPath, pathSegments, repoLinkPath, repoRoute, type DirListing, type EncodedPath, type FileView, type GitCommand, type ReadRef, type RefId, type SourceLocator, sourceKey } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 
 // A repository's files at the default branch or the ref the URL names. The
@@ -15,10 +15,6 @@ import { useResource } from "@/lib/resource"
 // `line`, and the selected line as `#L<n>`, so refresh and shared links
 // reconstruct it. Every link keeps the URL's ref, so a view at a branch
 // follows that branch and the default view keeps following the default.
-
-function repoKey(repo: RepoLocator): string {
-  return repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
-}
 
 /** The window start the URL asks for: a positive `line`, else the first line. */
 function windowStart(params: URLSearchParams): number {
@@ -35,7 +31,7 @@ function selectedLine(hash: string): number | null {
 const linkClass = "text-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 
 /** Links in a repository file's Markdown: repository paths open in the files view. */
-function markdownLinks(repo: RepoLocator, ref: RefId | null, dir: EncodedPath): (destination: string) => LinkTarget {
+function markdownLinks(repo: SourceLocator, ref: RefId | null, dir: EncodedPath): (destination: string) => LinkTarget {
   return (destination) => {
     const target = repoLinkPath(destination, dir)
     switch (target.kind) {
@@ -47,7 +43,7 @@ function markdownLinks(repo: RepoLocator, ref: RefId | null, dir: EncodedPath): 
 }
 
 /** The repository name, then each directory of `path`, each leading back up. */
-function PathCrumbs({ repo, refId, name, path }: { repo: RepoLocator; refId: RefId | null; name: string; path: EncodedPath }) {
+function PathCrumbs({ repo, refId, name, path }: { repo: SourceLocator; refId: RefId | null; name: string; path: EncodedPath }) {
   const segments = pathSegments(path)
   return (
     <nav aria-label="Path" className="flex min-w-0 flex-wrap items-center gap-1 font-mono text-sm">
@@ -68,7 +64,7 @@ function PathCrumbs({ repo, refId, name, path }: { repo: RepoLocator; refId: Ref
 const shortIdLength = 7
 
 /** The commit the view shows, and the history from it. */
-function CommitLinks({ repo, refId, read }: { repo: RepoLocator; refId: RefId | null; read: ReadRef }) {
+function CommitLinks({ repo, refId, read }: { repo: SourceLocator; refId: RefId | null; read: ReadRef }) {
   const muted = "flex items-center gap-1 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
   return (
     <div className="flex shrink-0 items-center gap-4 text-sm">
@@ -83,7 +79,7 @@ function PathBar({ attached, children }: { attached: boolean; children: ReactNod
   return <div className={`mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border bg-secondary/60 px-4 py-2 ${attached ? "rounded-t-xl" : "rounded-xl"}`}>{children}</div>
 }
 
-function Directory({ repo, refId, listing, cursor, header }: { repo: RepoLocator; refId: RefId | null; listing: DirListing; cursor: string; header: (attached: boolean) => ReactNode }) {
+function Directory({ repo, refId, listing, cursor, header }: { repo: SourceLocator; refId: RefId | null; listing: DirListing; cursor: string; header: (attached: boolean) => ReactNode }) {
   const listed = listing.items.length > 0 || cursor !== ""
   const rowClass = "flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
   return (
@@ -113,8 +109,8 @@ function Directory({ repo, refId, listing, cursor, header }: { repo: RepoLocator
 }
 
 /** A directory's README, shown beneath its listing as the TUI shows it when the directory opens. */
-function Readme({ repo, refId, path, name }: { repo: RepoLocator; refId: RefId | null; path: EncodedPath; name: string }) {
-  const file = useResource(`readme ${repoKey(repo)} ${refId} ${path}`, (signal) => getFiles(repo, { path, ref: refId }, { signal }))
+function Readme({ repo, refId, path, name }: { repo: SourceLocator; refId: RefId | null; path: EncodedPath; name: string }) {
+  const file = useResource(`readme ${sourceKey(repo)} ${refId} ${path}`, (signal) => getFiles(repo, { path, ref: refId }, { signal }))
   const headingId = "readme-heading"
   return (
     <section aria-labelledby={headingId} className="mt-8 rounded-xl border bg-card">
@@ -132,7 +128,7 @@ function formatNumber(value: number): string {
 }
 
 /** A file's content in whichever state it is: rendered Markdown, numbered lines, empty or binary. */
-function FileBody({ repo, refId, file }: { repo: RepoLocator; refId: RefId | null; file: FileView }) {
+function FileBody({ repo, refId, file }: { repo: SourceLocator; refId: RefId | null; file: FileView }) {
   const { hash } = useLocation()
   const target = selectedLine(hash)
   const content = file.content
@@ -188,7 +184,7 @@ function FileBody({ repo, refId, file }: { repo: RepoLocator; refId: RefId | nul
   )
 }
 
-function FileSection({ repo, refId, file }: { repo: RepoLocator; refId: RefId | null; file: FileView }) {
+function FileSection({ repo, refId, file }: { repo: SourceLocator; refId: RefId | null; file: FileView }) {
   return (
     <section aria-labelledby="file-heading" className="mt-4">
       <h2 id="file-heading" className="mb-3 font-mono text-sm font-semibold">{file.name}</h2>
@@ -201,11 +197,11 @@ function FileSection({ repo, refId, file }: { repo: RepoLocator; refId: RefId | 
  * The directory or file at `path`, read at `refId` (the default branch when
  * null), with the ref it shows and the breadcrumb that leads back up.
  */
-export function RepoFiles({ repo, refId, name, path, clone }: { repo: RepoLocator; refId: RefId | null; name: string; path: EncodedPath; clone: GitCommand[] }) {
+export function RepoFiles({ repo, refId, name, path, clone }: { repo: SourceLocator; refId: RefId | null; name: string; path: EncodedPath; clone: GitCommand[] }) {
   const [params] = useSearchParams()
   const cursor = params.get("cursor") ?? ""
   const line = windowStart(params)
-  const files = useResource(`files ${repoKey(repo)} ${refId} ${path} ${cursor} ${line}`, (signal) => getFiles(repo, { path, ref: refId, cursor, line }, { signal }))
+  const files = useResource(`files ${sourceKey(repo)} ${refId} ${path} ${cursor} ${line}`, (signal) => getFiles(repo, { path, ref: refId, cursor, line }, { signal }))
   // the toolbar keeps the last ref read while the next path loads, rather than jumping away
   const loadedRef = files.kind === "loaded" ? files.data.ref : null
   const [read, setRead] = useState<ReadRef | null>(loadedRef)

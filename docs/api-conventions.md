@@ -1682,7 +1682,7 @@ branch committed to from git shows its new revision.
   revision whose diff to read (`…/revisions/<id>/diff`): the same revision, except for a
   merged patch, whose diff is what landed (`merged.revision`), conflict resolutions
   included. Otherwise `{"available": false, "reason"}` (`unsupported`): an open or closed
-  fork-backed patch's commits are in its fork (fork browsing is #21), and a patch with
+  fork-backed patch's commits are in its fork (read through "Forks" below), and a patch with
   nothing pushed, or whose fork is gone, has nothing to review here.
 - `attachments` and `attachment_limits`, as for issues (see "Attachments").
 - `edit_revision`: what an edit replaces, as issues' `revision` (see "Writing patches"); a
@@ -1892,7 +1892,7 @@ no drafts…"). A repository whose patches are off answers `not_found`, as for p
 "commands", "edit_revision", "actions": {"edit", "remove", "publish"}}`, read by the patches tab's
 own draft reader (`Patches.loadDraftEntry`, from one snapshot of the fork): `revision` is null
 before anything is pushed, else `{"id", "source_commit", "squash_commit", "commit_count"}` (its
-commits stay in the fork; browsing a fork is #21); `no_changes` says the target branch is
+commits stay in the fork; see "Forks" below); `no_changes` says the target branch is
 already at the fork's `patch` branch (as a new draft's is). A listed draft (`DraftSummary`) has
 `id`, `title`, `labels`, `created_at`, `target`, `revision` and `no_changes`.
 
@@ -2015,6 +2015,74 @@ Implemented in `haxy/src/patch_merge.zig` (`merge`, `Refusal`, `refusalText`),
 `mergePrompt`, `Entry.target_oid`), `haxy/src/ui/widget/thread.zig` (the merge page) and
 `haxy/src/web.zig` (`handlePatchMerge`); unit tests in `haxy/src/test/patch_merge.zig`. e2e in
 `e2e/patch-merge-api.spec.ts` and `e2e/patch-merge.spec.ts`.
+
+### Forks
+
+From issue [#21](issues/21-fork-browsing-and-deletion.md). A fork (the repository a fork-backed
+draft or patch lives in, see "Fork-backed drafts") is named by its forker, the name of the
+repository it was made from (kept after a rename, as Haxy's own fork URLs keep it) and its id,
+which is its patch's:
+
+| Route | Method | Body | Answer |
+| --- | --- | --- | --- |
+| `/api/v1/forks/{forker}/{name}/{id}` | `GET`/`HEAD` | — | The fork (below) |
+| `/api/v1/forks/{forker}/{name}/{id}` | `DELETE` | `{confirm, password}` | `{"forker","name","id"}`; the fork is gone |
+| `…/files`, `…/branches`, `…/tags`, `…/find` | `GET`/`HEAD` | — | As a repository's, read in the fork |
+| `…/commits`, `…/commits/{oid}`, `…/commits/{oid}/diff` | `GET`/`HEAD` | — | As a repository's, read in the fork; a history stops at the fork's base |
+| `…/diff?path=&cursor=&page_size=` | `GET`/`HEAD` | — | A window of the fork's whole diff: `{"base","head","path","items","truncated","page"}` |
+| `/api/v1/users/{name}/forks?cursor=&page_size=` | `GET`/`HEAD` | — | A page of the user's forks the viewer may see: `{"id","name","title","access","target_deleted"}` |
+
+Local mode has no forks: every route answers `unsupported` (405). A wrong method is
+`unsupported` with `Allow` (`GET, HEAD, DELETE` on a fork, `GET, HEAD` elsewhere).
+
+- **Who sees a fork** is the TUI's fork page rule (`ui.Fork.resolve` and `ui.Fork.roleIn`, which
+  the TUI's fork page and user page now share): a fork is as readable as the repository it
+  targets while that repository uses patches; once the target (or its owner) is deleted, its
+  forker alone reads it. Anyone else, by any route, gets `not_found` ("There is no fork with
+  this name and id."), as for a missing or removed fork. As in the TUI, readers of the target
+  read a draft's fork too, but only its forker is led to the draft (`patch` below).
+- **What it holds** is read by the TUI's fork page (`ui.Fork.readContents`): `head` is the tip
+  of its `patch` branch; `base` the newest revision's base (the tip itself before anything was
+  pushed; null for a revision into a branch without commits). Its files and refs are the
+  fork's own, so without a `ref` the files route reads the `patch` branch. Its history is
+  walked from the ref's commit back to `base`, as the TUI's fork commits tab walks it
+  (`api_commits.Context.base_oid`), and its diff is `base` against `head`, the TUI's fork diff
+  tab (`Diff.renderAt`, windows and placeholders as for "Commit diffs").
+- **The fork** is `{"id", "forker", "name", "title", "draft", "target": {"owner","name"} | null,
+  "target_branch": {"name","id"}, "patch": {"kind": "draft" | "patch", "id"} | null, "head",
+  "base", "commit_count", "commands", "actions": {"delete"}}`. `target` is null once the target
+  was deleted; `patch` names where its patch is read (the forker's draft, or the target's
+  patch) while it is readable there, and is null otherwise. `commands` are the fork's Git
+  commands as for drafts; a fork whose target is gone has no `push`, as the TUI shows it.
+- **Deletion** is the TUI's delete form's (`ui.Delete.perform` with a fork target): its forker
+  only (`unauthenticated` "Log in as the fork's owner to delete it." for an anonymous reader,
+  `forbidden` "Only the fork's owner can delete it." for any other reader), with `confirm` the
+  text `forker:name` exactly and `password` theirs (`validation` keyed by the field otherwise).
+  `fork.remove` tombstones it, then removes its directory: a draft goes with its fork, and a
+  published patch stays, its `source.fork` null. Deleting a deleted fork is `not_found`.
+- **A user's forks** are the TUI's user page forks (`ui.User.readForks`), newest first, as
+  visible as each fork is; `access` is the target's (null, with `target_deleted`, once it is
+  gone, which only the forker sees). `page_size` defaults to the TUI's 20 (at most 100); a page
+  holds up to that many visible forks and another follows only when another visible fork does
+  (the `readable` bounds of a user's repositories), so the count is `unknown`.
+
+**Haxy Hub.** A fork is `/forks/<forker>/<name>/<id>` (what it proposes, its status and patch
+link, its Git commands and, once its target is deleted, what its forker can still do), with
+`…/files[/<path>]`, `…/commits[/…]`, `…/diff` and `…/find`/`…/branches`/`…/tags` read
+through the repository views with a `ForkLocator` (`SourceLocator` in `src/lib/repo.ts`), and
+`…/delete` for its forker (the typed `forker:name` and the password; an unknown outcome is
+settled by reading the fork again). A user's page lists their forks below their
+repositories (`?forks_cursor=` pages them). A fork-backed patch's page links to its fork
+from its source and its review, and a draft's page to its fork. Haxy's own fork URLs in
+Markdown (`/<forker>:<name>+<id>[/files|/commits|/diff|/delete]`, `/<user>/forks`) open
+these pages (`hubPathForForkPath`); a fork view naming a commit or path stays as written.
+
+Implemented in `haxy/src/api/forks.zig` (routes, shapes, deletion),
+`haxy/src/api/discovery.zig` (`…/forks`), `haxy/src/api/diff.zig` (`writeRangeDiff`),
+`haxy/src/api/commits.zig` (`Context.base_oid`), `haxy/src/ui/Fork.zig` (`resolve`,
+`roleIn`, `readContents`) and `haxy/src/ui/User.zig` (`readForks`); unit tests in
+`haxy/src/test/api_forks.zig`. Haxy Hub: `src/lib/forks.ts` and `src/pages/forks/`; e2e in
+`e2e/forks-api.spec.ts` and `e2e/forks.spec.ts`.
 
 ## Threads: discussions
 

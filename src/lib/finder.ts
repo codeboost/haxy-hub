@@ -4,7 +4,7 @@
  * branches. Mirrors haxy's src/api/find.zig.
  */
 import { getJson, type PageInfo, type PageQuery, type RequestOptions } from "@/lib/api"
-import { apiBase, canonicalPath, canonicalRef, repoRoute, type NamedPath, type ReadRef, type RefId, type RepoLocator } from "@/lib/repo"
+import { apiBase, canonicalPath, canonicalRef, repoRoute, type NamedPath, type ReadRef, type RefId, type RepoLocator, type SourceLocator } from "@/lib/repo"
 
 /** A found file: its name for display, and its whole encoded path. */
 export type FoundFile = NamedPath
@@ -30,7 +30,7 @@ export type FindQuery = PageQuery & {
 
 type Options = Pick<RequestOptions, "signal">
 
-export function findFiles(repo: RepoLocator, query: FindQuery = {}, options: Options = {}): Promise<FindAnswer> {
+export function findFiles(repo: SourceLocator, query: FindQuery = {}, options: Options = {}): Promise<FindAnswer> {
   const params = new URLSearchParams()
   if (query.search) params.set("search", query.search)
   if (query.cursor) params.set("cursor", query.cursor)
@@ -45,7 +45,7 @@ export function findFiles(repo: RepoLocator, query: FindQuery = {}, options: Opt
  * null): `/repos/<owner>/<name>/find[?ref=<id>][&search=…]`, `/repo/find…`
  * in local mode. `query` adds the list's `search` and `cursor`.
  */
-export function findRoute(repo: RepoLocator, ref: RefId | null = null, query: Record<string, string> = {}): string {
+export function findRoute(repo: SourceLocator, ref: RefId | null = null, query: Record<string, string> = {}): string {
   const parts = [ref ? `ref=${canonicalRef(ref)}` : "", new URLSearchParams(query).toString()].filter((part) => part.length > 0)
   return `${repoRoute(repo)}/find${parts.length === 0 ? "" : `?${parts.join("&")}`}`
 }

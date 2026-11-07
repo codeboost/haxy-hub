@@ -2,7 +2,7 @@ import { Link, useLocation } from "react-router"
 import { File } from "lucide-react"
 import { EmptyState, FailureState, Pager, SearchForm, useListParams } from "@/components/listing"
 import { findFiles, findRoute, type FindAnswer } from "@/lib/finder"
-import { displaySegment, parentPath, pathSegments, repoRoute, routeRef, type ReadRef, type RefId, type RepoLocator } from "@/lib/repo"
+import { displaySegment, parentPath, pathSegments, repoRoute, routeRef, type ReadRef, type RefId, type SourceLocator, sourceKey } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 
 // Finding files by name at a ref, from Haxy's file index, as the TUI's files
@@ -14,16 +14,12 @@ const linkClass = "text-primary underline-offset-4 hover:underline focus-visible
 
 const refNouns: Record<ReadRef["kind"], string> = { branch: "branch", tag: "tag", commit: "commit", revision: "patch revision" }
 
-function repoKey(repo: RepoLocator): string {
-  return repo.kind === "local" ? "local" : `${repo.owner}/${repo.name}`
-}
-
 function refLabel(ref: ReadRef): string {
   return ref.name ?? ref.id.slice(ref.id.indexOf(":") + 1)
 }
 
 /** The ref searched, and the way back to its files. */
-function RefLine({ repo, refId, read }: { repo: RepoLocator; refId: RefId | null; read: ReadRef }) {
+function RefLine({ repo, refId, read }: { repo: SourceLocator; refId: RefId | null; read: ReadRef }) {
   return (
     <p className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
       <span>Finding files at {refNouns[read.kind]} <code className="font-mono font-semibold break-all">{refLabel(read)}</code></span>
@@ -32,7 +28,7 @@ function RefLine({ repo, refId, read }: { repo: RepoLocator; refId: RefId | null
   )
 }
 
-function Results({ repo, refId, answer, search, cursor }: { repo: RepoLocator; refId: RefId | null; answer: Extract<FindAnswer, { kind: "indexed" }>; search: string; cursor: string }) {
+function Results({ repo, refId, answer, search, cursor }: { repo: SourceLocator; refId: RefId | null; answer: Extract<FindAnswer, { kind: "indexed" }>; search: string; cursor: string }) {
   const count = answer.page.count
   if (answer.items.length === 0) {
     // a later page can be empty when the branch moved since its link was made
@@ -69,7 +65,7 @@ function Results({ repo, refId, answer, search, cursor }: { repo: RepoLocator; r
 }
 
 /** Why a view has no file index, in its own words for each case. */
-function Unindexed({ repo, refId, answer }: { repo: RepoLocator; refId: RefId | null; answer: Exclude<FindAnswer, { kind: "indexed" }> }) {
+function Unindexed({ repo, refId, answer }: { repo: SourceLocator; refId: RefId | null; answer: Exclude<FindAnswer, { kind: "indexed" }> }) {
   const browse = <Link to={repoRoute(repo, "", refId)} className={linkClass}>Browse its files</Link>
   if (answer.kind === "no_index") {
     return (
@@ -93,12 +89,12 @@ function Unindexed({ repo, refId, answer }: { repo: RepoLocator; refId: RefId | 
 }
 
 /** The file finder for `repo`, at the URL's ref. */
-export function FileFinder({ repo }: { repo: RepoLocator }) {
+export function FileFinder({ repo }: { repo: SourceLocator }) {
   const location = useLocation()
   // not the search params, which have decoded the ref
   const refId = routeRef(location.search)
   const { search, cursor } = useListParams()
-  const answer = useResource(`find ${repoKey(repo)} ${refId} ${search} ${cursor}`, (signal) => findFiles(repo, { ref: refId, search, cursor }, { signal }))
+  const answer = useResource(`find ${sourceKey(repo)} ${refId} ${search} ${cursor}`, (signal) => findFiles(repo, { ref: refId, search, cursor }, { signal }))
   return (
     <section aria-labelledby="finder-heading" className="mt-6">
       <h2 id="finder-heading" className="text-lg font-semibold">Find a file</h2>

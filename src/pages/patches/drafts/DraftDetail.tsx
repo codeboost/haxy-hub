@@ -13,6 +13,7 @@ import { repoRoute, type RepoLocator } from "@/lib/repo"
 import { useResource } from "@/lib/resource"
 import { DraftActions } from "./DraftActions"
 import { ForkCommands } from "./ForkCommands"
+import { forkOf, forkRoute } from "@/lib/forks"
 
 /**
  * `<repo>/patches/drafts/<id>`: one of the viewer's drafts — what it would
@@ -100,7 +101,10 @@ function Proposal({ repo, draft }: { repo: RepoLocator; draft: DraftDetail }) {
   return (
     <Field title="Proposal">
       <dl className="divide-y rounded-xl border bg-card">
-        <Row term="Source">Your fork <span className="font-mono">{draft.fork.owner}/{draft.fork.name}</span></Row>
+        <Row term="Source">
+          Your fork <span className="font-mono">{draft.fork.owner}/{draft.fork.name}</span>{" "}
+          <Link to={forkRoute(forkOf(draft.fork, draft.id))} className={linkClass}>Browse the fork</Link>
+        </Row>
         <Row term="Target">Branch <Link to={repoRoute(repo, "", draft.target.id)} className={`font-mono ${linkClass}`}>{draft.target.name}</Link></Row>
         <Row term="Revision">
           {revision === null ? "Nothing has been pushed yet." : (
