@@ -1,5 +1,9 @@
 # Haxy Hub
 
+> Haxy Hub works with the [`haxy-hub-impl`](https://github.com/codeboost/haxy/tree/haxy-hub-impl)
+> branch of [Haxy](https://github.com/codeboost/haxy). Check out that branch in the sibling
+> `haxy/` repository before starting the backend.
+
 React + TypeScript, Vite, Tailwind CSS v4, and shadcn/ui with Radix primitives.
 Vite serves the UI and proxies `/api/*` to Zig. There is no separate Express
 server, no browser CORS setup, and no forge logic in Node.
@@ -31,33 +35,59 @@ npm run dev
 
 Open http://127.0.0.1:5173. The header shows whether Haxy is in **server** or **local**
 mode. If Haxy is down, or is an older build without the status API, the page says so
-(*Can't reach Haxy* / *Incompatible Haxy backend*) and offers **Retry**. Routes are
-client-side (`/`, `/connection`, `/login`, `/register`, `/account`, `/about`, `/users`,
-`/users/<name>`, `/repos/<owner>/<name>[/files/<path>]` and
-`/repos/<owner>/<name>/branches|tags|find`, `/repos/<owner>/<name>/commits[/<id>]` and, for
-its owners, `/repos/<owner>/<name>/settings[/members|/branches|/delete]` on a server,
-`/repo[/files/<path>]`, `/repo/branches|tags|find` and `/repo/commits[/<id>]` in local
-mode; anything else is *Page not found*); refreshing any
-URL reconstructs the same view, because Vite serves `index.html` for unknown paths. List
-searches and pages live in the query string (`?search=…&cursor=…`), the ref a files view
-is read at in `?ref=<id>` (`branch:<name>`, `tag:<name>`, `commit:<oid>` or
-`revision:<id>`; the default branch without one), a large file's window in `?line=<n>`
-and a selected line in `#L<n>`. Haxy's own page URLs in Markdown (such as
-`/<owner>:<name>/files/branch:<name>/path:<path>`) are translated to these routes; the
-full mapping is in `src/lib/haxyPaths.ts`. Repository paths and ref names in these URLs are Haxy's
-percent-encoded bytes and may not be UTF-8 (e.g. `/repo/files/caf%E9.txt?ref=branch:caf%E9`); Vite's dev and
-preview servers serve the app for them too (`vite.config.ts`), and a production host's
-fallback must not reject URLs that don't decode as UTF-8. The about and user pages exist
-only in server mode; local mode shows them as unavailable.
+(*Can't reach Haxy* / *Incompatible Haxy backend*) and offers **Retry**.
+
+### Routes
+
+Routes are client-side. Refreshing any URL reconstructs the same view, because Vite
+serves `index.html` for unknown paths. Anything not listed below is *Page not found*.
+
+| Mode | Routes |
+| --- | --- |
+| Both | `/`, `/connection`, `/login`, `/register`, `/account` |
+| Server | `/about`, `/users`, `/users/<name>` |
+| Server | `/repos/<owner>/<name>[/files/<path>]` |
+| Server | `/repos/<owner>/<name>/branches\|tags\|find` |
+| Server | `/repos/<owner>/<name>/commits[/<id>]` |
+| Server (owners) | `/repos/<owner>/<name>/settings[/members\|/branches\|/delete]` |
+| Local | `/repo[/files/<path>]`, `/repo/branches\|tags\|find`, `/repo/commits[/<id>]` |
+
+The about and user pages exist only in server mode; local mode shows them as unavailable.
+
+View state lives in the URL:
+
+- List searches and pages: `?search=…&cursor=…`
+- The ref a files view is read at: `?ref=<id>`, one of `branch:<name>`, `tag:<name>`,
+  `commit:<oid>` or `revision:<id>` (the default branch without one)
+- A large file's window: `?line=<n>`
+- A selected line: `#L<n>`
+
+Haxy's own page URLs in Markdown (such as `/<owner>:<name>/files/branch:<name>/path:<path>`)
+are translated to these routes; the full mapping is in `src/lib/haxyPaths.ts`.
+
+Repository paths and ref names in these URLs are Haxy's percent-encoded bytes and may not
+be UTF-8 (e.g. `/repo/files/caf%E9.txt?ref=branch:caf%E9`). Vite's dev and preview
+servers serve the app for them too (`vite.config.ts`), and a production host's fallback
+must not reject URLs that don't decode as UTF-8.
+
+### Accounts
+
 In server mode the header shows who is signed in, with **Log in** (`/login`, which
-returns to the page you came from) and **Register** (`/register`), or **Log out**; local
-mode has no accounts and no login UI. `/account` (the signed-in name links there) changes
-the email and password, manages SSH keys, and deletes the account. The session is Haxy's
-own HttpOnly cookie, shared with Haxy's browser-rendered UI.
+returns to the page you came from) and **Register** (`/register`), or **Log out**. Local
+mode has no accounts and no login UI.
+
+`/account` (the signed-in name links there) changes the email and password, manages SSH
+keys, and deletes the account. The session is Haxy's own HttpOnly cookie, shared with
+Haxy's browser-rendered UI.
+
+### Repositories
+
 Repositories can be browsed at their default branch or any branch, tag, commit or patch
 revision, with the commit history at any of them (searchable where Haxy has a commit
-index, i.e. on a server) and each commit's whole message; patch screens are not
+index, i.e. on a server) and each commit's whole message. Patch screens are not
 implemented yet.
+
+### Backend address
 
 The backend defaults to http://127.0.0.1:8080. To change it, copy `.env.example` to
 `.env.local`, edit `HAXY_BACKEND_URL`, and restart Vite. Alternatively:
